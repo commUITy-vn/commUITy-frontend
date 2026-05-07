@@ -1,11 +1,17 @@
-import { View, Text, StyleSheet } from 'react-native';
+import {LoginForm} from '@/features/auth/components/LoginForm';
+import {router} from 'expo-router';
+import {useTheme} from '@/hooks/useTheme';
+import {View, type ViewStyle} from 'react-native';
 
-export default function Screen() {
-  return (
-    <View style={styles.container}>
-      <Text>Screen</Text>
-    </View>
-  );
+export default function LoginScreen() {
+    const theme = useTheme();
+    const handleNavigateToRegister = () => {
+        router.push('/(auth)/register');
+    };
+
+    return (
+        <View style={{flex: 1, backgroundColor: theme.appBG} as ViewStyle}>
+            <LoginForm onNavigateToRegister={handleNavigateToRegister} />
+        </View>
+    );
 }
-
-const styles = StyleSheet.create({ container: { flex: 1, justifyContent: 'center', alignItems: 'center' } });

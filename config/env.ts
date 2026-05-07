@@ -1,5 +1,5 @@
 import * as z from 'zod';
-import 'dotenv/config';
+import { Platform } from 'react-native';
 
 const createEnv = () => {
   const EnvSchema = z.object({
@@ -14,10 +14,10 @@ const createEnv = () => {
   });
 
   const envVars = {
-    API_URL: process.env.NEXT_PUBLIC_API_URL,
-    ENABLE_API_MOCKING: process.env.NEXT_PUBLIC_ENABLE_API_MOCKING,
-    APP_URL: process.env.NEXT_PUBLIC_URL,
-    APP_MOCK_API_PORT: process.env.NEXT_PUBLIC_MOCK_API_PORT,
+    API_URL: process.env.EXPO_PUBLIC_API_URL,
+    ENABLE_API_MOCKING: process.env.EXPO_PUBLIC_ENABLE_API_MOCKING,
+    APP_URL: process.env.EXPO_PUBLIC_URL,
+    APP_MOCK_API_PORT: process.env.EXPO_PUBLIC_MOCK_API_PORT,
   };
 
   const parsedEnv = EnvSchema.safeParse(envVars);
@@ -33,7 +33,16 @@ const createEnv = () => {
     );
   }
 
-  return parsedEnv.data ?? {};
+  let apiUrl = parsedEnv.data.API_URL;
+
+  if (Platform.OS === 'android') {
+    apiUrl = apiUrl.replace(/http:\/\/(localhost|127\.0\.0\.1)/, 'http://10.0.2.2');
+  }
+
+  return {
+    ...parsedEnv.data,
+    API_URL: apiUrl,
+  };
 };
 
 export const env = createEnv();

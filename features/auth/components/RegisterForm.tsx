@@ -7,25 +7,46 @@ import { FormContainer } from '@/components/ui/FormContainer';
 import { Divider } from '@/components/ui/Divider';
 import { useTheme } from '@/hooks/useTheme';
 import { useThemeStyles } from '@/hooks/useThemeStyles';
-import { useRouter } from 'expo-router';
+import { UserRole } from '../types';
 import FontAwesome5 from '@expo/vector-icons/FontAwesome5';
 
-type LoginFormProps = {
-    onNavigateToRegister: () => void;
+type RegisterFormProps = {
+    onNavigateToLogin: () => void;
 };
 
-export const LoginForm: React.FC<LoginFormProps> = ({ onNavigateToRegister }) => {
+const roleOptions = [
+    { label: 'Volunteer', value: UserRole.VOLUNTEER },
+    { label: 'Requester', value: UserRole.REQUESTER },
+    { label: 'Collaborator', value: UserRole.COLLABORATOR },
+];
+
+export const RegisterForm: React.FC<RegisterFormProps> = ({ onNavigateToLogin }) => {
+    const [fullName, setFullName] = useState('');
     const [email, setEmail] = useState('');
     const [password, setPassword] = useState('');
-    const [errors, setErrors] = useState<{ email?: string; password?: string }>({});
+    const [phone, setPhone] = useState('');
+    const [role, setRole] = useState<UserRole>(UserRole.VOLUNTEER);
+    const [confirmPassword, setConfirmPassword] = useState('');
     const [isLinkPressed, setIsLinkPressed] = useState(false);
 
-    const { login, isLoading, error, clearError } = useAuthStore();
+    const [errors, setErrors] = useState<{
+        fullName?: string;
+        email?: string;
+        password?: string;
+        confirmPassword?: string;
+        phone?: string;
+    }>({});
+
+    const { register: registerUser, isLoading, error, clearError } = useAuthStore();
     const theme = useTheme();
     const styles = useThemeStyles();
 
     const validateForm = (): boolean => {
-        const newErrors: { email?: string; password?: string } = {};
+        const newErrors: typeof errors = {};
+
+        if (!fullName.trim()) {
+            newErrors.fullName = 'Full name is required';
+        }
 
         if (!email.trim()) {
             newErrors.email = 'Email is required';
@@ -35,13 +56,25 @@ export const LoginForm: React.FC<LoginFormProps> = ({ onNavigateToRegister }) =>
 
         if (!password) {
             newErrors.password = 'Password is required';
+        } else if (password.length < 6) {
+            newErrors.password = 'Password must be at least 6 characters';
+        }
+
+        if (!confirmPassword) {
+            newErrors.confirmPassword = 'Please confirm your password';
+        } else if (password !== confirmPassword) {
+            newErrors.confirmPassword = 'Passwords do not match';
+        }
+
+        if (phone && !/^\d{10,15}$/.test(phone.replace(/\D/g, ''))) {
+            newErrors.phone = 'Please enter a valid phone number';
         }
 
         setErrors(newErrors);
         return Object.keys(newErrors).length === 0;
     };
 
-    const handleLogin = async () => {
+    const handleRegister = async () => {
         clearError();
         setErrors({});
 
@@ -50,7 +83,13 @@ export const LoginForm: React.FC<LoginFormProps> = ({ onNavigateToRegister }) =>
         }
 
         try {
-            await login({ email: email.trim(), password });
+            await registerUser({
+                fullName: fullName.trim(),
+                email: email.trim(),
+                password,
+                phone: phone.trim() || undefined,
+                role,
+            });
         } catch {
             // Error is already set in the store
         }
@@ -58,7 +97,7 @@ export const LoginForm: React.FC<LoginFormProps> = ({ onNavigateToRegister }) =>
 
     const handleSocialLogin = (provider: string) => {
         // TODO: Implement OAuth flow
-        console.log(`Login with ${provider}`);
+        console.log(`Register with ${provider}`);
     };
 
     return (
@@ -80,8 +119,19 @@ export const LoginForm: React.FC<LoginFormProps> = ({ onNavigateToRegister }) =>
                         <Text style={{ fontSize: 14, color: theme.textSupporting, textAlign: 'center', alignSelf: 'center' }}>Get started below.</Text>
                     </View>
 
-                    {/* Email Input - full width */}
+                    {/* Full Name Input - full width */}
                     <View style={styles.fullWidth}>
+                        <TextInput
+                            label="Full Name"
+                            value={fullName}
+                            onChangeText={setFullName}
+                            errorText={errors.fullName}
+                            editable={!isLoading}
+                        />
+                    </View>
+
+                    {/* Email Input - full width */}
+                    <View style={[styles.mt4, styles.fullWidth]}>
                         <TextInput
                             label="Email"
                             value={email}
@@ -91,6 +141,36 @@ export const LoginForm: React.FC<LoginFormProps> = ({ onNavigateToRegister }) =>
                             errorText={errors.email}
                             editable={!isLoading}
                         />
+                    </View>
+
+                    {/* Phone Input - full width */}
+                    <View style={[styles.mt4, styles.fullWidth]}>
+                        <TextInput
+                            label="Phone (Optional)"
+                            value={phone}
+                            onChangeText={setPhone}
+                            keyboardType="phone-pad"
+                            errorText={errors.phone}
+                            editable={!isLoading}
+                        />
+                    </View>
+
+                    {/* Role Selection */}
+                    <View style={[styles.mb4, styles.fullWidth]}>
+                        <Text style={[styles.label, styles.mb2]}>Role</Text>
+                        <View style={[styles.flexRow, styles.gap2]}>
+                            {roleOptions.map((option) => (
+                                <Button
+                                    key={option.value}
+                                    text={option.label}
+                                    onPress={() => setRole(option.value)}
+                                    isDisabled={isLoading}
+                                    primary={role === option.value}
+                                    size="small"
+                                    style={[styles.flex1]}
+                                />
+                            ))}
+                        </View>
                     </View>
 
                     {/* Password Input - full width */}
@@ -105,12 +185,24 @@ export const LoginForm: React.FC<LoginFormProps> = ({ onNavigateToRegister }) =>
                         />
                     </View>
 
-                    {/* General Error Message */}
-                    {error ? <Text style={[styles.errorText, styles.mt2]}>{error}</Text> : null}
+                    {/* Confirm Password Input - full width */}
+                    <View style={[styles.mt4, styles.fullWidth]}>
+                        <TextInput
+                            label="Confirm Password"
+                            value={confirmPassword}
+                            onChangeText={setConfirmPassword}
+                            secureTextEntry
+                            errorText={errors.confirmPassword}
+                            editable={!isLoading}
+                        />
+                    </View>
 
-                    {/* Login Button - full width */}
+                    {/* General Error Message */}
+                    {error ? <Text style={[styles.errorText, styles.mb3]}>{error}</Text> : null}
+
+                    {/* Register Button - full width */}
                     <View style={[styles.mt5, styles.fullWidth]}>
-                        <Button text="Log in" onPress={handleLogin} isLoading={isLoading} primary size="large" style={styles.fullWidth} />
+                        <Button text="Create Account" onPress={handleRegister} isLoading={isLoading} primary size="large" style={styles.fullWidth} />
                     </View>
 
                     {/* Divider */}
@@ -145,17 +237,17 @@ export const LoginForm: React.FC<LoginFormProps> = ({ onNavigateToRegister }) =>
                         </Pressable>
                     </View>
 
-                    {/* Register Link */}
+                    {/* Login Link */}
                     <View style={[styles.mt5, styles.alignItemsCenter]}>
                         <Text style={{ color: theme.textSupporting }}>
-                            Don't have an account?{' '}
+                            Already have an account?{' '}
                             <Text
                                 style={{ color: isLinkPressed ? theme.linkHover : theme.link, textDecorationLine: 'underline' }}
-                                onPress={onNavigateToRegister}
+                                onPress={onNavigateToLogin}
                                 onPressIn={() => setIsLinkPressed(true)}
                                 onPressOut={() => setIsLinkPressed(false)}
                             >
-                                Sign up
+                                Sign in
                             </Text>
                         </Text>
                     </View>

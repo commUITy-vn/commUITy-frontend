@@ -1,0 +1,6 @@
+export enum UserRole {
+  REQUESTER = 'REQUESTER',
+  VOLUNTEER = 'VOLUNTEER',
+  COLLABORATOR = 'COLLABORATOR',
+  ADMIN = 'ADMIN',
+}
