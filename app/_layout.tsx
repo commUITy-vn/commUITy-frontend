@@ -27,14 +27,14 @@ export default function RootLayout() {
     if (isLoading) return;
 
     const inAuthGroup = segments[0] === '(auth)';
-    const inProtectedGroup = segments[0] === '(tabs)';
+    const inProtectedGroup = segments[0] === '(app)';
 
     if (!isAuthenticated && inProtectedGroup) {
       // User is not authenticated and trying to access protected routes
       router.replace('/(auth)/login');
     } else if (isAuthenticated && inAuthGroup) {
       // User is authenticated and trying to access auth routes
-      router.replace('/(tabs)');
+      router.replace('/(app)' as any);
     }
   }, [isAuthenticated, isLoading, segments]);
 
@@ -46,7 +46,7 @@ export default function RootLayout() {
     <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
       <Stack>
         <Stack.Screen name="(auth)" options={{headerShown: false}} />
-        <Stack.Screen name="(tabs)" options={{headerShown: false}} />
+        <Stack.Screen name="(app)" options={{headerShown: false}} />
         <Stack.Screen name="modal" options={{presentation: 'modal', title: 'Modal'}} />
       </Stack>
       <StatusBar style="auto" />
