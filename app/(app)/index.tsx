@@ -1,104 +1,117 @@
-import { FlatList, StyleSheet, Text, View } from 'react-native';
+import React, { useState } from 'react';
+import {
+  View,
+  Text,
+  ScrollView,
+  TouchableOpacity,
+  FlatList,
+  StyleSheet,
+  Pressable,
+  ActivityIndicator,
+} from 'react-native';
+import { useRouter } from 'expo-router';
 import { useTheme } from '@/hooks/useTheme';
 import { useThemeStyles } from '@/hooks/useThemeStyles';
-import { RequestCard } from '@/features/support/components/RequestCard';
-import { SupportRequest, SupportStatus, UrgencyLevel, SupportCategory } from '@/features/support/types/support.types';
-import { useRouter } from 'expo-router';
-import { Pressable } from 'react-native';
-
-const DUMMY_REQUESTS: SupportRequest[] = [
-  {
-    id: '1',
-    title: 'Need food supplies for family of 5',
-    description: 'Our family has been affected by the recent floods and we need emergency food supplies including rice, canned goods, and clean water for the next week.',
-    location: 'District 1, Ho Chi Minh City',
-    urgency: UrgencyLevel.HIGH,
-    status: SupportStatus.PENDING,
-    category: SupportCategory.FOOD,
-    createdAt: '2026-05-07T10:00:00Z',
-    updatedAt: '2026-05-07T10:00:00Z',
-  },
-  {
-    id: '2',
-    title: 'Medical assistance for elderly neighbor',
-    description: 'My elderly neighbor needs help getting to medical appointments and picking up prescriptions.',
-    location: 'District 3, Ho Chi Minh City',
-    urgency: UrgencyLevel.MEDIUM,
-    status: SupportStatus.APPROVED,
-    category: SupportCategory.MEDICAL,
-    createdAt: '2026-05-06T14:30:00Z',
-    updatedAt: '2026-05-07T09:00:00Z',
-  },
-  {
-    id: '3',
-    title: 'Temporary shelter needed',
-    description: 'Looking for temporary shelter for 2 adults and 1 child after apartment fire.',
-    location: 'District 7, Ho Chi Minh City',
-    urgency: UrgencyLevel.HIGH,
-    status: SupportStatus.IN_PROGRESS,
-    category: SupportCategory.SHELTER,
-    createdAt: '2026-05-05T08:15:00Z',
-    updatedAt: '2026-05-06T16:45:00Z',
-  },
-  {
-    id: '4',
-    title: 'School supplies for 10 students',
-    description: 'Requesting notebooks, pens, and textbooks for underprivileged students in our community.',
-    location: 'District 5, Ho Chi Minh City',
-    urgency: UrgencyLevel.LOW,
-    status: SupportStatus.FULFILLED,
-    category: SupportCategory.EDUCATION,
-    createdAt: '2026-05-04T11:20:00Z',
-    updatedAt: '2026-05-07T08:30:00Z',
-  },
-  {
-    id: '5',
-    title: 'Transportation to evacuation center',
-    description: 'Need help transporting 5 elderly residents to the nearest evacuation center.',
-    location: 'District 12, Ho Chi Minh City',
-    urgency: UrgencyLevel.MEDIUM,
-    status: SupportStatus.PENDING,
-    category: SupportCategory.TRANSPORT,
-    createdAt: '2026-05-07T12:00:00Z',
-    updatedAt: '2026-05-07T12:00:00Z',
-  },
-];
+import { SummaryRequestCard } from '@/features/support/components/SummaryRequestCard';
+import { useSupportRequests } from '@/features/support/hooks/useSupportRequests';
+import { SupportRequestSummaryResponse } from '@/features/support/api/get-support-requests';
 
 export default function HomeScreen() {
   const theme = useTheme();
   const styles = useThemeStyles();
   const router = useRouter();
 
-  const handleRequestPress = (request: SupportRequest) => {
+  // Filter state
+  const [activeFilters, setActiveFilters] = useState<string[]>([]);
+
+  const toggleFilter = (filter: string) => {
+    setActiveFilters((prev) =>
+      prev.includes(filter) ? prev.filter((f) => f !== filter) : [...prev, filter]
+    );
+  };
+
+  const handleRequestPress = (request: SupportRequestSummaryResponse) => {
     router.push(`/(app)/request/${request.id}`);
   };
 
-  const handleCreatePress = () => {
-    router.push('/(app)/create-request');
-  };
+  // Fetch support requests using the hook
+  const { data: requests, isLoading, isError } = useSupportRequests();
 
   return (
     <View style={[styles.container, { backgroundColor: theme.appBG }]}>
-      <FlatList
-        data={DUMMY_REQUESTS}
-        renderItem={({ item }) => (
-          <RequestCard request={item} onPress={handleRequestPress} />
-        )}
-        keyExtractor={(item) => item.id}
-        contentContainerStyle={localStyles.listContent}
-        showsVerticalScrollIndicator={false}
-      />
+      {/* Filter Bar - anchored with background and border */}
+      <View style={[
+        localStyles.filterHeader,
+        {
+          backgroundColor: theme.appBG,
+          borderBottomColor: theme.border,
+        }
+      ]}>
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={localStyles.filterScroll}
+        >
+          {['Category', 'Location (Radius)', 'Urgency'].map((filter) => {
+            const isActive = activeFilters.includes(filter);
+            return (
+              <TouchableOpacity
+                key={filter}
+                onPress={() => toggleFilter(filter)}
+                style={[
+                  filterStyles.pill,
+                  {
+                    backgroundColor: isActive ? theme.primary : theme.highlightBG,
+                    borderColor: isActive ? theme.primary : theme.border,
+                  },
+                ]}
+              >
+                <Text
+                  style={[
+                    filterStyles.pillText,
+                    {
+                      color: isActive ? theme.textLight : theme.textSupporting,
+                    },
+                  ]}
+                >
+                  {filter}
+                </Text>
+              </TouchableOpacity>
+            );
+          })}
+        </ScrollView>
+      </View>
 
+      {/* Main Feed */}
+      {isLoading ? (
+        <View style={styles.container}>
+          <ActivityIndicator size="large" color={theme.primary} />
+        </View>
+      ) : isError ? (
+        <View style={styles.container}>
+          <Text style={{ textAlign: 'center', marginTop: 50, color: theme.textSupporting }}>
+            Failed to load community requests.
+          </Text>
+        </View>
+      ) : (
+        <FlatList
+          data={requests || []}
+          keyExtractor={(item) => item.id}
+          renderItem={({ item }) => (
+            <SummaryRequestCard request={item} onPress={handleRequestPress} />
+          )}
+          contentContainerStyle={localStyles.listContent}
+          showsVerticalScrollIndicator={false}
+        />
+      )}
+
+      {/* FAB - perfectly centered matching Expensify reference */}
       <Pressable
-        style={({ pressed }) => [
+        onPress={() => router.push('/(app)/create-request')}
+        style={[
           localStyles.fab,
-          {
-            backgroundColor: theme.primary,
-            opacity: pressed ? 0.9 : 1,
-            shadowColor: theme.inverse,
-          },
+          { backgroundColor: theme.primary },
         ]}
-        onPress={handleCreatePress}
       >
         <Text style={[localStyles.fabIcon, { color: theme.textLight }]}>+</Text>
       </Pressable>
@@ -106,9 +119,32 @@ export default function HomeScreen() {
   );
 }
 
+/* ---------- Static Styles ---------- */
+
+const filterStyles = StyleSheet.create({
+  pill: {
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: 20,
+    borderWidth: 1,
+  },
+  pillText: {
+    fontSize: 13,
+    fontWeight: '600',
+  },
+});
+
 const localStyles = StyleSheet.create({
+  filterHeader: {
+    paddingVertical: 12,
+    borderBottomWidth: 1,
+  },
+  filterScroll: {
+    paddingHorizontal: 16,
+    gap: 8,
+  },
   listContent: {
-    paddingTop: 16,
+    paddingTop: 12,
     paddingBottom: 80,
   },
   fab: {
@@ -120,13 +156,12 @@ const localStyles = StyleSheet.create({
     borderRadius: 28,
     justifyContent: 'center',
     alignItems: 'center',
-    elevation: 4,
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.2,
-    shadowRadius: 4,
+    elevation: 5,
+    zIndex: 999,
   },
   fabIcon: {
-    fontSize: 24,
-    fontWeight: 'bold',
+    fontSize: 28,
+    lineHeight: 30,
+    fontWeight: '300',
   },
 });

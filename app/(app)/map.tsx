@@ -70,7 +70,7 @@ export default function MapScreen() {
       )}
 
       {/* Search Bar Overlay */}
-      <View style={[styles.searchBar, { backgroundColor: theme.componentBG }]}>
+      <View style={[styles.searchBar, { backgroundColor: theme.componentBG, zIndex: 10 }]}>
         <MaterialIcons name="search" size={20} color={theme.textSupporting} style={{ marginRight: 8 }} />
         <TextInput
           style={[
@@ -85,10 +85,15 @@ export default function MapScreen() {
       </View>
 
       {/* Bottom Support Locations ScrollView */}
-      <View style={styles.bottomContainer}>
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.scrollContent}>
+      <View style={[styles.bottomContainer, { pointerEvents: 'box-none', zIndex: 10 }]}>
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={styles.scrollContent}
+          pointerEvents="box-none"
+        >
           {DUMMY_LOCATIONS.map((location) => (
-            <View key={location.id} style={[styles.card, { backgroundColor: theme.componentBG }]}>
+            <View key={location.id} style={[styles.card, { backgroundColor: theme.componentBG, pointerEvents: 'auto' }]}>
               <Text style={[styles.cardTitle, { color: theme.text }]}>{location.name}</Text>
               <Text style={[styles.cardAddress, { color: theme.textSupporting }]}>{location.address}</Text>
             </View>
@@ -100,11 +105,11 @@ export default function MapScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1 },
-  webview: { flex: 1, backgroundColor: 'transparent' },
+  container: { ...StyleSheet.absoluteFillObject },
+  webview: { ...StyleSheet.absoluteFillObject, backgroundColor: 'transparent' },
   searchBar: {
     position: 'absolute',
-    top: 16,
+    top: 60,
     left: 16,
     right: 16,
     height: 48,
@@ -116,7 +121,7 @@ const styles = StyleSheet.create({
   },
   bottomContainer: {
     position: 'absolute',
-    bottom: 16,
+    bottom: 24,
     left: 0,
     right: 0,
   },

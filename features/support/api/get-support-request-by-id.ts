@@ -1,14 +1,5 @@
 import { api } from '@/lib/api-client';
 
-export interface CreateSupportRequestRequest {
-  title: string;
-  description: string;
-  categoryId: string;
-  address?: string;
-  latitude?: number;
-  longitude?: number;
-}
-
 export interface SupportRequestDetailResponse {
   id: string;
   title: string;
@@ -30,8 +21,8 @@ export interface SupportRequestDetailResponse {
   updatedAt: string;
 }
 
-export const createSupportRequest = (
-  data: CreateSupportRequestRequest
+export const getSupportRequestById = (
+  id: string
 ): Promise<SupportRequestDetailResponse> => {
-  return api.post<SupportRequestDetailResponse>('/api/support-requests', data);
+  return api.get<SupportRequestDetailResponse>(`/api/support-requests/${id}`);
 };

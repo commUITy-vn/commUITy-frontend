@@ -1,83 +1,48 @@
-import { View, Text, StyleSheet, ScrollView } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, ActivityIndicator } from 'react-native';
 import { useTheme } from '@/hooks/useTheme';
 import { useThemeStyles } from '@/hooks/useThemeStyles';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import * as Haptics from 'expo-haptics';
 import { Pressable } from 'react-native';
-import { SupportRequest, SupportStatus, UrgencyLevel, SupportCategory, STATUS_LABELS, URGENCY_LABELS, CATEGORY_LABELS } from '@/features/support/types/support.types';
+import { SupportItemProgress } from '@/features/support/components/SupportItemProgress';
+import { ContributeItemModal } from '@/features/support/components/ContributeItemModal';
+import { useSupportRequestById } from '@/features/support/hooks/useSupportRequestById';
+import { useState } from 'react';
+import {
+  SupportStatus,
+  UrgencyLevel,
+  SupportCategory,
+  STATUS_LABELS,
+  URGENCY_LABELS,
+  CATEGORY_LABELS,
+  SupportItem,
+  ItemCategory,
+} from '@/features/support/types/support.types';
 
-const DUMMY_REQUESTS: SupportRequest[] = [
+// Dummy items for Module 7
+const DUMMY_ITEMS: SupportItem[] = [
   {
-    id: '1',
-    title: 'Need food supplies for family of 5',
-    description: 'Our family has been affected by the recent floods and we need emergency food supplies including rice, canned goods, and clean water for the next week. We have 2 adults and 3 children under 12 who need assistance immediately.',
-    location: 'District 1, Ho Chi Minh City',
-    urgency: UrgencyLevel.HIGH,
-    status: SupportStatus.PENDING,
-    category: SupportCategory.FOOD,
-    createdAt: '2026-05-07T10:00:00Z',
-    updatedAt: '2026-05-07T10:00:00Z',
+    id: 'item-1',
+    category: ItemCategory.FOOD,
+    name: 'Bottled Water',
+    neededQuantity: 50,
+    receivedQuantity: 20,
   },
   {
-    id: '2',
-    title: 'Medical assistance for elderly neighbor',
-    description: 'My elderly neighbor needs help getting to medical appointments and picking up prescriptions. He is 78 years old and has mobility issues after a recent surgery.',
-    location: 'District 3, Ho Chi Minh City',
-    urgency: UrgencyLevel.MEDIUM,
-    status: SupportStatus.APPROVED,
-    category: SupportCategory.MEDICAL,
-    createdAt: '2026-05-06T14:30:00Z',
-    updatedAt: '2026-05-07T09:00:00Z',
+    id: 'item-2',
+    category: ItemCategory.FOOD,
+    name: 'Rice (kg)',
+    neededQuantity: 20,
+    receivedQuantity: 8,
   },
   {
-    id: '3',
-    title: 'Temporary shelter needed',
-    description: 'Looking for temporary shelter for 2 adults and 1 child after apartment fire. We lost everything in the fire and need a place to stay for at least 2 weeks while we find permanent housing.',
-    location: 'District 7, Ho Chi Minh City',
-    urgency: UrgencyLevel.HIGH,
-    status: SupportStatus.IN_PROGRESS,
-    category: SupportCategory.SHELTER,
-    createdAt: '2026-05-05T08:15:00Z',
-    updatedAt: '2026-05-06T16:45:00Z',
-  },
-  {
-    id: '4',
-    title: 'School supplies for 10 students',
-    description: 'Requesting notebooks, pens, and textbooks for underprivileged students in our community. These supplies will help them continue their education without interruption.',
-    location: 'District 5, Ho Chi Minh City',
-    urgency: UrgencyLevel.LOW,
-    status: SupportStatus.FULFILLED,
-    category: SupportCategory.EDUCATION,
-    createdAt: '2026-05-04T11:20:00Z',
-    updatedAt: '2026-05-07T08:30:00Z',
-  },
-  {
-    id: '5',
-    title: 'Transportation to evacuation center',
-    description: 'Need help transporting 5 elderly residents to the nearest evacuation center. They have limited mobility and cannot use public transportation.',
-    location: 'District 12, Ho Chi Minh City',
-    urgency: UrgencyLevel.MEDIUM,
-    status: SupportStatus.PENDING,
-    category: SupportCategory.TRANSPORT,
-    createdAt: '2026-05-07T12:00:00Z',
-    updatedAt: '2026-05-07T12:00:00Z',
+    id: 'item-3',
+    category: ItemCategory.HYGIENE,
+    name: 'Sanitary Pads',
+    neededQuantity: 100,
+    receivedQuantity: 30,
   },
 ];
-
-const STATUS_COLORS = {
-  [SupportStatus.PENDING]: 'warning',
-  [SupportStatus.APPROVED]: 'success',
-  [SupportStatus.IN_PROGRESS]: 'primary',
-  [SupportStatus.FULFILLED]: 'success',
-  [SupportStatus.REJECTED]: 'danger',
-  [SupportStatus.CANCELLED]: 'textSupporting',
-} as const;
-
-const URGENCY_COLORS = {
-  [UrgencyLevel.HIGH]: 'danger',
-  [UrgencyLevel.MEDIUM]: 'warning',
-  [UrgencyLevel.LOW]: 'success',
-} as const;
 
 export default function RequestDetailScreen() {
   const theme = useTheme();
@@ -85,20 +50,68 @@ export default function RequestDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
 
-  const request = DUMMY_REQUESTS.find((r) => r.id === id);
+  const getUrgencyBg = (urgency: number): string => {
+    switch (urgency) {
+      case 1: // HIGH
+        return '#FFE5E5';
+      case 2: // MEDIUM
+        return '#FFF4E5';
+      case 3: // LOW
+        return '#E5F6EE';
+      default:
+        return theme.border;
+    }
+  };
 
-  if (!request) {
-    return (
-      <View style={[styles.container, { backgroundColor: theme.appBG, justifyContent: 'center', alignItems: 'center' }]}>
-        <Text style={{ color: theme.text, fontSize: 18 }}>Request not found</Text>
-      </View>
-    );
-  }
+  const getUrgencyText = (urgency: number): string => {
+    switch (urgency) {
+      case 1: // HIGH
+        return '#CC0000';
+      case 2: // MEDIUM
+        return '#B35900';
+      case 3: // LOW
+        return '#008040';
+      default:
+        return theme.text;
+    }
+  };
 
-  const handleHelpPress = async () => {
-    await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-    // TODO: Implement volunteer API call
-    console.log('Volunteering for request:', request.id);
+  const getStatusBg = (status: string): string => {
+    switch (status) {
+      case 'PENDING':
+        return '#E2E8F0';
+      case 'APPROVED':
+        return '#E5F6EE';
+      case 'IN_PROGRESS':
+        return '#E0F2FE';
+      case 'FULFILLED':
+        return '#E5F6EE';
+      case 'REJECTED':
+        return '#FFE5E5';
+      case 'CANCELLED':
+        return '#F0F0F0';
+      default:
+        return theme.border;
+    }
+  };
+
+  const getStatusText = (status: string): string => {
+    switch (status) {
+      case 'PENDING':
+        return '#475569';
+      case 'APPROVED':
+        return '#008040';
+      case 'IN_PROGRESS':
+        return '#0369A1';
+      case 'FULFILLED':
+        return '#008040';
+      case 'REJECTED':
+        return '#CC0000';
+      case 'CANCELLED':
+        return '#666666';
+      default:
+        return theme.text;
+    }
   };
 
   const formatDate = (dateString: string) => {
@@ -109,6 +122,53 @@ export default function RequestDetailScreen() {
     });
   };
 
+  const { data: request, isLoading, isError } = useSupportRequestById(id);
+  const [selectedItem, setSelectedItem] = useState<SupportItem | null>(null);
+  const [modalVisible, setModalVisible] = useState(false);
+
+  const handleHelpPress = async () => {
+    await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    // For now, open modal for the first item when volunteer clicks help
+    if (DUMMY_ITEMS.length > 0) {
+      setSelectedItem(DUMMY_ITEMS[0]);
+      setModalVisible(true);
+    }
+  };
+
+  const handleConfirmContribution = (
+    itemId: string,
+    quantity: number,
+    notes: string
+  ) => {
+    console.log('Contribution:', { itemId, quantity, notes });
+    setModalVisible(false);
+    setSelectedItem(null);
+  };
+
+  if (isLoading) {
+    return (
+      <View style={styles.container}>
+        <ActivityIndicator size="large" color={theme.primary} />
+      </View>
+    );
+  }
+
+  if (isError) {
+    return (
+      <View style={[styles.container, { backgroundColor: theme.appBG, justifyContent: 'center', alignItems: 'center' }]}>
+        <Text style={{ color: theme.text, fontSize: 18 }}>Failed to load request details</Text>
+      </View>
+    );
+  }
+
+  if (!request) {
+    return (
+      <View style={[styles.container, { backgroundColor: theme.appBG, justifyContent: 'center', alignItems: 'center' }]}>
+        <Text style={{ color: theme.text, fontSize: 18 }}>Request not found</Text>
+      </View>
+    );
+  }
+
   return (
     <View style={[styles.container, { backgroundColor: theme.appBG }]}>
       <ScrollView contentContainerStyle={localStyles.scrollContent}>
@@ -116,28 +176,28 @@ export default function RequestDetailScreen() {
           <Text style={[localStyles.title, { color: theme.text }]}>{request.title}</Text>
 
           <View style={localStyles.badgeContainer}>
-            <View style={[localStyles.badge, { backgroundColor: theme[URGENCY_COLORS[request.urgency]] }]}>
-              <Text style={[localStyles.badgeText, { color: theme.textLight }]}>
+            <View style={[localStyles.badge, { backgroundColor: getUrgencyBg(request.urgency) }]}>
+              <Text style={[localStyles.badgeText, { color: getUrgencyText(request.urgency) }]}>
                 {URGENCY_LABELS[request.urgency]} Urgency
               </Text>
             </View>
-            <View style={[localStyles.badge, { backgroundColor: theme[STATUS_COLORS[request.status]] }]}>
-              <Text style={[localStyles.badgeText, { color: theme.textLight }]}>
-                {STATUS_LABELS[request.status]}
+            <View style={[localStyles.badge, { backgroundColor: getStatusBg(request.status) }]}>
+              <Text style={[localStyles.badgeText, { color: getStatusText(request.status) }]}>
+                {request.status}
               </Text>
             </View>
           </View>
 
           <View style={[localStyles.detailRow, { borderBottomColor: theme.border }]}>
             <Text style={[localStyles.detailLabel, { color: theme.textSupporting }]}>Category</Text>
-            <Text style={[localStyles.detailValue, { color: theme.text }]}>
-              {CATEGORY_LABELS[request.category]}
+            <Text style={[localServices.detailValue, { color: theme.text }]}>
+              {request.categoryName}
             </Text>
           </View>
 
           <View style={[localStyles.detailRow, { borderBottomColor: theme.border }]}>
             <Text style={[localStyles.detailLabel, { color: theme.textSupporting }]}>Location</Text>
-            <Text style={[localStyles.detailValue, { color: theme.text }]}>{request.location}</Text>
+            <Text style={[localStyles.detailValue, { color: theme.text }]}>{request.address || 'Location not available'}</Text>
           </View>
 
           <View style={[localStyles.detailRow, { borderBottomColor: theme.border }]}>
@@ -151,8 +211,24 @@ export default function RequestDetailScreen() {
           <Text style={[localStyles.description, { color: theme.textSupporting }]}>
             {request.description}
           </Text>
+
+          {/* Needed Items Section */}
+          <Text style={[localStyles.sectionTitle, { color: theme.text }]}>Needed Items</Text>
+          <View style={localStyles.itemsContainer}>
+            {DUMMY_ITEMS.map((item) => (
+              <SupportItemProgress key={item.id} item={item} />
+            ))}
+          </View>
         </View>
       </ScrollView>
+
+      {/* Contribution Modal */}
+      <ContributeItemModal
+        visible={modalVisible}
+        onClose={() => setModalVisible(false)}
+        item={selectedItem}
+        onConfirm={handleConfirmContribution}
+      />
 
       <View style={localStyles.footer}>
         <Pressable
@@ -227,6 +303,10 @@ const localStyles = StyleSheet.create({
   description: {
     fontSize: 16,
     lineHeight: 24,
+  },
+  itemsContainer: {
+    gap: 12,
+    marginTop: 8,
   },
   footer: {
     position: 'absolute',

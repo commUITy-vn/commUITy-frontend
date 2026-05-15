@@ -1,4 +1,4 @@
-import React, {useState, useCallback} from 'react';
+import React, {useState, useCallback, useEffect} from 'react';
 import {
   View,
   Text,
@@ -34,6 +34,23 @@ const TextInput = React.forwardRef<RNTextInput, TextInputProps>(
     const labelScale = useSharedValue(1);
     const labelTranslateY = useSharedValue(0);
 
+    // Shared values for theme-dependent animations
+    const labelColorShared = useSharedValue(theme.placeholderText);
+    const borderColorShared = useSharedValue(theme.bordersBold);
+
+    // Update shared values when theme or focus changes
+    useEffect(() => {
+      labelColorShared.value = isFocused ? theme.borderFocus : theme.placeholderText;
+    }, [isFocused, theme.borderFocus, theme.placeholderText]);
+
+    useEffect(() => {
+      borderColorShared.value = isFocused
+        ? theme.borderFocus
+        : errorText
+        ? theme.danger
+        : theme.bordersBold;
+    }, [isFocused, theme.borderFocus, errorText, theme.borderFocus, theme.bordersBold, theme.danger]);
+
     const showFloatingLabel = isFocused || hasValue || !!label;
 
     const updateLabelState = useCallback(
@@ -45,7 +62,7 @@ const TextInput = React.forwardRef<RNTextInput, TextInputProps>(
           duration: 150,
           easing: Easing.inOut(Easing.ease),
         });
-        
+
         labelTranslateY.value = withTiming(shouldFloat ? -16 : 0, {
           duration: 150,
           easing: Easing.inOut(Easing.ease),
@@ -76,20 +93,12 @@ const TextInput = React.forwardRef<RNTextInput, TextInputProps>(
     }));
 
     const labelColorAnimatedStyle = useAnimatedStyle(() => ({
-      color: isFocused ? theme.borderFocus : theme.placeholderText,
+      color: labelColorShared.value,
     }));
 
-    const containerAnimatedStyle = useAnimatedStyle(() => {
-      const borderColor = isFocused
-        ? theme.borderFocus
-        : errorText
-        ? '#EF4444'
-        : theme.bordersBold;
-
-      return {
-        borderColor,
-      };
-    });
+    const containerAnimatedStyle = useAnimatedStyle(() => ({
+      borderColor: borderColorShared.value,
+    }));
 
     return (
       <View style={[styles.mb4, containerStyle]}>
@@ -128,14 +137,15 @@ const TextInput = React.forwardRef<RNTextInput, TextInputProps>(
             ref={ref as React.RefObject<RNTextInput>}
             style={[
               styles.input,
+              // Move theme colors inline as per user instructions
+              {color: theme.text},
               {
-                color: theme.text,
                 flex: 1,
                 margin: 0,
                 padding: 0,
                 paddingTop: showFloatingLabel ? 6 : 0,
                 fontSize: 16,
-                ...(Platform.OS === 'web' ? { outlineStyle: 'none' } as any : {}),
+                ...(Platform.OS === 'web' ? {outlineStyle: 'none'} as any : {}),
               },
               style,
             ]}
@@ -149,7 +159,7 @@ const TextInput = React.forwardRef<RNTextInput, TextInputProps>(
           />
         </AnimatedView>
 
-        {errorText ? <Text style={[styles.errorText, styles.mt1]}>{errorText}</Text> : null}
+        {errorText ? <Text style={[styles.errorText, {color: theme.error || theme.danger}, styles.mt1]}>{errorText}</Text> : null}
       </View>
     );
   },

@@ -1,11 +1,16 @@
-import {DarkTheme, DefaultTheme, ThemeProvider} from '@react-navigation/native';
-import {Stack, useRouter, useSegments} from 'expo-router';
-import {StatusBar} from 'expo-status-bar';
+import { DarkTheme, DefaultTheme, ThemeProvider } from '@react-navigation/native';
+import { Stack, useRouter, useSegments } from 'expo-router';
+import { StatusBar } from 'expo-status-bar';
+import { View, ActivityIndicator } from 'react-native';
 import 'react-native-reanimated';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 
-import {useColorScheme} from '@/hooks/use-color-scheme';
-import {useAuthStore} from '@/features/auth/stores/useAuthStore';
-import {useEffect} from 'react';
+import { useColorScheme } from '@/hooks/use-color-scheme';
+import { useAuthStore } from '@/features/auth/stores/useAuthStore';
+import { useEffect } from 'react';
+import { Colors } from '@/constants/theme';
+
+const queryClient = new QueryClient();
 
 export const unstable_settings = {
   initialRouteName: '(auth)',
@@ -15,7 +20,7 @@ export default function RootLayout() {
   const colorScheme = useColorScheme();
   const router = useRouter();
   const segments = useSegments();
-  const {isAuthenticated, isLoading, restoreSession} = useAuthStore();
+  const { isAuthenticated, isLoading, restoreSession } = useAuthStore();
 
   // Restore session on mount
   useEffect(() => {
@@ -30,26 +35,31 @@ export default function RootLayout() {
     const inProtectedGroup = segments[0] === '(app)';
 
     if (!isAuthenticated && inProtectedGroup) {
-      // User is not authenticated and trying to access protected routes
       router.replace('/(auth)/login');
     } else if (isAuthenticated && inAuthGroup) {
-      // User is authenticated and trying to access auth routes
       router.replace('/(app)' as any);
     }
   }, [isAuthenticated, isLoading, segments]);
 
   if (isLoading) {
-    return null; // Or a loading screen
+    const theme = Colors[colorScheme ?? 'light'];
+    return (
+      <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: theme.appBG }}>
+        <ActivityIndicator size="large" color={theme.primary} />
+      </View>
+    );
   }
 
   return (
-    <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
-      <Stack>
-        <Stack.Screen name="(auth)" options={{headerShown: false}} />
-        <Stack.Screen name="(app)" options={{headerShown: false}} />
-        <Stack.Screen name="modal" options={{presentation: 'modal', title: 'Modal'}} />
-      </Stack>
-      <StatusBar style="auto" />
-    </ThemeProvider>
+    <QueryClientProvider client={queryClient}>
+      <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
+        <Stack>
+          <Stack.Screen name="(auth)" options={{ headerShown: false }} />
+          <Stack.Screen name="(app)" options={{ headerShown: false }} />
+          <Stack.Screen name="modal" options={{ presentation: 'modal', title: 'Modal' }} />
+        </Stack>
+        <StatusBar style="auto" />
+      </ThemeProvider>
+    </QueryClientProvider>
   );
 }

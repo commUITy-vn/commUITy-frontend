@@ -66,3 +66,41 @@ export const CATEGORY_LABELS: Record<SupportCategory, string> = {
   [SupportCategory.TRANSPORT]: 'Transport',
   [SupportCategory.OTHER]: 'Other',
 };
+
+// --- Support Item Types (Module 7) ---
+
+export enum ItemCategory {
+  FOOD = 'FOOD',
+  CLOTHING = 'CLOTHING',
+  MEDICAL_SUPPLIES = 'MEDICAL_SUPPLIES',
+  HYGIENE = 'HYGIENE',
+  BABY_CARE = 'BABY_CARE',
+  EDUCATION = 'EDUCATION',
+  ELECTRONICS = 'ELECTRONICS',
+  OTHER = 'OTHER',
+}
+
+export const ITEM_CATEGORY_LABELS: Record<ItemCategory, string> = {
+  [ItemCategory.FOOD]: 'Food & Beverages',
+  [ItemCategory.CLOTHING]: 'Clothing',
+  [ItemCategory.MEDICAL_SUPPLIES]: 'Medical Supplies',
+  [ItemCategory.HYGIENE]: 'Hygiene Products',
+  [ItemCategory.BABY_CARE]: 'Baby Care',
+  [ItemCategory.EDUCATION]: 'Educational Materials',
+  [ItemCategory.ELECTRONICS]: 'Electronics',
+  [ItemCategory.OTHER]: 'Other',
+};
+
+export interface SupportItem {
+  id: string;
+  category: ItemCategory;
+  name: string;
+  neededQuantity: number;
+  receivedQuantity: number;
+}
+
+export interface SupportItemContribution {
+  itemId: string;
+  quantity: number;
+  notes: string;
+}

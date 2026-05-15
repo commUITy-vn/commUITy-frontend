@@ -21,9 +21,9 @@ export default function ProfileScreen() {
   }, []);
 
   return (
-    <View style={[localStyles.container, { backgroundColor: theme.appBG }]}>
+    <View style={{ flex: 1, backgroundColor: theme.appBG }}>
       <ScrollView
-        contentContainerStyle={localStyles.scrollContent}
+        contentContainerStyle={{ padding: 24, paddingBottom: 100, gap: 24 }}
         showsVerticalScrollIndicator={false}
       >
         {/* User Info Section */}
@@ -64,9 +64,7 @@ export default function ProfileScreen() {
               </View>
               <View style={localStyles.statDivider} />
               <View style={localStyles.statItem}>
-                <Text style={[localStyles.statValue, { color: theme.success }]}>
-                  1.050.000đ
-                </Text>
+                <Text style={[localStyles.statValue, { color: theme.success }]}>1.050.000đ</Text>
                 <Text style={[localStyles.statLabel, { color: theme.textSupporting }]}>
                   Total Given
                 </Text>
@@ -115,11 +113,6 @@ export default function ProfileScreen() {
 const localStyles = StyleSheet.create({
   container: {
     flex: 1,
-  },
-  scrollContent: {
-    padding: 24,
-    gap: 24,
-    paddingBottom: 100, // Space for floating button
   },
   userInfoCard: {
     borderRadius: 16,
