@@ -1,11 +1,24 @@
 import React, {useCallback, useState} from 'react';
-import {StyleSheet, View, ActivityIndicator, Text, StyleSheet as RNStyleSheet} from 'react-native';
-import {Pressable, type PressableProps} from 'react-native';
+import {StyleSheet, View, ActivityIndicator, Text, Pressable, type PressableProps} from 'react-native';
 import * as Haptics from 'expo-haptics';
 import {useTheme} from '@/hooks/useTheme';
 import {useThemeStyles} from '@/hooks/useThemeStyles';
-import {spacing} from '@/constants/theme';
+import {Colors} from '@/constants/theme';
 import type {StyleProp, ViewStyle} from 'react-native';
+
+// Base styles
+const styles = StyleSheet.create({
+    button: {
+        justifyContent: 'center',
+        alignItems: 'center',
+        flexDirection: 'row',
+    },
+    buttonText: {
+        textAlign: 'center',
+        fontFamily: 'System',
+        lineHeight: 24,
+    },
+});
 
 type ButtonSize = 'extraSmall' | 'small' | 'medium' | 'large';
 
@@ -34,6 +47,9 @@ type ButtonProps = PressableProps & {
     /** Button size */
     size?: ButtonSize;
 
+    /** Custom font size for the button text */
+    fontSize?: number;
+
     /** Additional styles for button container */
     style?: StyleProp<ViewStyle>;
 
@@ -51,7 +67,7 @@ const sizeConfig: Record<ButtonSize, {minHeight: number; paddingHorizontal: numb
     large: {minHeight: 52, paddingHorizontal: 20, fontSize: 18},
 };
 
-export const Button: React.FC<ButtonProps> = ({
+const Button: React.FC<ButtonProps> = ({
     text = '',
     onPress,
     isLoading = false,
@@ -60,13 +76,14 @@ export const Button: React.FC<ButtonProps> = ({
     success = false,
     danger = false,
     size = 'medium',
+    fontSize,
     style,
     shouldEnableHapticFeedback = true,
     children,
     ...rest
 }) => {
-    const theme = useTheme();
-    const styles = useThemeStyles();
+    const theme = useTheme() || Colors.light;
+    const themeStyles = useThemeStyles() || {};
     const [isHovered, setIsHovered] = useState(false);
     const [isPressed, setIsPressed] = useState(false);
 
@@ -91,7 +108,7 @@ export const Button: React.FC<ButtonProps> = ({
 
     const getBackgroundColor = () => {
         if (isDisabled) {
-            return theme.buttonDefaultBG;
+            return theme.buttonDefaultBG || '#F5F5F5';
         }
 
         if (primary) {
@@ -101,50 +118,32 @@ export const Button: React.FC<ButtonProps> = ({
         }
 
         if (success) {
-            if (isPressed) return theme.successPressed;
-            if (isHovered) return theme.successHover;
-            return theme.success;
+            if (isPressed) return theme.successPressed || '#10B981';
+            if (isHovered) return theme.successHover || '#34D399';
+            return theme.success || '#10B981';
         }
 
         if (danger) {
-            if (isPressed) return theme.dangerPressed;
-            if (isHovered) return theme.dangerHover;
-            return theme.danger;
+            if (isPressed) return theme.dangerPressed || '#EF4444';
+            if (isHovered) return theme.dangerHover || '#F87171';
+            return theme.danger || '#EF4444';
         }
 
-        if (isPressed) return theme.buttonPressedBG;
-        if (isHovered) return theme.buttonHoveredBG;
-        return theme.buttonDefaultBG;
+        if (isPressed) return theme.buttonPressedBG || '#E5E7EB';
+        if (isHovered) return theme.buttonHoveredBG || '#D1D5DB';
+        return theme.buttonDefaultBG || '#F5F5F5';
     };
 
     const getTextColor = () => {
         if (isDisabled) {
-            return theme.textSupporting;
+            return theme.textSupporting || '#6B7280';
         }
 
         if (primary || success || danger) {
-            return theme.buttonSuccessText;
+            return theme.buttonSuccessText || '#FFFFFF';
         }
 
-        return theme.text;
-    };
-
-    const buttonStyles = [
-        styles.button,
-        {
-            backgroundColor: getBackgroundColor(),
-            minHeight: config.minHeight,
-            borderRadius: 100, // Fully rounded like Expensify
-            paddingHorizontal: config.paddingHorizontal,
-        },
-        style,
-    ];
-
-    const textStyles = {
-        ...styles.buttonText,
-        color: getTextColor(),
-        fontSize: config.fontSize,
-        fontWeight: 'bold' as const,
+        return theme.text || '#111827';
     };
 
     return (
@@ -155,28 +154,32 @@ export const Button: React.FC<ButtonProps> = ({
             onHoverOut={() => setIsHovered(false)}
             onPressIn={() => !isDisabled && setIsPressed(true)}
             onPressOut={() => setIsPressed(false)}
-            style={buttonStyles}
+            style={[
+                styles.button,
+                ...(themeStyles.button ? [themeStyles.button] : []),
+                {
+                    backgroundColor: getBackgroundColor(),
+                    minHeight: config.minHeight,
+                    borderRadius: 100, // Fully rounded like Expensify
+                    paddingHorizontal: config.paddingHorizontal,
+                },
+                style,
+            ]}
             {...rest}
         >
             {isLoading ? (
                 <ActivityIndicator color={primary || success || danger ? theme.buttonSuccessText : theme.text} size={size === 'extraSmall' || size === 'small' ? 'small' : 'large'} />
             ) : (
-                <Text style={textStyles}>{children || text}</Text>
+                <Text style={[
+                    styles.buttonText,
+                    ...(themeStyles.buttonText ? [themeStyles.buttonText] : []),
+                    {color: getTextColor(), fontSize: fontSize ?? config.fontSize, fontWeight: 'bold' as const},
+                ]}>{children || text}</Text>
             )}
         </Pressable>
     );
 };
 
-// Base styles
-const styles = StyleSheet.create({
-    button: {
-        justifyContent: 'center',
-        alignItems: 'center',
-        flexDirection: 'row',
-    },
-    buttonText: {
-        textAlign: 'center',
-        fontFamily: 'System',
-        lineHeight: 24,
-    },
-});
+// Export as named and default for compatibility
+export { Button };
+export default Button;

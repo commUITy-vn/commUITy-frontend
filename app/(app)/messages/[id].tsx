@@ -1,9 +1,19 @@
-import { useState } from 'react';
-import { View, Text, ScrollView, TextInput, Pressable, type NativeSyntheticEvent, type TextInputSubmitEditingEventData, Platform } from 'react-native';
+import React, { useState } from 'react';
+import {
+  View,
+  Text,
+  ScrollView,
+  Pressable,
+  Platform,
+  Image,
+} from 'react-native';
 import { useTheme } from '@/hooks/useTheme';
+import { useThemeStyles } from '@/hooks/useThemeStyles';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import * as Haptics from 'expo-haptics';
 import { MaterialIcons } from '@expo/vector-icons';
+import { ExpensifyTextInput } from '@/components/ui';
+import { StyleSheet } from 'react-native';
 
 type Message = {
   id: string;
@@ -23,6 +33,7 @@ const DUMMY_MESSAGES: Message[] = [
 
 export default function ChatRoomScreen() {
   const theme = useTheme();
+  const styles = useThemeStyles();
   const router = useRouter();
   const { id } = useLocalSearchParams();
   const [inputText, setInputText] = useState('');
@@ -38,7 +49,7 @@ export default function ChatRoomScreen() {
     setInputText('');
   };
 
-  const handleSubmit = (e: NativeSyntheticEvent<TextInputSubmitEditingEventData>) => {
+  const handleSubmit = (e: any) => {
     handleSend();
   };
 
@@ -112,7 +123,7 @@ export default function ChatRoomScreen() {
               </Text>
               <Text
                 style={{
-                  color: message.isSent ? theme.textLight + '99' : theme.textSupporting,
+                  color: message.isSent ? theme.textLight : theme.textSupporting,
                   fontSize: 11,
                   marginTop: 4,
                   textAlign: message.isSent ? 'right' : 'left',
@@ -125,67 +136,95 @@ export default function ChatRoomScreen() {
         ))}
       </ScrollView>
 
-      {/* Input Bar */}
+      {/* Input Bar - Expensify Composer Layout */}
       <View
         style={{
           flexDirection: 'row',
-          alignItems: 'center',
-          paddingHorizontal: 12,
-          paddingVertical: 8,
-          paddingBottom: 12,
+          alignItems: 'flex-end',
+          padding: 12,
+          backgroundColor: theme.appBG,
+          // Expensify-style background: subtle pattern or image
+          // For now, we'll use a slight elevation and border
           borderTopWidth: 1,
           borderTopColor: theme.border,
-          backgroundColor: theme.appBG,
           gap: 8,
         }}
       >
-        <View
+        {/* Left: Circular + Button */}
+        <Pressable
+          onPress={() => {
+            // TODO: Add attachments/media functionality
+            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+          }}
           style={{
-            flex: 1,
+            width: 48,
+            height: 48,
+            borderRadius: 24,
             backgroundColor: theme.componentBG,
-            borderRadius: 20,
-            paddingHorizontal: 16,
-            paddingVertical: 8,
             justifyContent: 'center',
+            alignItems: 'center',
           }}
         >
-          <TextInput
-            value={inputText}
-            onChangeText={setInputText}
-            placeholder="Type a message..."
-            placeholderTextColor={theme.placeholderText}
-            style={[
-              {
-                color: theme.text,
-                fontSize: 16,
-                padding: 0,
-              },
-              Platform.OS === 'web' && { outlineStyle: 'none' } as any
-            ]}
-            onSubmitEditing={handleSubmit}
-            returnKeyType="send"
-          />
-        </View>
-        <Pressable
-          onPress={handleSend}
-          style={({ pressed }) => [
-            {
+          <MaterialIcons name="add" size={24} color={theme.text} />
+        </Pressable>
+
+        {/* Middle: TextInput with focus state */}
+        <ExpensifyTextInput
+          placeholder="Type a message..."
+          value={inputText}
+          onChangeText={setInputText}
+          onSubmitEditing={handleSubmit}
+          returnKeyType="send"
+          disableFloatingLabel
+          height={48}
+          style={{
+            flex: 1,
+          }}
+        />
+
+        {/* Right: Emoji and Send Buttons */}
+        <View style={{ flexDirection: 'row', gap: 4 }}>
+          {/* Emoji Button */}
+          <Pressable
+            onPress={() => {
+              // TODO: Add emoji picker functionality
+              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+            }}
+            style={{
               width: 40,
               height: 40,
               borderRadius: 20,
-              backgroundColor: inputText.trim() ? theme.primary : theme.componentBG,
+              backgroundColor: theme.componentBG,
               justifyContent: 'center',
               alignItems: 'center',
-            },
-            pressed && { opacity: 0.8 },
-          ]}
-        >
-          <MaterialIcons
-            name="send"
-            size={20}
-            color={inputText.trim() ? theme.textLight : theme.textSupporting}
-          />
-        </Pressable>
+            }}
+          >
+            <MaterialIcons name="insert-emoticon" size={20} color={theme.textSupporting} />
+          </Pressable>
+
+          {/* Send Button */}
+          <Pressable
+            onPress={handleSend}
+            style={({ pressed }) => [
+              {
+                width: 40,
+                height: 40,
+                borderRadius: 20,
+                backgroundColor: inputText.trim() ? theme.primary : theme.componentBG,
+                justifyContent: 'center',
+                alignItems: 'center',
+                opacity: inputText.trim() ? 1 : 0.5,
+              },
+              pressed && { opacity: 0.8 },
+            ]}
+          >
+            <MaterialIcons
+              name="send"
+              size={20}
+              color={inputText.trim() ? theme.textLight : theme.textSupporting}
+            />
+          </Pressable>
+        </View>
       </View>
     </View>
   );

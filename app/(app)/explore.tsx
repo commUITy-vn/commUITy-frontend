@@ -1,5 +1,8 @@
-import { View, Text, FlatList, Image, Pressable, StyleSheet } from 'react-native';
+import { View, Text, FlatList, Image, Pressable, StyleSheet, Modal, TextInput } from 'react-native';
+import { useState } from 'react';
 import { useTheme } from '@/hooks/useTheme';
+import { useThemeStyles } from '@/hooks/useThemeStyles';
+import { useRouter } from 'expo-router';
 import MaterialIcons from '@expo/vector-icons/MaterialIcons';
 import * as Haptics from 'expo-haptics';
 import { BorderRadius, Spacing } from '@/constants/theme';
@@ -76,68 +79,129 @@ const DUMMY_POSTS: Post[] = [
 
 const PostCard = ({ post }: { post: Post }) => {
   const theme = useTheme();
+  const themeStyles = useThemeStyles();
+  const router = useRouter();
+  const [isLiked, setIsLiked] = useState(post.isLiked);
+  const [likeCount, setLikeCount] = useState(post.likes);
+  const [showComments, setShowComments] = useState(false);
+  const [commentText, setCommentText] = useState('');
 
   const handleLike = async () => {
     await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    setIsLiked(!isLiked);
+    setLikeCount(prevCount => (isLiked ? prevCount - 1 : prevCount + 1));
   };
 
   const handleComment = async () => {
     await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    setShowComments(true);
   };
 
   return (
-    <View
-      style={[
-        styles.card,
-        {
-          backgroundColor: theme.componentBG,
-          borderColor: theme.bordersBold,
-          borderRadius: BorderRadius.lg,
-        },
-      ]}
-    >
-      <View style={styles.header}>
-        <Image source={{ uri: post.avatar }} style={[styles.avatar, { borderColor: theme.border }]} />
-        <View style={styles.authorInfo}>
-          <Text style={[styles.authorName, { color: theme.text }]}>{post.author}</Text>
-          <Text style={[styles.timestamp, { color: theme.textSupporting }]}>{post.timestamp}</Text>
+    <>
+      <View
+        style={[
+          styles.card,
+          {
+            backgroundColor: theme.componentBG,
+            borderColor: theme.bordersBold,
+            borderRadius: BorderRadius.lg,
+          },
+        ]}
+      >
+        <View style={styles.header}>
+          <Image source={{ uri: post.avatar }} style={[styles.avatar, { borderColor: theme.border }]} />
+          <View style={styles.authorInfo}>
+            <Text style={[styles.authorName, { color: theme.text }]}>{post.author}</Text>
+            <Text style={[styles.timestamp, { color: theme.textSupporting }]}>{post.timestamp}</Text>
+          </View>
+        </View>
+
+        <Text style={[styles.content, { color: theme.text }]}>{post.content}</Text>
+
+        {post.tags.length > 0 && (
+          <View style={styles.tagsContainer}>
+            {post.tags.map((tag, index) => (
+              <View key={index} style={[styles.tag, { backgroundColor: theme.highlightBG, borderColor: theme.border }]}>
+                <Text style={[styles.tagText, { color: theme.primary }]}>#{tag}</Text>
+              </View>
+            ))}
+          </View>
+        )}
+
+        <View style={[styles.actions, { borderTopColor: theme.border }]}>
+          <Pressable
+            style={({ pressed }) => [styles.actionButton, pressed && { opacity: 0.7 }]}
+            onPress={handleLike}
+          >
+            <MaterialIcons
+              name={isLiked ? 'favorite' : 'favorite-border'}
+              size={20}
+              color={isLiked ? theme.danger : theme.icon}
+            />
+            <Text style={[styles.actionText, { color: theme.textSupporting }]}>{likeCount}</Text>
+          </Pressable>
+
+          <Pressable
+            style={({ pressed }) => [
+              styles.actionButton,
+              pressed && {
+                backgroundColor: theme.highlightBG,
+                borderColor: theme.border
+              }
+            ]}
+            onPress={handleComment}
+          >
+            <MaterialIcons name="chat-bubble-outline" size={20} color={theme.icon} />
+            <Text style={[styles.actionText, { color: theme.textSupporting }]}>{post.comments}</Text>
+          </Pressable>
         </View>
       </View>
 
-      <Text style={[styles.content, { color: theme.text }]}>{post.content}</Text>
-
-      {post.tags.length > 0 && (
-        <View style={styles.tagsContainer}>
-          {post.tags.map((tag, index) => (
-            <View key={index} style={[styles.tag, { backgroundColor: theme.highlightBG, borderColor: theme.border }]}>
-              <Text style={[styles.tagText, { color: theme.primary }]}>#{tag}</Text>
-            </View>
-          ))}
+      {/* Comments Modal - Expensify style */}
+      <Modal
+        visible={showComments}
+        animationType="slide"
+        presentationStyle="pageSheet"
+        onRequestClose={() => setShowComments(false)}
+      >
+        <View style={[styles.modalContainer, { backgroundColor: theme.appBG }]}>
+          <View style={[styles.modalHeader, { borderBottomColor: theme.border }]}>
+            <Pressable onPress={() => setShowComments(false)} style={styles.modalCloseBtn}>
+              <MaterialIcons name="close" size={24} color={theme.text} />
+            </Pressable>
+            <Text style={[styles.modalTitle, { color: theme.text }]}>Comments</Text>
+            <View style={{ width: 24 }} />
+          </View>
+          <View style={{ flex: 1, padding: Spacing.base, justifyContent: 'center', alignItems: 'center' }}>
+            <MaterialIcons name="chat-bubble-outline" size={48} color={theme.textSupporting} />
+            <Text style={{ color: theme.textSupporting, fontSize: 16, marginTop: 12, textAlign: 'center' }}>
+              Comments functionality coming soon!
+            </Text>
+          </View>
+          <View style={[styles.modalInputBar, { borderTopColor: theme.border, backgroundColor: theme.appBG }]}>
+            <TextInput
+              style={[styles.modalInput, { backgroundColor: theme.highlightBG, color: theme.text, borderColor: theme.border }]}
+              placeholder="Add a comment..."
+              placeholderTextColor={theme.placeholderText}
+              value={commentText}
+              onChangeText={setCommentText}
+            />
+            <Pressable
+              onPress={async () => {
+                if (commentText.trim()) {
+                  await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                  setCommentText('');
+                }
+              }}
+              style={{ padding: 8 }}
+            >
+              <MaterialIcons name="send" size={24} color={commentText.trim() ? theme.primary : theme.textSupporting} />
+            </Pressable>
+          </View>
         </View>
-      )}
-
-      <View style={[styles.actions, { borderTopColor: theme.border }]}>
-        <Pressable
-          style={({ pressed }) => [styles.actionButton, pressed && { opacity: 0.7 }]}
-          onPress={handleLike}
-        >
-          <MaterialIcons
-            name={post.isLiked ? 'favorite' : 'favorite-border'}
-            size={20}
-            color={post.isLiked ? theme.danger : theme.icon}
-          />
-          <Text style={[styles.actionText, { color: theme.textSupporting }]}>{post.likes}</Text>
-        </Pressable>
-
-        <Pressable
-          style={({ pressed }) => [styles.actionButton, pressed && { opacity: 0.7 }]}
-          onPress={handleComment}
-        >
-          <MaterialIcons name="chat-bubble-outline" size={20} color={theme.icon} />
-          <Text style={[styles.actionText, { color: theme.textSupporting }]}>{post.comments}</Text>
-        </Pressable>
-      </View>
-    </View>
+      </Modal>
+    </>
   );
 };
 
@@ -217,7 +281,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     borderTopWidth: 1,
     paddingTop: Spacing.base,
-    gap: Spacing.xl,
+    gap: Spacing.lg,
   },
   actionButton: {
     flexDirection: 'row',
@@ -228,5 +292,40 @@ const styles = StyleSheet.create({
   },
   actionText: {
     fontSize: 14,
+  },
+  modalContainer: {
+    flex: 1,
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: Spacing.base,
+    paddingVertical: Spacing.sm,
+    borderBottomWidth: 1,
+  },
+  modalCloseBtn: {
+    padding: 8,
+  },
+  modalTitle: {
+    fontSize: 18,
+    fontWeight: '600',
+  },
+  modalInputBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: Spacing.base,
+    paddingVertical: Spacing.sm,
+    borderTopWidth: 1,
+    gap: Spacing.sm,
+  },
+  modalInput: {
+    flex: 1,
+    height: 42,
+    borderRadius: 21,
+    borderWidth: 1,
+    paddingHorizontal: 16,
+    fontSize: 15,
+    paddingVertical: 0,
   },
 });
