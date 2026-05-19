@@ -24,5 +24,5 @@ export interface SupportRequestDetailResponse {
 export const getSupportRequestById = (
   id: string
 ): Promise<SupportRequestDetailResponse> => {
-  return api.get<SupportRequestDetailResponse>(`/api/support-requests/${id}`);
+  return api.get<SupportRequestDetailResponse>(`/api/v1/support-requests/${id}`);
 };

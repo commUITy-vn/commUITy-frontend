@@ -1,26 +1,32 @@
-import { Stack, useRouter } from "expo-router"
-import { Pressable } from "react-native"
-import { MaterialIcons } from "@expo/vector-icons"
-import { useTheme } from "@/hooks/useTheme"
+import { Stack, forcedAnimation } from "@/lib/PlatformStack"
+import { Platform } from "react-native"
+import { useColorScheme } from "@/hooks/use-color-scheme"
+import { Colors } from "@/constants/theme"
 
 export default function CreateRequestLayout() {
-    const theme = useTheme()
-    const router = useRouter()
+    const colorScheme = useColorScheme()
+    const theme = Colors[colorScheme ?? "light"]
 
     return (
         <Stack
             screenOptions={{
                 headerShown: false,
-                animation: "slide_from_right",
-                animationDuration: 300,
+                animation: Platform.select({
+                    ios: "slide_from_right",
+                    android: "slide_from_right",
+                    default: "slide_from_right",
+                }),
+                animationDuration: 250,
+                animationTypeForReplace: "pop",
+                contentStyle: { backgroundColor: theme.appBG },
             }}
         >
-            <Stack.Screen name="index" />
-            <Stack.Screen name="details" />
-            <Stack.Screen name="urgency" />
-            <Stack.Screen name="items" />
-            <Stack.Screen name="confirmation" />
-            <Stack.Screen name="success" options={{ gestureEnabled: false }} />
+            <Stack.Screen name="index" options={forcedAnimation} />
+            <Stack.Screen name="details" options={forcedAnimation} />
+            <Stack.Screen name="urgency" options={forcedAnimation} />
+            <Stack.Screen name="items" options={forcedAnimation} />
+            <Stack.Screen name="confirmation" options={forcedAnimation} />
+            <Stack.Screen name="success" options={{ ...forcedAnimation, gestureEnabled: false }} />
         </Stack>
     )
 }

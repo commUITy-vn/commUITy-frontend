@@ -1,3 +1,4 @@
 export { Button } from "./Button"
-export { ExpensifyTextInput } from "./ExpensifyTextInput"
+export { default as TextInput } from './TextInput'
+export { ExpensifyTextInput } from './ExpensifyTextInput'
 export { BottomSheet } from "./BottomSheet"

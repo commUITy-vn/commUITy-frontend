@@ -21,5 +21,5 @@ export interface SupportRequestSummaryResponse {
 export const getSupportRequests = (
   params?: GetSupportRequestsParams
 ): Promise<SupportRequestSummaryResponse[]> => {
-  return api.get<SupportRequestSummaryResponse[]>('/api/support-requests', { params });
+  return api.get<SupportRequestSummaryResponse[]>('/api/v1/support-requests', { params });
 };

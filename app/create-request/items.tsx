@@ -7,16 +7,14 @@ import {
     StyleSheet,
     KeyboardAvoidingView,
     Platform,
-    Modal,
-    FlatList,
 } from "react-native"
 import { useRouter } from "expo-router"
 import { MaterialIcons } from "@expo/vector-icons"
 import * as Haptics from "expo-haptics"
 import { useTheme } from "@/hooks/useTheme"
 import { useCreateRequestStore } from "@/stores/useCreateRequestStore"
-import { ExpensifyTextInput } from "@/components/ui"
-import { Button } from "@/components/ui"
+import TextInput from "@/components/ui/TextInput"
+import { Button, BottomSheet } from "@/components/ui"
 import {
     ItemCategory,
     ITEM_CATEGORY_LABELS,
@@ -167,7 +165,7 @@ export default function CreateRequestItemsScreen() {
                             },
                         ]}
                     >
-                        <ExpensifyTextInput
+                        <TextInput
                             label="What do you need?"
                             value={itemName}
                             onChangeText={setItemName}
@@ -353,103 +351,19 @@ export default function CreateRequestItemsScreen() {
                 </View>
             </ScrollView>
 
-            {/* Category Picker Modal */}
-            <Modal
-                visible={showCategoryPicker}
-                transparent
-                animationType="slide"
-                onRequestClose={() => setShowCategoryPicker(false)}
-            >
-                <Pressable
-                    style={[
-                        StyleSheet.absoluteFill,
-                        { backgroundColor: "rgba(0,0,0,0.5)" },
-                    ]}
-                    onPress={() => setShowCategoryPicker(false)}
-                />
-                <View
-                    style={[
-                        localStyles.pickerModal,
-                        { backgroundColor: theme.componentBG },
-                    ]}
-                >
-                    <View
-                        style={[
-                            localStyles.pickerHeader,
-                            { borderBottomColor: theme.border },
-                        ]}
-                    >
-                        <Text
-                            style={[
-                                localStyles.pickerTitle,
-                                { color: theme.text },
-                            ]}
-                        >
-                            Select Category
-                        </Text>
-                        <Pressable onPress={() => setShowCategoryPicker(false)}>
-                            <MaterialIcons
-                                name="close"
-                                size={24}
-                                color={theme.icon}
-                            />
-                        </Pressable>
-                    </View>
-                    <FlatList
-                        data={Object.values(ItemCategory)}
-                        keyExtractor={(cat) => cat}
-                        renderItem={({ item: cat }) => (
-                            <Pressable
-                                onPress={() => {
-                                    setItemCategory(cat)
-                                    setShowCategoryPicker(false)
-                                }}
-                                style={({ pressed }) => [
-                                    localStyles.pickerItem,
-                                    {
-                                        backgroundColor: pressed
-                                            ? theme.highlightBG
-                                            : "transparent",
-                                        borderColor: theme.border,
-                                    },
-                                ]}
-                            >
-                                <MaterialIcons
-                                    name={
-                                        itemCategory === cat
-                                            ? "radio-button-checked"
-                                            : "radio-button-unchecked"
-                                    }
-                                    size={22}
-                                    color={
-                                        itemCategory === cat
-                                            ? theme.primary
-                                            : theme.icon
-                                    }
-                                />
-                                <Text
-                                    style={[
-                                        localStyles.pickerItemText,
-                                        {
-                                            color:
-                                                itemCategory === cat
-                                                    ? theme.primary
-                                                    : theme.text,
-                                            fontWeight:
-                                                itemCategory === cat
-                                                    ? "600"
-                                                    : "400",
-                                        },
-                                    ]}
-                                >
-                                    {ITEM_CATEGORY_LABELS[cat]}
-                                </Text>
-                            </Pressable>
-                        )}
-                        contentContainerStyle={{ paddingBottom: 20 }}
-                    />
-                </View>
-            </Modal>
+            {/* Category Picker using shared BottomSheet */}
+            <BottomSheet
+                isVisible={showCategoryPicker}
+                onClose={() => setShowCategoryPicker(false)}
+                options={Object.values(ItemCategory).map((cat) => ({
+                    key: cat,
+                    label: ITEM_CATEGORY_LABELS[cat],
+                    onPress: () => {
+                        setItemCategory(cat)
+                        setShowCategoryPicker(false)
+                    },
+                }))}
+            />
         </KeyboardAvoidingView>
     )
 }
@@ -473,12 +387,12 @@ const localStyles = StyleSheet.create({
     },
     stepDot: { width: 8, height: 8, borderRadius: 4 },
     content: { flex: 1 },
-    contentContainer: { padding: 20, gap: 12, paddingBottom: 40 },
+    contentContainer: { padding: 20, gap: 16, paddingBottom: 40 },
     titleRow: {
         flexDirection: "row",
         justifyContent: "space-between",
         alignItems: "center",
-        marginBottom: 4,
+        marginBottom: 16,
     },
     stepTitle: { fontSize: 22, fontWeight: "700", flex: 1 },
     addItemButton: {
@@ -549,33 +463,5 @@ const localStyles = StyleSheet.create({
     removeBtn: { padding: 8 },
     emptyState: { alignItems: "center", paddingVertical: 40, gap: 12 },
     emptyText: { fontSize: 15, textAlign: "center", paddingHorizontal: 20 },
-    buttonContainer: { marginTop: 16 },
-    // Category picker modal styles
-    pickerModal: {
-        position: "absolute",
-        bottom: 0,
-        left: 0,
-        right: 0,
-        maxHeight: "60%",
-        borderTopLeftRadius: 16,
-        borderTopRightRadius: 16,
-    },
-    pickerHeader: {
-        flexDirection: "row",
-        justifyContent: "space-between",
-        alignItems: "center",
-        paddingHorizontal: 16,
-        paddingVertical: 14,
-        borderBottomWidth: StyleSheet.hairlineWidth,
-    },
-    pickerTitle: { fontSize: 18, fontWeight: "600" },
-    pickerItem: {
-        flexDirection: "row",
-        alignItems: "center",
-        gap: 14,
-        paddingVertical: 16,
-        paddingHorizontal: 20,
-        borderBottomWidth: StyleSheet.hairlineWidth,
-    },
-    pickerItemText: { fontSize: 16, flex: 1 },
+    buttonContainer: { marginTop: 24 },
 })

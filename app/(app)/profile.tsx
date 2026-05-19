@@ -14,14 +14,17 @@ import { useTheme } from "@/hooks/useTheme"
 import { useThemeStyles } from "@/hooks/useThemeStyles"
 import { useAuthStore } from "@/features/auth/stores/useAuthStore"
 import MaterialIcons from "@expo/vector-icons/MaterialIcons"
-import { Alert } from "react-native"
 import { Colors } from "@/constants/theme"
+import { useMe } from "@/features/users/hooks/useMe"
+import { Alert } from "react-native"
 
 export default function ProfileScreen() {
     const theme = useTheme() || Colors.light // Fallback to light theme if useTheme fails
     const styles = useThemeStyles()
     const router = useRouter()
-    const { user, isAuthenticated, logout } = useAuthStore()
+    const { user: authUser, isAuthenticated, logout } = useAuthStore()
+    const { data: userProfile } = useMe()
+    const user = userProfile || authUser
 
     // Profile edit modal state
     const [showEditProfile, setShowEditProfile] = useState(false)

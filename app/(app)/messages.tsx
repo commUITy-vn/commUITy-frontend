@@ -177,13 +177,29 @@ const ConversationRow = ({
   );
 };
 
+import { useConversations } from '@/features/communication/hooks/useConversations';
+import { ActivityIndicator } from 'react-native';
+
 export default function MessagesScreen() {
   const theme = useTheme();
   const router = useRouter();
+  const { data: conversations, isLoading } = useConversations();
 
   const handleConversationPress = (id: string) => {
-    router.push({ pathname: '/(app)/messages/[id]', params: { id } } as any);
+    router.push({ pathname: '/messages/[id]', params: { id } } as any);
   };
+
+  const displayConversations = conversations && Array.isArray(conversations) && conversations.length > 0
+    ? conversations.map((c: any) => ({
+        id: c.id || String(Math.random()),
+        name: c.name || 'Unknown',
+        avatarLetter: (c.name || 'U').charAt(0).toUpperCase(),
+        lastMessage: c.lastMessage?.content || 'No messages yet',
+        timestamp: c.lastMessage?.timestamp || c.updatedAt || 'Just now',
+        unreadCount: c.unreadCount || 0,
+        avatarColor: '#3B82F6', // Could derive from string hash
+      }))
+    : CONVERSATIONS;
 
   return (
     <View style={{ flex: 1, backgroundColor: theme.appBG }}>
@@ -203,15 +219,20 @@ export default function MessagesScreen() {
       </View>
 
       {/* Conversation List */}
-      <FlatList
-        data={CONVERSATIONS}
-        keyExtractor={(item) => item.id}
-        renderItem={({ item }) => (
-          <ConversationRow
-            item={item}
-            onPress={() => handleConversationPress(item.id)}
-          />
-        )}
+      {isLoading ? (
+        <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
+          <ActivityIndicator size="large" color={theme.primary} />
+        </View>
+      ) : (
+        <FlatList
+          data={displayConversations}
+          keyExtractor={(item) => item.id}
+          renderItem={({ item }) => (
+            <ConversationRow
+              item={item}
+              onPress={() => handleConversationPress(item.id)}
+            />
+          )}
         ItemSeparatorComponent={() => (
           <View
             style={{
@@ -224,6 +245,7 @@ export default function MessagesScreen() {
         contentContainerStyle={{ paddingBottom: 16 }}
         showsVerticalScrollIndicator={false}
       />
+      )}
     </View>
   );
 }

@@ -10,6 +10,18 @@ import {
     createAnimatedComponent,
 } from "react-native-reanimated"
 
+// ─── TextInput Layout Constants ─────────────────────────────────────────────
+// Each value has an optional Platform override — uncomment to target a platform.
+// Example: const FLOATING_LABEL_TOP = Platform.select({ web: 14, default: 14 });
+// ─────────────────────────────────────────────────────────────────────────────
+const FLOATING_LABEL_LEFT = 6
+const FLOATING_LABEL_TOP = 14
+const FLOATING_LABEL_SCALE = 0.85
+const FLOATING_LABEL_TRANSLATE_Y = -16
+const INPUT_PADDING_TOP_FOCUSED = Platform.select({ web: 6, default: 16 })
+const INPUT_PADDING_LEFT = 0 // Additional left padding for the input text
+// ──────────────────────────────────────────────────────────────────────────────
+
 const AnimatedText = createAnimatedComponent(Text)
 const AnimatedView = createAnimatedComponent(View)
 
@@ -92,8 +104,8 @@ const ExpensifyTextInput = React.forwardRef<
         // Initialize label position for pre-filled values
         useEffect(() => {
             if (hasValue) {
-                labelScale.value = 0.85
-                labelTranslateY.value = -16
+                labelScale.value = FLOATING_LABEL_SCALE
+                labelTranslateY.value = FLOATING_LABEL_TRANSLATE_Y
             }
         }, [])
 
@@ -104,12 +116,12 @@ const ExpensifyTextInput = React.forwardRef<
             const hasVal = val ? val.length > 0 : false
             const shouldFloat = focused || hasVal
 
-            labelScale.value = withTiming(shouldFloat ? 0.85 : 1, {
+            labelScale.value = withTiming(shouldFloat ? FLOATING_LABEL_SCALE : 1, {
                 duration: 150,
                 easing: Easing.inOut(Easing.ease),
             })
 
-            labelTranslateY.value = withTiming(shouldFloat ? -16 : 0, {
+            labelTranslateY.value = withTiming(shouldFloat ? FLOATING_LABEL_TRANSLATE_Y : 0, {
                 duration: 150,
                 easing: Easing.inOut(Easing.ease),
             })
@@ -168,11 +180,11 @@ const ExpensifyTextInput = React.forwardRef<
                                 styles.inputLabelContainer,
                                 {
                                     position: "absolute",
-                                    left: 6,
+                                    left: FLOATING_LABEL_LEFT,
                                     top: showFloatingLabel
                                         ? (height ?? 56) > 56
                                             ? 18
-                                            : 14
+                                            : FLOATING_LABEL_TOP
                                         : (height ?? 56) > 56
                                           ? 20
                                           : 18,
@@ -180,6 +192,7 @@ const ExpensifyTextInput = React.forwardRef<
                                 },
                                 labelAnimatedStyle,
                             ]}
+                            pointerEvents="none"
                         >
                             <AnimatedText
                                 style={[
@@ -202,11 +215,12 @@ const ExpensifyTextInput = React.forwardRef<
                                 flex: 1,
                                 margin: 0,
                                 padding: 0,
+                                paddingLeft: INPUT_PADDING_LEFT,
                                 paddingTop:
                                     (height ?? 56) > 56
                                         ? 20
                                         : showFloatingLabel
-                                          ? 6
+                                          ? INPUT_PADDING_TOP_FOCUSED
                                           : 0,
                                 fontSize: 16,
                                 height: height ?? 56,

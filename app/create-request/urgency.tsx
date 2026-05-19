@@ -233,8 +233,8 @@ const localStyles = StyleSheet.create({
         paddingVertical: 12,
     },
     stepDot: { width: 8, height: 8, borderRadius: 4 },
-    content: { flex: 1, padding: 20 },
-    stepTitle: { fontSize: 22, fontWeight: "700", marginBottom: 24 },
+    content: { flex: 1, padding: 20, paddingBottom: 40 },
+    stepTitle: { fontSize: 22, fontWeight: "700", marginBottom: 16 },
     optionsContainer: { gap: 12 },
     urgencyOption: {
         flexDirection: "row",
@@ -253,5 +253,5 @@ const localStyles = StyleSheet.create({
     urgencyTextGroup: { gap: 2 },
     urgencyLabel: { fontSize: 17 },
     urgencyDesc: { fontSize: 13 },
-    buttonContainer: { marginTop: 32 },
+    buttonContainer: { marginTop: 24 },
 })

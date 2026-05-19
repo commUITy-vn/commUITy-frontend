@@ -1,4 +1,4 @@
-import React, { useState } from "react"
+import React, { useState, useCallback } from "react"
 import {
     View,
     Text,
@@ -25,7 +25,7 @@ import {
 import Animated from "react-native-reanimated"
 import * as Haptics from "expo-haptics"
 import { BottomSheet } from "@/components/ui"
-import { MaterialIcons } from "@expo/vector-icons"
+import { MaterialIcons, Ionicons } from "@expo/vector-icons"
 
 export default function HomeScreen() {
     const theme = useTheme()
@@ -79,21 +79,36 @@ export default function HomeScreen() {
     const openFabMenu = () => {
         setIsCreateMenuVisible(true)
         fabRotate.value = withTiming(1, {
-            duration: 200,
+            duration: 250,
             easing: Easing.out(Easing.ease),
         })
-        fabScale.value = withTiming(0.92, { duration: 80 }, () => {
-            fabScale.value = withTiming(1, { duration: 120 })
+        fabScale.value = withTiming(0.92, { duration: 100 }, () => {
+            fabScale.value = withTiming(1, { duration: 150 })
         })
     }
 
     const closeFabMenu = () => {
         setIsCreateMenuVisible(false)
         fabRotate.value = withTiming(0, {
-            duration: 200,
+            duration: 250,
             easing: Easing.out(Easing.ease),
         })
     }
+
+    // Unwind FAB animation only (without hiding sheet - sheet handles itself)
+    const unwindFab = () => {
+        fabRotate.value = withTiming(0, {
+            duration: 250,
+            easing: Easing.out(Easing.ease),
+        })
+    }
+
+    // Navigate with a small delay so the FAB unwind is visible
+    const navigateWithUnwind = useCallback((href: any) => {
+        setTimeout(() => {
+            router.push(href)
+        }, 180) // Slightly less than unwind duration (250ms)
+    }, [router])
 
     return (
         <View style={[styles.container, { backgroundColor: theme.appBG }]}>
@@ -152,7 +167,7 @@ export default function HomeScreen() {
 
             {/* Main Feed */}
             {isLoading ? (
-                <View style={styles.container}>
+                <View style={[styles.container, { justifyContent: 'center', alignItems: 'center' }]}>
                     <ActivityIndicator size="large" color={theme.primary} />
                 </View>
             ) : isError ? (
@@ -224,7 +239,7 @@ export default function HomeScreen() {
                         },
                     ]}
                 >
-                    <MaterialIcons name="add" size={32} color="#FFFFFF" />
+                    <Ionicons name="add" size={34} color="#FFFFFF" />
                 </Pressable>
             </Animated.View>
 
@@ -232,13 +247,14 @@ export default function HomeScreen() {
             <BottomSheet
                 isVisible={isCreateMenuVisible}
                 onClose={closeFabMenu}
+                onCloseStart={unwindFab}
                 options={[
                     {
                         key: "create-request",
                         label: "Create Support Request",
                         icon: "support",
                         onPress: () => {
-                            router.push("/create-request")
+                            navigateWithUnwind("/create-request")
                         },
                     },
                     {
@@ -246,7 +262,7 @@ export default function HomeScreen() {
                         label: "Make a Donation",
                         icon: "volunteer-activism",
                         onPress: () => {
-                            router.push("/(app)/finance-dashboard")
+                            navigateWithUnwind("/(app)/finance-dashboard")
                         },
                     },
                     {
@@ -254,7 +270,7 @@ export default function HomeScreen() {
                         label: "Volunteer",
                         icon: "groups",
                         onPress: () => {
-                            router.push("/(app)/volunteer-dashboard")
+                            navigateWithUnwind("/(app)/volunteer-dashboard")
                         },
                     },
                 ]}

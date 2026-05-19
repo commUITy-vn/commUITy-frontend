@@ -38,7 +38,7 @@ export default function CreateRequestConfirmationScreen() {
             await new Promise((resolve) => setTimeout(resolve, 1500))
 
             setIsSubmitting(false)
-            router.replace("/create-request/success")
+            router.push("/create-request/success")
         } catch (error) {
             setIsSubmitting(false)
             Alert.alert("Error", "Failed to submit request. Please try again.")
@@ -402,7 +402,7 @@ const localStyles = StyleSheet.create({
     stepDot: { width: 8, height: 8, borderRadius: 4 },
     content: { flex: 1 },
     contentContainer: { padding: 20, gap: 0, paddingBottom: 40 },
-    stepTitle: { fontSize: 22, fontWeight: "700", marginBottom: 20 },
+    stepTitle: { fontSize: 22, fontWeight: "700", marginBottom: 16 },
     fieldRow: {
         flexDirection: "row",
         justifyContent: "space-between",

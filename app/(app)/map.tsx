@@ -45,13 +45,24 @@ const DUMMY_LOCATIONS = [
   { id: 2, name: 'District 7 Support Hub', address: '456 Phu My Hung, D7, HCMC' },
 ];
 
+import { useSupportLocations } from '@/features/maps/hooks/useSupportLocations';
+
 const NativeWebView = WebView as any;
 
 export default function MapScreen() {
   const theme = useTheme();
   const [searchQuery, setSearchQuery] = useState('');
+  const { data: supportLocations } = useSupportLocations();
 
   const htmlContent = getHereMapHtml(HERE_API_KEY);
+
+  const displayLocations = supportLocations && Array.isArray(supportLocations) && supportLocations.length > 0
+    ? supportLocations.map((loc: any) => ({
+        id: loc.id || Math.random(),
+        name: loc.name || 'Support Center',
+        address: loc.address || 'Unknown Address',
+      }))
+    : DUMMY_LOCATIONS;
 
   return (
     <View style={styles.container}>
@@ -92,7 +103,7 @@ export default function MapScreen() {
           contentContainerStyle={styles.scrollContent}
           pointerEvents="box-none"
         >
-          {DUMMY_LOCATIONS.map((location) => (
+          {displayLocations.map((location) => (
             <View key={location.id} style={[styles.card, { backgroundColor: theme.componentBG, pointerEvents: 'auto' }]}>
               <Text style={[styles.cardTitle, { color: theme.text }]}>{location.name}</Text>
               <Text style={[styles.cardAddress, { color: theme.textSupporting }]}>{location.address}</Text>

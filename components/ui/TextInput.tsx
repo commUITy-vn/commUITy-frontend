@@ -15,6 +15,19 @@ import {
   createAnimatedComponent,
 } from 'react-native-reanimated';
 
+// ─── TextInput Layout Constants ─────────────────────────────────────────────
+// These values control the floating label position and input padding on focus.
+// Each value has an optional Platform override — uncomment to target a platform.
+// Example: const FLOATING_LABEL_TOP = Platform.select({ web: 14, default: 14 });
+// ─────────────────────────────────────────────────────────────────────────────
+const FLOATING_LABEL_LEFT = 6;
+const FLOATING_LABEL_TOP = 14;
+const FLOATING_LABEL_SCALE = 0.85;
+const FLOATING_LABEL_TRANSLATE_Y = -16;
+const INPUT_PADDING_TOP_FOCUSED = Platform.select({ web: 6, default: 16 });
+const INPUT_PADDING_LEFT = 0; // Additional left padding for the input text
+// ─────────────────────────────────────────────────────────────────────────────
+
 type TextInputProps = RNTextInput['props'] & {
   label?: string;
   errorText?: string;
@@ -38,6 +51,14 @@ const TextInput = React.forwardRef<RNTextInput, TextInputProps>(
     const labelColorShared = useSharedValue(theme.placeholderText);
     const borderColorShared = useSharedValue(theme.bordersBold);
 
+    // Initialize label position for pre-filled values
+    useEffect(() => {
+      if (hasValue) {
+        labelScale.value = FLOATING_LABEL_SCALE;
+        labelTranslateY.value = FLOATING_LABEL_TRANSLATE_Y;
+      }
+    }, [hasValue, labelScale, labelTranslateY]);
+
     // Update shared values when theme or focus changes
     useEffect(() => {
       labelColorShared.value = isFocused ? theme.borderFocus : theme.placeholderText;
@@ -58,12 +79,12 @@ const TextInput = React.forwardRef<RNTextInput, TextInputProps>(
         const hasVal = val ? val.length > 0 : false;
         const shouldFloat = focused || hasVal;
 
-        labelScale.value = withTiming(shouldFloat ? 0.85 : 1, {
+        labelScale.value = withTiming(shouldFloat ? FLOATING_LABEL_SCALE : 1, {
           duration: 150,
           easing: Easing.inOut(Easing.ease),
         });
 
-        labelTranslateY.value = withTiming(shouldFloat ? -16 : 0, {
+        labelTranslateY.value = withTiming(shouldFloat ? FLOATING_LABEL_TRANSLATE_Y : 0, {
           duration: 150,
           easing: Easing.inOut(Easing.ease),
         });
@@ -120,12 +141,13 @@ const TextInput = React.forwardRef<RNTextInput, TextInputProps>(
                 styles.inputLabelContainer,
                 {
                   position: 'absolute',
-                  left: 6,
-                  top: 14,
+                  left: FLOATING_LABEL_LEFT,
+                  top: FLOATING_LABEL_TOP,
                   backgroundColor: 'transparent',
                 },
                 labelAnimatedStyle,
               ]}
+              pointerEvents="none"
             >
               <AnimatedText style={[styles.inputLabel, labelColorAnimatedStyle]}>
                 {label}
@@ -143,7 +165,8 @@ const TextInput = React.forwardRef<RNTextInput, TextInputProps>(
                 flex: 1,
                 margin: 0,
                 padding: 0,
-                paddingTop: showFloatingLabel ? 6 : 0,
+                paddingLeft: INPUT_PADDING_LEFT,
+                paddingTop: showFloatingLabel ? INPUT_PADDING_TOP_FOCUSED : 0,
                 fontSize: 16,
                 ...(Platform.OS === 'web' ? {outlineStyle: 'none'} as any : {}),
               },

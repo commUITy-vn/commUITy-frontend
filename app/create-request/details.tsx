@@ -14,7 +14,7 @@ import * as Haptics from "expo-haptics"
 import { useTheme } from "@/hooks/useTheme"
 import { useThemeStyles } from "@/hooks/useThemeStyles"
 import { useCreateRequestStore } from "@/stores/useCreateRequestStore"
-import { ExpensifyTextInput } from "@/components/ui"
+import TextInput from "@/components/ui/TextInput"
 import { Button } from "@/components/ui"
 import { CATEGORY_LABELS } from "@/features/support/types/support.types"
 
@@ -137,24 +137,23 @@ export default function CreateRequestDetailsScreen() {
                 </View>
 
                 {/* Title */}
-                <ExpensifyTextInput
+                <TextInput
                     label="What do you need?"
                     value={title}
                     onChangeText={setTitle}
-                    autoFocus
                 />
 
                 {/* Description */}
-                <ExpensifyTextInput
+                <TextInput
                     label="Describe your situation in detail.."
                     value={description}
                     onChangeText={setDescription}
                     multiline
-                    height={120}
+                    style={{ height: 120, textAlignVertical: 'top', paddingTop: 24 }}
                 />
 
                 {/* Location */}
-                <ExpensifyTextInput
+                <TextInput
                     label="Location"
                     value={location}
                     onChangeText={setLocation}
@@ -194,7 +193,7 @@ const localStyles = StyleSheet.create({
     },
     stepDot: { width: 8, height: 8, borderRadius: 4 },
     content: { flex: 1 },
-    contentContainer: { padding: 20, gap: 8, paddingBottom: 40 },
+    contentContainer: { padding: 20, gap: 16, paddingBottom: 40 },
     stepTitle: { fontSize: 22, fontWeight: "700", marginBottom: 16 },
     categoryDisplay: {
         flexDirection: "row",

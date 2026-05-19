@@ -13,8 +13,10 @@ import * as Haptics from "expo-haptics"
 import { useTheme } from "@/hooks/useTheme"
 import { useCreateRequestStore } from "@/stores/useCreateRequestStore"
 import { Button } from "@/components/ui"
+import { useNavigation } from "expo-router"
 
 export default function CreateRequestSuccessScreen() {
+    const navigation = useNavigation()
     const router = useRouter()
     const theme = useTheme()
     const { reset } = useCreateRequestStore()
@@ -45,7 +47,14 @@ export default function CreateRequestSuccessScreen() {
     const handleDone = async () => {
         await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium)
         reset()
-        router.replace("/(app)")
+        
+        // Pop the entire create-request stack from the root stack to animate backward
+        const parentNav = navigation.getParent()
+        if (parentNav && parentNav.canGoBack()) {
+            parentNav.goBack()
+        } else {
+            router.replace("/(app)/")
+        }
     }
 
     return (

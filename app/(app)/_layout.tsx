@@ -105,8 +105,6 @@ export default function AppLayout() {
             <Tabs.Screen name="request/[id]" options={{ href: null }} />
             <Tabs.Screen name="category-picker" options={{ href: null }} />
             <Tabs.Screen name="profile-edit" options={{ href: null }} />
-            <Tabs.Screen name="messages/index" options={{ href: null }} />
-            <Tabs.Screen name="messages/[id]" options={{ href: null }} />
         </Tabs>
     )
 }

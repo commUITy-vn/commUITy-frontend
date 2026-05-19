@@ -31,6 +31,12 @@ type BottomSheetProps = {
     onClose: () => void
     options: BottomSheetOption[]
     title?: string
+    /**
+     * Fires synchronously when the close animation begins
+     * (before the hide animation). Use this to immediately
+     * trigger side-effects like FAB unwind.
+     */
+    onCloseStart?: () => void
 }
 
 const AnimatedPressable = Animated.createAnimatedComponent(Pressable)
@@ -52,8 +58,11 @@ const BottomSheetOptionItem: React.FC<{
             style={({ pressed }) => [
                 localStyles.option,
                 {
-                    backgroundColor:
-                        pressed || hovered ? theme.highlightBG : "transparent",
+                    backgroundColor: pressed
+                        ? theme.activeComponentBG
+                        : hovered
+                          ? theme.hoverComponentBG
+                          : "transparent",
                     borderTopWidth: index === 0 ? 0 : StyleSheet.hairlineWidth,
                     borderTopColor: theme.border,
                 },
@@ -97,6 +106,7 @@ export const BottomSheet: React.FC<BottomSheetProps> = ({
     onClose,
     options,
     title,
+    onCloseStart,
 }) => {
     const theme = useTheme()
 
@@ -143,19 +153,22 @@ export const BottomSheet: React.FC<BottomSheetProps> = ({
     }, [isVisible, show])
 
     const handleClose = useCallback(() => {
+        // Fire onCloseStart synchronously (e.g., for immediate FAB unwind)
+        onCloseStart?.()
         hide(onClose)
-    }, [hide, onClose])
+    }, [hide, onClose, onCloseStart])
 
     const handleOptionPress = useCallback(
         async (option: BottomSheetOption) => {
             await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light)
-            // Hide the sheet first, then navigate after animation completes
-            hide(() => {
-                // Navigate after sheet is fully hidden for proper animation
-                option.onPress()
-            })
+            // Fire onCloseStart synchronously (e.g., for immediate FAB unwind)
+            onCloseStart?.()
+            // Call option immediately (unwinds FAB + navigates)
+            option.onPress()
+            // Then animate sheet closed
+            hide(onClose)
         },
-        [hide],
+        [hide, onClose, onCloseStart],
     )
 
     const backdropAnimatedStyle = useAnimatedStyle(() => ({

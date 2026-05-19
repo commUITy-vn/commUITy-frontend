@@ -3,9 +3,11 @@ import {
     DefaultTheme,
     ThemeProvider,
 } from "@react-navigation/native"
-import { Stack, useRouter, useSegments } from "expo-router"
+import { useRouter, useSegments } from "expo-router"
+import { Stack } from "@/lib/PlatformStack"
 import { StatusBar } from "expo-status-bar"
-import { View, ActivityIndicator } from "react-native"
+import { View, ActivityIndicator, Platform } from "react-native"
+import { SafeAreaProvider, SafeAreaView } from "react-native-safe-area-context"
 import "react-native-reanimated"
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
 
@@ -25,6 +27,7 @@ export default function RootLayout() {
     const router = useRouter()
     const segments = useSegments()
     const { isAuthenticated, isLoading, restoreSession } = useAuthStore()
+    const theme = Colors[colorScheme ?? "light"]
 
     // Restore session on mount
     useEffect(() => {
@@ -46,7 +49,6 @@ export default function RootLayout() {
     }, [isAuthenticated, isLoading, segments])
 
     if (isLoading) {
-        const theme = Colors[colorScheme ?? "light"]
         return (
             <View
                 style={{
@@ -62,39 +64,68 @@ export default function RootLayout() {
     }
 
     return (
-        <QueryClientProvider client={queryClient}>
-            <ThemeProvider
-                value={colorScheme === "dark" ? DarkTheme : DefaultTheme}
-            >
-                <Stack
-                    screenOptions={{
-                        animation: "slide_from_right",
-                        animationDuration: 300,
-                    }}
+        <SafeAreaProvider>
+            <QueryClientProvider client={queryClient}>
+                <ThemeProvider
+                    value={colorScheme === "dark" ? DarkTheme : DefaultTheme}
                 >
-                    <Stack.Screen
-                        name="(auth)"
-                        options={{ headerShown: false }}
-                    />
-                    <Stack.Screen
-                        name="(app)"
-                        options={{ headerShown: false }}
-                    />
-                    <Stack.Screen
-                        name="create-request"
-                        options={{
-                            headerShown: false,
-                            animation: "slide_from_right",
-                            animationDuration: 300,
+                    <SafeAreaView
+                        style={{
+                            flex: 1,
+                            backgroundColor: theme.appBG,
                         }}
-                    />
-                    <Stack.Screen
-                        name="modal"
-                        options={{ presentation: "modal", title: "Modal" }}
-                    />
-                </Stack>
-                <StatusBar style="auto" />
-            </ThemeProvider>
-        </QueryClientProvider>
+                        edges={
+                            Platform.OS === "android"
+                                ? ["top", "bottom", "left", "right"]
+                                : undefined
+                        }
+                    >
+                        <Stack
+                            screenOptions={{
+                                animation: Platform.select({
+                                    ios: "slide_from_right",
+                                    android: "slide_from_right",
+                                    default: "slide_from_right",
+                                }),
+                                animationDuration: 250,
+                                contentStyle: {
+                                    backgroundColor: theme.appBG,
+                                },
+                            }}
+                        >
+                            <Stack.Screen
+                                name="(auth)"
+                                options={{ headerShown: false }}
+                            />
+                            <Stack.Screen
+                                name="(app)"
+                                options={{ headerShown: false }}
+                            />
+                            <Stack.Screen
+                                name="create-request"
+                                options={{
+                                    headerShown: false,
+                                    animation: Platform.select({
+                                        ios: "slide_from_right",
+                                        android: "slide_from_right",
+                                        default: "slide_from_right",
+                                    }),
+                                    animationDuration: 250,
+                                    animationTypeForReplace: "pop",
+                                    contentStyle: {
+                                        backgroundColor: theme.appBG,
+                                    },
+                                }}
+                            />
+                            <Stack.Screen
+                                name="modal"
+                                options={{ presentation: "modal", title: "Modal" }}
+                            />
+                        </Stack>
+                        <StatusBar style="auto" />
+                    </SafeAreaView>
+                </ThemeProvider>
+            </QueryClientProvider>
+        </SafeAreaProvider>
     )
 }

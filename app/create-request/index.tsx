@@ -6,7 +6,7 @@ import * as Haptics from "expo-haptics"
 import { useTheme } from "@/hooks/useTheme"
 import { useThemeStyles } from "@/hooks/useThemeStyles"
 import { useCreateRequestStore } from "@/stores/useCreateRequestStore"
-import { ExpensifyTextInput } from "@/components/ui"
+import TextInput from "@/components/ui/TextInput"
 import {
     SupportCategory,
     CATEGORY_LABELS,
@@ -33,7 +33,9 @@ export default function CreateRequestCategoryScreen() {
     const handleSelect = async (category: SupportCategory) => {
         await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium)
         setCategory(category)
-        router.push("/create-request/details")
+        setTimeout(() => {
+            router.push("/create-request/details")
+        }, 0)
     }
 
     return (
@@ -50,7 +52,7 @@ export default function CreateRequestCategoryScreen() {
                         await Haptics.impactAsync(
                             Haptics.ImpactFeedbackStyle.Light,
                         )
-                        router.replace("/(app)")
+                        router.back()
                     }}
                     style={localStyles.backButton}
                 >
@@ -102,7 +104,7 @@ export default function CreateRequestCategoryScreen() {
 
             {/* Search */}
             <View style={localStyles.searchContainer}>
-                <ExpensifyTextInput
+                <TextInput
                     label="Search categories..."
                     value={searchQuery}
                     onChangeText={setSearchQuery}
@@ -204,7 +206,7 @@ const localStyles = StyleSheet.create({
         flexDirection: "row",
         justifyContent: "center",
         gap: 8,
-        paddingVertical: 16,
+        paddingVertical: 12,
     },
     stepDot: {
         width: 8,
@@ -215,7 +217,7 @@ const localStyles = StyleSheet.create({
         fontSize: 22,
         fontWeight: "700",
         paddingHorizontal: 20,
-        paddingBottom: 16,
+        marginBottom: 16,
     },
     searchContainer: {
         paddingHorizontal: 16,

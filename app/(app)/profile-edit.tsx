@@ -13,7 +13,8 @@ import { MaterialIcons } from "@expo/vector-icons"
 import * as Haptics from "expo-haptics"
 import { useTheme } from "@/hooks/useTheme"
 import { useAuthStore } from "@/features/auth/stores/useAuthStore"
-import { ExpensifyTextInput, Button } from "@/components/ui"
+import TextInput from "@/components/ui/TextInput"
+import { Button } from "@/components/ui"
 
 export default function ProfileEditScreen() {
     const router = useRouter()
@@ -103,13 +104,13 @@ export default function ProfileEditScreen() {
                     </Pressable>
                 </View>
 
-                <ExpensifyTextInput
+                <TextInput
                     label="Display name"
                     value={displayName}
                     onChangeText={setDisplayName}
                 />
 
-                <ExpensifyTextInput
+                <TextInput
                     label="Email"
                     value={email}
                     onChangeText={setEmail}

@@ -33,5 +33,5 @@ export interface SupportRequestDetailResponse {
 export const createSupportRequest = (
   data: CreateSupportRequestRequest
 ): Promise<SupportRequestDetailResponse> => {
-  return api.post<SupportRequestDetailResponse>('/api/support-requests', data);
+  return api.post<SupportRequestDetailResponse>('/api/v1/support-requests', data);
 };

@@ -205,18 +205,43 @@ const PostCard = ({ post }: { post: Post }) => {
   );
 };
 
+import { usePosts } from '@/features/community/hooks/usePosts';
+import { ActivityIndicator } from 'react-native';
+
 export default function ExploreScreen() {
   const theme = useTheme();
+  const { data: posts, isLoading } = usePosts();
+
+  // Temporary adapter if backend data is not perfectly matching Post type
+  const displayPosts = posts && Array.isArray(posts) && posts.length > 0 
+    ? posts.map((p: any) => ({
+        id: p.id || String(Math.random()),
+        author: p.author || p.userName || 'Unknown User',
+        avatar: p.avatar || p.userAvatar || 'https://i.pravatar.cc/150',
+        timestamp: p.timestamp || p.createdAt || 'Just now',
+        content: p.content || '',
+        tags: p.tags || [],
+        likes: p.likes || p.reactionsCount || 0,
+        comments: p.comments || p.commentsCount || 0,
+        isLiked: p.isLiked || false,
+      }))
+    : DUMMY_POSTS;
 
   return (
     <View style={[styles.container, { backgroundColor: theme.appBG }]}>
-      <FlatList
-        data={DUMMY_POSTS}
-        keyExtractor={(item) => item.id}
-        renderItem={({ item }) => <PostCard post={item} />}
-        contentContainerStyle={styles.listContent}
-        showsVerticalScrollIndicator={false}
-      />
+      {isLoading ? (
+        <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
+          <ActivityIndicator size="large" color={theme.primary} />
+        </View>
+      ) : (
+        <FlatList
+          data={displayPosts}
+          keyExtractor={(item) => item.id}
+          renderItem={({ item }) => <PostCard post={item} />}
+          contentContainerStyle={styles.listContent}
+          showsVerticalScrollIndicator={false}
+        />
+      )}
     </View>
   );
 }
