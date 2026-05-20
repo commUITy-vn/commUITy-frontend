@@ -8,6 +8,7 @@ import {
 interface CreateRequestState {
     // Form fields
     category: SupportCategory | null
+    categoryId: string | null
     title: string
     description: string
     location: string
@@ -16,6 +17,7 @@ interface CreateRequestState {
 
     // Actions
     setCategory: (category: SupportCategory) => void
+    setCategoryId: (categoryId: string | null) => void
     setTitle: (title: string) => void
     setDescription: (description: string) => void
     setLocation: (location: string) => void
@@ -28,6 +30,7 @@ interface CreateRequestState {
 
 const initialState = {
     category: null as SupportCategory | null,
+    categoryId: null as string | null,
     title: "",
     description: "",
     location: "",
@@ -39,6 +42,7 @@ export const useCreateRequestStore = create<CreateRequestState>((set) => ({
     ...initialState,
 
     setCategory: (category) => set({ category }),
+    setCategoryId: (categoryId) => set({ categoryId }),
     setTitle: (title) => set({ title }),
     setDescription: (description) => set({ description }),
     setLocation: (location) => set({ location }),

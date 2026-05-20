@@ -19,29 +19,41 @@ import {
     URGENCY_LABELS,
     ITEM_CATEGORY_LABELS,
 } from "@/features/support/types/support.types"
+import { useCreateSupportRequest } from "@/features/support/hooks/useCreateSupportRequest"
 
 export default function CreateRequestConfirmationScreen() {
     const router = useRouter()
     const theme = useTheme()
-    const { category, title, description, location, urgency, items, reset } =
+    const { category, categoryId, title, description, location, urgency, items, reset } =
         useCreateRequestStore()
 
+    const createRequestMutation = useCreateSupportRequest()
     const [isSubmitting, setIsSubmitting] = useState(false)
 
     const handleSubmit = async () => {
+        if (!categoryId) {
+            Alert.alert("Error", "Please select a category first.")
+            return
+        }
         await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy)
         setIsSubmitting(true)
 
         try {
-            // TODO: Call API to create support request
-            // Simulate API call
-            await new Promise((resolve) => setTimeout(resolve, 1500))
+            await createRequestMutation.mutateAsync({
+                title,
+                description,
+                categoryId,
+                address: location || undefined,
+                latitude: 10.762622,
+                longitude: 106.660172,
+            })
 
             setIsSubmitting(false)
             router.push("/create-request/success")
         } catch (error) {
             setIsSubmitting(false)
-            Alert.alert("Error", "Failed to submit request. Please try again.")
+            const message = error instanceof Error ? error.message : "Failed to submit request. Please try again."
+            Alert.alert("Error", message)
         }
     }
 

@@ -8,6 +8,7 @@ import {
     StyleSheet,
     ActivityIndicator,
     Pressable,
+    Alert,
 } from "react-native"
 import { useRouter } from "expo-router"
 import { useTheme } from "@/hooks/useTheme"
@@ -26,11 +27,14 @@ import Animated from "react-native-reanimated"
 import * as Haptics from "expo-haptics"
 import { BottomSheet } from "@/components/ui"
 import { MaterialIcons, Ionicons } from "@expo/vector-icons"
+import { useAuthStore } from "@/features/auth/stores/useAuthStore"
+import { UserRole } from "@/features/auth/types"
 
 export default function HomeScreen() {
     const theme = useTheme()
     const styles = useThemeStyles()
     const router = useRouter()
+    const { user } = useAuthStore()
 
     // Bottom sheet state
     const [isCreateMenuVisible, setIsCreateMenuVisible] = useState(false)
@@ -47,7 +51,7 @@ export default function HomeScreen() {
     }
 
     const handleRequestPress = (request: SupportRequestSummaryResponse) => {
-        router.push(`/(app)/request/${request.id}`)
+        router.push(`/request/${request.id}`)
     }
 
     // Fetch support requests using the hook
@@ -112,14 +116,18 @@ export default function HomeScreen() {
 
     return (
         <View style={[styles.container, { backgroundColor: theme.appBG }]}>
-            {/* Filter Bar */}
+            {/* Header / Brand Title - Expensify Style */}
+            <View style={localStyles.headerContainer}>
+                <Text style={[localStyles.headerText, { color: theme.text }]}>
+                    commUITy
+                </Text>
+            </View>
+
+            {/* Filter Pills - Expensify style horizontal list */}
             <View
                 style={[
                     localStyles.filterHeader,
-                    {
-                        backgroundColor: theme.appBG,
-                        borderBottomColor: theme.border,
-                    },
+                    { borderBottomColor: theme.border },
                 ]}
             >
                 <ScrollView
@@ -127,9 +135,11 @@ export default function HomeScreen() {
                     showsHorizontalScrollIndicator={false}
                     contentContainerStyle={localStyles.filterScroll}
                 >
-                    {["Category", "Location (Radius)", "Urgency"].map(
+                    {["All", "Pending", "Approved", "In Progress", "Fulfilled"].map(
                         (filter) => {
-                            const isActive = activeFilters.includes(filter)
+                            const isActive =
+                                activeFilters.includes(filter) ||
+                                (filter === "All" && activeFilters.length === 0)
                             return (
                                 <TouchableOpacity
                                     key={filter}
@@ -262,7 +272,7 @@ export default function HomeScreen() {
                         label: "Make a Donation",
                         icon: "volunteer-activism",
                         onPress: () => {
-                            navigateWithUnwind("/(app)/finance-dashboard")
+                            navigateWithUnwind("/finance-dashboard")
                         },
                     },
                     {
@@ -270,7 +280,7 @@ export default function HomeScreen() {
                         label: "Volunteer",
                         icon: "groups",
                         onPress: () => {
-                            navigateWithUnwind("/(app)/volunteer-dashboard")
+                            navigateWithUnwind("/volunteer-dashboard")
                         },
                     },
                 ]}

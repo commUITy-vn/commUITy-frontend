@@ -2,8 +2,7 @@ import { api } from '@/lib/api-client';
 import type { User } from '../types';
 
 export const getUserProfile = async (): Promise<User> => {
-  const response = await api.get<{ success: boolean; message: string; data: any }>('/api/v1/users/me');
-  const profile = response.data;
+  const profile = await api.get<any>('/api/v1/users/me');
   return {
     id: profile.id,
     fullName: profile.fullName,

@@ -11,28 +11,53 @@ import {
     SupportCategory,
     CATEGORY_LABELS,
 } from "@/features/support/types/support.types"
+import { useCategories } from "@/features/support/hooks/useCategories"
+import { ActivityIndicator } from "react-native"
 
 export default function CreateRequestCategoryScreen() {
     const router = useRouter()
     const theme = useTheme()
     const themeStyles = useThemeStyles()
-    const { category: selectedCategory, setCategory } = useCreateRequestStore()
+    const { category: selectedCategory, setCategory, setCategoryId } = useCreateRequestStore()
+    const { data: serverCategories, isLoading } = useCategories()
 
     const [searchQuery, setSearchQuery] = useState("")
 
-    const categories = Object.values(SupportCategory)
+    // Map server categories to list items
+    const categoriesList = useMemo(() => {
+        if (!serverCategories || serverCategories.length === 0) {
+            // Fallback to static values if no categories are fetched
+            return Object.values(SupportCategory).map(cat => ({
+                id: cat,
+                name: CATEGORY_LABELS[cat],
+                code: cat,
+            }))
+        }
+        return serverCategories.map(cat => ({
+            id: cat.id,
+            name: cat.name,
+            code: cat.code,
+        }))
+    }, [serverCategories])
 
     const filteredCategories = useMemo(() => {
-        if (!searchQuery.trim()) return categories
+        if (!searchQuery.trim()) return categoriesList
         const query = searchQuery.toLowerCase()
-        return categories.filter((cat) =>
-            CATEGORY_LABELS[cat].toLowerCase().includes(query),
+        return categoriesList.filter((cat) =>
+            cat.name.toLowerCase().includes(query),
         )
-    }, [categories, searchQuery])
+    }, [categoriesList, searchQuery])
 
-    const handleSelect = async (category: SupportCategory) => {
+    const handleSelect = async (item: { id: string, name: string, code: string }) => {
         await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium)
-        setCategory(category)
+        
+        const enumValue = Object.values(SupportCategory).includes(item.code as any)
+            ? (item.code as SupportCategory)
+            : SupportCategory.OTHER
+            
+        setCategory(enumValue)
+        setCategoryId(item.id)
+        
         setTimeout(() => {
             router.push("/create-request/details")
         }, 0)
@@ -112,76 +137,82 @@ export default function CreateRequestCategoryScreen() {
             </View>
 
             {/* Category list */}
-            <FlatList
-                data={filteredCategories}
-                keyExtractor={(item) => item}
-                renderItem={({ item }) => {
-                    const isSelected = selectedCategory === item
-                    return (
-                        <Pressable
-                            onPress={() => handleSelect(item)}
-                            style={({ pressed }) => [
-                                localStyles.categoryItem,
-                                {
-                                    backgroundColor: pressed
-                                        ? theme.highlightBG
-                                        : "transparent",
-                                    borderColor: theme.border,
-                                },
-                            ]}
-                        >
-                            <View style={localStyles.categoryContent}>
-                                <MaterialIcons
-                                    name={
-                                        isSelected
-                                            ? "radio-button-checked"
-                                            : "radio-button-unchecked"
-                                    }
-                                    size={24}
-                                    color={
-                                        isSelected ? theme.primary : theme.icon
-                                    }
-                                />
-                                <Text
-                                    style={[
-                                        localStyles.categoryLabel,
-                                        {
-                                            color: isSelected
-                                                ? theme.primary
-                                                : theme.text,
-                                            fontWeight: isSelected
-                                                ? "600"
-                                                : "400",
-                                        },
-                                    ]}
-                                >
-                                    {CATEGORY_LABELS[item]}
-                                </Text>
-                                <MaterialIcons
-                                    name="chevron-right"
-                                    size={20}
-                                    color={theme.icon}
-                                />
-                            </View>
-                        </Pressable>
-                    )
-                }}
-                contentContainerStyle={localStyles.listContent}
-                showsVerticalScrollIndicator={false}
-                keyboardShouldPersistTaps="handled"
-                ListEmptyComponent={
-                    <View style={localStyles.emptyContainer}>
-                        <Text
-                            style={{
-                                color: theme.textSupporting,
-                                fontSize: 15,
-                            }}
-                        >
-                            No categories found
-                        </Text>
-                    </View>
-                }
-            />
+            {isLoading ? (
+                <View style={{ flex: 1, justifyContent: "center", alignItems: "center" }}>
+                    <ActivityIndicator size="large" color={theme.primary} />
+                </View>
+            ) : (
+                <FlatList
+                    data={filteredCategories}
+                    keyExtractor={(item) => item.id}
+                    renderItem={({ item }) => {
+                        const isSelected = selectedCategory === item.code
+                        return (
+                            <Pressable
+                                onPress={() => handleSelect(item)}
+                                style={({ pressed }) => [
+                                    localStyles.categoryItem,
+                                    {
+                                        backgroundColor: pressed
+                                            ? theme.highlightBG
+                                            : "transparent",
+                                        borderColor: theme.border,
+                                    },
+                                ]}
+                            >
+                                <View style={localStyles.categoryContent}>
+                                    <MaterialIcons
+                                        name={
+                                            isSelected
+                                                ? "radio-button-checked"
+                                                : "radio-button-unchecked"
+                                        }
+                                        size={24}
+                                        color={
+                                            isSelected ? theme.primary : theme.icon
+                                        }
+                                    />
+                                    <Text
+                                        style={[
+                                            localStyles.categoryLabel,
+                                            {
+                                                color: isSelected
+                                                    ? theme.primary
+                                                    : theme.text,
+                                                fontWeight: isSelected
+                                                    ? "600"
+                                                    : "400",
+                                            },
+                                        ]}
+                                    >
+                                        {item.name}
+                                    </Text>
+                                    <MaterialIcons
+                                        name="chevron-right"
+                                        size={20}
+                                        color={theme.icon}
+                                    />
+                                </View>
+                            </Pressable>
+                        )
+                    }}
+                    contentContainerStyle={localStyles.listContent}
+                    showsVerticalScrollIndicator={false}
+                    keyboardShouldPersistTaps="handled"
+                    ListEmptyComponent={
+                        <View style={localStyles.emptyContainer}>
+                            <Text
+                                style={{
+                                    color: theme.textSupporting,
+                                    fontSize: 15,
+                                }}
+                            >
+                                No categories found
+                            </Text>
+                        </View>
+                    }
+                />
+            )}
         </View>
     )
 }

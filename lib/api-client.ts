@@ -78,12 +78,17 @@ async function fetchApi<T>(
     body: body ? JSON.stringify(body) : undefined,
   });
 
+  const json = await res.json().catch(() => null);
+
   if (!res.ok) {
-    const error = await res.json().catch(() => ({ message: res.statusText }));
-    throw new Error(error.message || 'Request failed');
+    const message = json?.message || res.statusText || "Request failed";
+    throw new Error(message);
   }
 
-  return res.json();
+  if (json && typeof json === "object" && "success" in json && "data" in json) {
+    return json.data;
+  }
+  return json;
 }
 
 export const api = {

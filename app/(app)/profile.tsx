@@ -69,7 +69,7 @@ export default function ProfileScreen() {
                 ])
                 break
             case "transaction-history":
-                router.push("/(app)/finance-dashboard")
+                router.push("/finance-dashboard")
                 break
             case "backup-restore":
                 Alert.alert(
@@ -99,10 +99,10 @@ export default function ProfileScreen() {
                 )
                 break
             case "profile":
-                router.push("/(app)/profile-edit")
+                router.push("/profile-edit")
                 break
             case "wallet":
-                router.push("/(app)/finance-dashboard")
+                router.push("/finance-dashboard")
                 break
             case "rules":
                 Alert.alert("Rules", "Rules screen coming soon!")

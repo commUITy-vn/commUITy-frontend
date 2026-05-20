@@ -190,7 +190,7 @@ export default function RequestDetailScreen() {
 
           <View style={[localStyles.detailRow, { borderBottomColor: theme.border }]}>
             <Text style={[localStyles.detailLabel, { color: theme.textSupporting }]}>Category</Text>
-            <Text style={[localServices.detailValue, { color: theme.text }]}>
+            <Text style={[localStyles.detailValue, { color: theme.text }]}>
               {request.categoryName}
             </Text>
           </View>

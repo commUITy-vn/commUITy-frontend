@@ -130,7 +130,7 @@ export const ContributeItemModal = ({
 
           <View style={{ flexDirection: 'row', gap: 12, marginTop: 24 }}>
             <Pressable
-              style={[
+              style={({ pressed }) => [
                 styles.cancelButton,
                 {
                   borderColor: theme.border,
@@ -144,7 +144,7 @@ export const ContributeItemModal = ({
               </Text>
             </Pressable>
             <Pressable
-              style={[
+              style={({ pressed }) => [
                 styles.confirmButton,
                 {
                   backgroundColor: theme.primary,
