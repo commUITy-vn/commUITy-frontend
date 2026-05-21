@@ -7,6 +7,7 @@ import {
     StyleSheet,
     Modal,
     TextInput,
+    Platform,
 } from "react-native"
 import * as Haptics from "expo-haptics"
 import { useRouter } from "expo-router"
@@ -16,7 +17,7 @@ import { useAuthStore } from "@/features/auth/stores/useAuthStore"
 import MaterialIcons from "@expo/vector-icons/MaterialIcons"
 import { Colors } from "@/constants/theme"
 import { useMe } from "@/features/users/hooks/useMe"
-import { Alert } from "react-native"
+import { ConfirmModal } from "@/components/ui"
 
 export default function ProfileScreen() {
     const theme = useTheme() || Colors.light // Fallback to light theme if useTheme fails
@@ -28,10 +29,20 @@ export default function ProfileScreen() {
 
     // Profile edit modal state
     const [showEditProfile, setShowEditProfile] = useState(false)
+    const [showSignOutConfirm, setShowSignOutConfirm] = useState(false)
     const [editDisplayName, setEditDisplayName] = useState(
-        user?.displayName || "",
+        user?.fullName || "",
     )
     const [editEmail, setEditEmail] = useState(user?.email || "")
+    const [alertModal, setAlertModal] = useState<{ visible: boolean; title: string; message: string }>({
+        visible: false,
+        title: "",
+        message: "",
+    })
+
+    const showAlert = (title: string, message: string) => {
+        setAlertModal({ visible: true, title, message })
+    }
 
     // Mock data for profile details (in real app, this would come from user object)
     const personalDetails = user
@@ -54,46 +65,34 @@ export default function ProfileScreen() {
     const handlePressSettingsItem = async (key: string) => {
         switch (key) {
             case "sign-out":
-                Alert.alert("Sign out", "Are you sure you want to sign out?", [
-                    { text: "Cancel", style: "cancel" },
-                    {
-                        text: "Sign out",
-                        onPress: async () => {
-                            await Haptics.notificationAsync(
-                                Haptics.NotificationFeedbackType.Success,
-                            )
-                            await logout()
-                            router.replace("/(auth)/login")
-                        },
-                    },
-                ])
+                setShowSignOutConfirm(true)
                 break
             case "transaction-history":
                 router.push("/finance-dashboard")
                 break
             case "backup-restore":
-                Alert.alert(
+                showAlert(
                     "Backup & Restore",
                     "Backup & Restore screen coming soon!",
                 )
                 break
             case "preferences":
-                Alert.alert("Preferences", "Preferences screen coming soon!")
+                showAlert("Preferences", "Preferences screen coming soon!")
                 break
             case "help":
-                Alert.alert("Help", "Help screen coming soon!")
+                showAlert("Help", "Help screen coming soon!")
                 break
             case "whats-new":
-                Alert.alert("What's New", "What's New screen coming soon!")
+                showAlert("What's New", "What's New screen coming soon!")
                 break
             case "about":
-                Alert.alert("About", "About screen coming soon!")
+                showAlert("About", "About screen coming soon!")
                 break
             case "troubleshoot":
-                Alert.alert("Troubleshoot", "Troubleshoot screen coming soon!")
+                showAlert("Troubleshoot", "Troubleshoot screen coming soon!")
                 break
             case "save-the-world":
-                Alert.alert(
+                showAlert(
                     "Save the World",
                     "Save the World screen coming soon!",
                 )
@@ -102,13 +101,13 @@ export default function ProfileScreen() {
                 router.push("/profile-edit")
                 break
             case "wallet":
-                router.push("/finance-dashboard")
+                router.push("/wallet")
                 break
             case "rules":
-                Alert.alert("Rules", "Rules screen coming soon!")
+                showAlert("Rules", "Rules screen coming soon!")
                 break
             case "security":
-                Alert.alert("Security", "Security screen coming soon!")
+                showAlert("Security", "Security screen coming soon!")
                 break
             default:
                 break
@@ -141,7 +140,7 @@ export default function ProfileScreen() {
                                     { color: theme.textLight },
                                 ]}
                             >
-                                {personalDetails?.displayName?.[0] ?? "U"}
+                                {personalDetails?.fullName?.[0] ?? "U"}
                             </Text>
                         </View>
                     </View>
@@ -152,7 +151,7 @@ export default function ProfileScreen() {
                                 { color: theme.text },
                             ]}
                         >
-                            {personalDetails?.displayName ?? "User Name"}
+                            {personalDetails?.fullName ?? "User Name"}
                         </Text>
                         <Text
                             style={[
@@ -207,7 +206,7 @@ export default function ProfileScreen() {
                 </View>
 
                 {/* Divider */}
-                <View style={localStyles.divider} />
+                <View style={[localStyles.divider, { backgroundColor: theme.border }]} />
 
                 {/* Settings Menu */}
                 <View style={localStyles.settingsSection}>
@@ -250,7 +249,7 @@ export default function ProfileScreen() {
                             Haptics.impactAsync(
                                 Haptics.ImpactFeedbackStyle.Medium,
                             )
-                            Alert.alert("Donate", "Donation flow coming soon!")
+                            showAlert("Donate", "Donation flow coming soon!")
                         }}
                     >
                         <Text
@@ -380,11 +379,41 @@ export default function ProfileScreen() {
                     </View>
                 </View>
             </Modal>
+
+            {/* Custom Confirmation Modal for Logout */}
+            <ConfirmModal
+                visible={showSignOutConfirm}
+                title="Sign out"
+                message="Are you sure you want to sign out?"
+                confirmText="Sign out"
+                cancelText="Cancel"
+                isDestructive={true}
+                onConfirm={async () => {
+                    setShowSignOutConfirm(false)
+                    await logout()
+                }}
+                onCancel={() => setShowSignOutConfirm(false)}
+            />
+
+            {/* Custom Alert Modal for info/mock dialogs */}
+            <ConfirmModal
+                visible={alertModal.visible}
+                title={alertModal.title}
+                message={alertModal.message}
+                confirmText="OK"
+                cancelText=""
+                onConfirm={() => setAlertModal(prev => ({ ...prev, visible: false }))}
+                onCancel={() => setAlertModal(prev => ({ ...prev, visible: false }))}
+            />
         </View>
     )
 }
 
 const localStyles = StyleSheet.create({
+    divider: {
+        height: 1,
+        marginVertical: 16,
+    },
     profileHeader: {
         paddingVertical: 24,
         alignItems: "center",

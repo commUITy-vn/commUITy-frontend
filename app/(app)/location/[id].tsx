@@ -1,10 +1,11 @@
-// Location Detail Screen
 import React from 'react';
 import { View, Text, FlatList, StyleSheet, Modal, Pressable } from 'react-native';
 import { useTheme } from '@/hooks/useTheme';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import ReceiveItemsModal from '@/features/support/components/ReceiveItemsModal';
-import { ProgressBar } from '@/components/ui/ProgressBar'; // assume exists
+import { ProgressBar } from '@/components/ui/ProgressBar';
+import * as Haptics from 'expo-haptics';
+import { MaterialIcons } from '@expo/vector-icons';
 
 // Dummy location data
 const locationData = {
@@ -31,13 +32,34 @@ export default function LocationDetail() {
 
   return (
     <View style={[styles.container, { backgroundColor: theme.appBG }]}>
-      {/* Header Info */}
-      <View style={styles.header}>
-        <Text style={[styles.title, { color: theme.text }]}>{locationData.name}</Text>
-        <Text style={[styles.sub, { color: theme.textSupporting }]}>{locationData.address}</Text>
-        <Text style={[styles.sub, { color: theme.textSupporting }]}>{`Hours: ${locationData.operatingHours}`}</Text>
-        <Text style={[styles.sub, { color: theme.textSupporting }]}>{`Contact: ${locationData.contactInfo}`}</Text>
+      {/* Header (Back chevron + title) */}
+      <View
+        style={[
+          styles.headerBar,
+          { borderBottomColor: theme.border },
+        ]}
+      >
+        <Pressable
+          onPress={async () => {
+            await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+            router.back();
+          }}
+          style={styles.backButton}
+        >
+          <MaterialIcons name="chevron-left" size={28} color={theme.primary} />
+        </Pressable>
+        <Text style={[styles.headerTitle, { color: theme.text }]}>Location Details</Text>
+        <View style={{ width: 52 }} />
       </View>
+
+      <View style={{ padding: 16, flex: 1 }}>
+        {/* Header Info */}
+        <View style={styles.header}>
+          <Text style={[styles.title, { color: theme.text }]}>{locationData.name}</Text>
+          <Text style={[styles.sub, { color: theme.textSupporting }]}>{locationData.address}</Text>
+          <Text style={[styles.sub, { color: theme.textSupporting }]}>{`Hours: ${locationData.operatingHours}`}</Text>
+          <Text style={[styles.sub, { color: theme.textSupporting }]}>{`Contact: ${locationData.contactInfo}`}</Text>
+        </View>
       {/* Inventory Section */}
       <View style={styles.section}>
         <Text style={[styles.sectionTitle, { color: theme.text }]}>Current Inventory</Text>
@@ -50,8 +72,7 @@ export default function LocationDetail() {
               <Text style={[styles.itemQty, { color: theme.textSupporting }]}>{`${item.currentQty}/${item.targetQty}`}</Text>
               {item.currentQty < item.targetQty && (
                 <ProgressBar
-                  progress={item.currentQty / item.targetQty}
-                  color={theme.success}
+                  progress={(item.currentQty / item.targetQty) * 100}
                 />
               )}
             </View>
@@ -77,12 +98,29 @@ export default function LocationDetail() {
           onClose={() => setModalVisible(false)}
         />
       </Modal>
+      </View>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, padding: 16 },
+  container: { flex: 1 },
+  headerBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 8,
+    paddingVertical: 12,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+  },
+  backButton: {
+    padding: 12,
+  },
+  headerTitle: {
+    fontSize: 18,
+    fontWeight: '600',
+    textAlign: 'center',
+  },
   header: { marginBottom: 24 },
   title: { fontSize: 24, fontWeight: 'bold' },
   sub: { fontSize: 14 },

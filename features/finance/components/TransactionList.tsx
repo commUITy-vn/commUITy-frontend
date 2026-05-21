@@ -44,12 +44,12 @@ export const TransactionList = () => {
     const sign = item.amount > 0 ? '+' : '-';
     const formattedAmount = `${sign} ${Math.abs(item.amount).toLocaleString()}đ`;
     return (
-      <View style={styles.row}>
+      <View style={[localStyles.row, { backgroundColor: theme.highlightBG || theme.componentBG }]}>
         <View style={{ flex: 1 }}>
-          <Text style={styles.text}>{item.category}</Text>
-          <Text style={[styles.text, { color: '#888' }]}>{item.date}</Text>
+          <Text style={[localStyles.categoryText, { color: theme.text }]}>{item.category}</Text>
+          <Text style={[localStyles.dateText, { color: theme.textSupporting }]}>{item.date}</Text>
         </View>
-        <Text style={[styles.text, { color: amountColor }]}>{formattedAmount}</Text>
+        <Text style={[localStyles.amountText, { color: amountColor }]}>{formattedAmount}</Text>
       </View>
     );
   };
@@ -64,3 +64,26 @@ export const TransactionList = () => {
     />
   );
 };
+
+const localStyles = StyleSheet.create({
+  row: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    borderRadius: 8,
+  },
+  categoryText: {
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  dateText: {
+    fontSize: 12,
+    marginTop: 4,
+  },
+  amountText: {
+    fontSize: 16,
+    fontWeight: '700',
+  },
+});
+

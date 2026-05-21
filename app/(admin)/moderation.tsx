@@ -13,11 +13,11 @@ const dummyReports = [
 
 const ModerationScreen = () => {
   const theme = useTheme();
-  const styles = useThemeStyles();
+  const styles = useGeneratedStyles();
   const [tab, setTab] = useState<'pending' | 'reports'>('pending');
   const data = tab === 'pending' ? dummyPending : dummyReports;
 
-  const renderItem = ({ item }) => (
+  const renderItem = ({ item }: { item: any }) => (
     <View style={styles.itemCard}>
       <Text style={styles.itemTitle}>{item.title}</Text>
       <Text style={styles.itemDesc}>{item.description}</Text>
@@ -61,7 +61,7 @@ const ModerationScreen = () => {
 export default ModerationScreen;
 
 // Styles aligned with UI guidelines
-const createStyles = (theme) =>
+const createStyles = (theme: any) =>
   StyleSheet.create({
     container: { flex: 1, backgroundColor: theme.appBG },
     tabContainer: { flexDirection: 'row', justifyContent: 'center', marginVertical: 12 },

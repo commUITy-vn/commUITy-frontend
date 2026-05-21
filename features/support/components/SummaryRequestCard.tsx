@@ -14,36 +14,36 @@ export const SummaryRequestCard = ({ request, onPress }: SummaryRequestCardProps
   const getStatusColorBg = (status: string): string => {
     switch (status) {
       case 'PENDING':
-        return '#E2E8F0';
+        return theme.highlightBG;
       case 'APPROVED':
-        return '#E5F6EE';
+        return theme.success + '20'; // 12% alpha green
       case 'IN_PROGRESS':
-        return '#E0F2FE';
+        return theme.primary + '20'; // 12% alpha primary
       case 'FULFILLED':
-        return '#E5F6EE';
+        return theme.success + '20';
       case 'REJECTED':
-        return '#FFE5E5';
+        return theme.danger + '20';
       case 'CANCELLED':
-        return '#F0F0F0';
-      default:
         return theme.border;
+      default:
+        return theme.highlightBG;
     }
   };
 
   const getStatusColorText = (status: string): string => {
     switch (status) {
       case 'PENDING':
-        return '#475569';
+        return theme.textSupporting;
       case 'APPROVED':
-        return '#008040';
+        return theme.success;
       case 'IN_PROGRESS':
-        return '#0369A1';
+        return theme.primary;
       case 'FULFILLED':
-        return '#008040';
+        return theme.success;
       case 'REJECTED':
-        return '#CC0000';
+        return theme.danger;
       case 'CANCELLED':
-        return '#666666';
+        return theme.textSupporting;
       default:
         return theme.text;
     }
@@ -69,8 +69,8 @@ export const SummaryRequestCard = ({ request, onPress }: SummaryRequestCardProps
         <Text style={[localStyles.title, { color: theme.text }]} numberOfLines={1}>
           {request.title}
         </Text>
-        <View style={[localStyles.badge, { backgroundColor: theme.highlightBG }]}>
-          <Text style={[localStyles.badgeText, { color: theme.text }]}>
+        <View style={[localStyles.badge, { backgroundColor: theme.highlightBG, borderColor: theme.border, borderWidth: 1 }]}>
+          <Text style={[localStyles.badgeText, { color: theme.primary, fontWeight: '700' }]}>
             {request.categoryName}
           </Text>
         </View>
@@ -83,7 +83,7 @@ export const SummaryRequestCard = ({ request, onPress }: SummaryRequestCardProps
           </Text>
         </View>
         <View style={[localStyles.badge, { backgroundColor: getStatusColorBg(request.status) }]}>
-          <Text style={[localStyles.badgeText, { color: getStatusColorText(request.status) }]}>
+          <Text style={[localStyles.badgeText, { color: getStatusColorText(request.status), fontWeight: '700' }]}>
             {request.status}
           </Text>
         </View>

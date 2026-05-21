@@ -11,6 +11,7 @@ export interface SupportRequestDetailResponse {
   assignedSupportLocationId?: string;
   assignedSupportLocationName?: string;
   status: string;
+  urgency?: any;
   latitude?: number;
   longitude?: number;
   address?: string;

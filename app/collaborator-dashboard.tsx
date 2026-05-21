@@ -1,100 +1,159 @@
-// Collaborator Dashboard
 import React from "react"
-import { View, Text, FlatList, Pressable, StyleSheet } from "react-native"
+import { View, Text, FlatList, Pressable, StyleSheet, ActivityIndicator } from "react-native"
 import { useTheme } from "@/hooks/useTheme"
 import { useRouter } from "expo-router"
-
-// Dummy data for locations
-const locations = [
-    { id: "1", name: "Central Hub", address: "123 Main St", status: "ACTIVE" },
-    {
-        id: "2",
-        name: "East Side Center",
-        address: "456 East Ave",
-        status: "INACTIVE",
-    },
-]
+import * as Haptics from "expo-haptics"
+import { MaterialIcons } from "@expo/vector-icons"
+import { useSupportLocations } from "@/features/maps/hooks/useSupportLocations"
 
 export default function CollaboratorDashboard() {
     const theme = useTheme()
     const router = useRouter()
+    const { data: locations, isLoading } = useSupportLocations()
+
+    const mappedLocations = ((locations as any) || []).map((loc: any) => ({
+        id: loc.id,
+        name: loc.name,
+        address: loc.address,
+        status: loc.isActive !== false ? "ACTIVE" : "INACTIVE",
+    }))
+
     return (
         <View style={[styles.container, { backgroundColor: theme.appBG }]}>
-            {/* Quick Stats */}
-            <View style={styles.statsContainer}>
-                <View style={styles.statBox}>
-                    <Text style={[styles.statNumber, { color: theme.text }]}>
-                        0
-                    </Text>
-                    <Text
-                        style={[
-                            styles.statLabel,
-                            { color: theme.textSupporting },
-                        ]}
-                    >
-                        Total Items Received
-                    </Text>
-                </View>
-                <View style={styles.statBox}>
-                    <Text style={[styles.statNumber, { color: theme.text }]}>
-                        0
-                    </Text>
-                    <Text
-                        style={[
-                            styles.statLabel,
-                            { color: theme.textSupporting },
-                        ]}
-                    >
-                        Pending Requests Nearby
-                    </Text>
-                </View>
+            {/* Header (Back chevron + title + Add Location button) */}
+            <View
+                style={[
+                    styles.header,
+                    { borderBottomColor: theme.border },
+                ]}
+            >
+                <Pressable
+                    onPress={async () => {
+                        await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light)
+                        router.back()
+                    }}
+                    style={styles.backButton}
+                >
+                    <MaterialIcons name="chevron-left" size={28} color={theme.primary} />
+                </Pressable>
+                <Text style={[styles.headerTitle, { color: theme.text }]}>Collaborator Dashboard</Text>
+                <Pressable
+                    onPress={async () => {
+                        await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light)
+                        router.push("/create-location" as any)
+                    }}
+                    style={styles.backButton}
+                >
+                    <MaterialIcons name="add" size={28} color={theme.primary} />
+                </Pressable>
             </View>
-            {/* Managed Locations */}
-            <FlatList
-                data={locations}
-                keyExtractor={(item) => item.id}
-                renderItem={({ item }) => (
-                    <Pressable
-                        onPress={() => router.push(`/(app)/location/${item.id}`)}
-                        style={[styles.card, { borderColor: theme.border }]}
-                    >
-                        <Text
-                            style={[styles.locationName, { color: theme.text }]}
-                        >
-                            {item.name}
+
+            <View style={{ padding: 16, flex: 1 }}>
+                {/* Quick Stats */}
+                <View style={styles.statsContainer}>
+                    <View style={styles.statBox}>
+                        <Text style={[styles.statNumber, { color: theme.text }]}>
+                            {mappedLocations.length}
                         </Text>
                         <Text
                             style={[
-                                styles.locationAddress,
+                                styles.statLabel,
                                 { color: theme.textSupporting },
                             ]}
                         >
-                            {item.address}
+                            Total Active Locations
+                        </Text>
+                    </View>
+                    <View style={styles.statBox}>
+                        <Text style={[styles.statNumber, { color: theme.text }]}>
+                            0
                         </Text>
                         <Text
                             style={[
-                                styles.locationStatus,
-                                {
-                                    color:
-                                        item.status === "ACTIVE"
-                                            ? theme.success
-                                            : theme.danger,
-                                },
+                                styles.statLabel,
+                                { color: theme.textSupporting },
                             ]}
                         >
-                            {item.status}
+                            Pending Requests Nearby
                         </Text>
-                    </Pressable>
+                    </View>
+                </View>
+
+                {/* Managed Locations */}
+                {isLoading ? (
+                    <View style={{ flex: 1, justifyContent: "center", alignItems: "center" }}>
+                        <ActivityIndicator size="large" color={theme.primary} />
+                    </View>
+                ) : mappedLocations.length === 0 ? (
+                    <View style={{ flex: 1, justifyContent: "center", alignItems: "center", paddingHorizontal: 32 }}>
+                        <MaterialIcons name="place" size={48} color={theme.textSupporting} style={{ marginBottom: 12 }} />
+                        <Text style={{ color: theme.text, fontSize: 16, fontWeight: "600", marginBottom: 4, textAlign: "center" }}>No Support Locations Yet</Text>
+                        <Text style={{ color: theme.textSupporting, fontSize: 14, textAlign: "center" }}>{"Tap the '+' button in the top right to create one!"}</Text>
+                    </View>
+                ) : (
+                    <FlatList
+                        data={mappedLocations}
+                        keyExtractor={(item) => item.id}
+                        renderItem={({ item }) => (
+                            <Pressable
+                                onPress={() => router.push(`/(app)/location/${item.id}` as any)}
+                                style={[styles.card, { borderColor: theme.border, backgroundColor: theme.componentBG }]}
+                            >
+                                <Text
+                                    style={[styles.locationName, { color: theme.text }]}
+                                >
+                                    {item.name}
+                                </Text>
+                                <Text
+                                    style={[
+                                        styles.locationAddress,
+                                        { color: theme.textSupporting, marginTop: 4 },
+                                    ]}
+                                >
+                                    {item.address}
+                                </Text>
+                                <Text
+                                    style={[
+                                        styles.locationStatus,
+                                        {
+                                            color:
+                                                item.status === "ACTIVE"
+                                                    ? theme.success
+                                                    : theme.danger,
+                                        },
+                                    ]}
+                                >
+                                    {item.status}
+                                </Text>
+                            </Pressable>
+                        )}
+                    />
                 )}
-            />
+            </View>
         </View>
     )
 }
 
+
 const styles = StyleSheet.create({
     container: {
         flex: 1,
-        padding: 16,
+    },
+    header: {
+        flexDirection: "row",
+        alignItems: "center",
+        justifyContent: "space-between",
+        paddingHorizontal: 8,
+        paddingVertical: 12,
+        borderBottomWidth: StyleSheet.hairlineWidth,
+    },
+    backButton: {
+        padding: 12,
+    },
+    headerTitle: {
+        fontSize: 18,
+        fontWeight: "600",
+        textAlign: "center",
     },
     statsContainer: {
         flexDirection: "row",

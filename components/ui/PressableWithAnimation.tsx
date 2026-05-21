@@ -5,9 +5,8 @@ import {
   StyleProp,
   ViewStyle,
 } from 'react-native';
-import { useSharedValue, withTiming, Easing } from 'react-native-reanimated';
+import Animated, { useSharedValue, withTiming, Easing, useAnimatedStyle } from 'react-native-reanimated';
 import { useTheme } from '@/hooks/useTheme';
-import { useThemeStyles } from '@/hooks/useThemeStyles';
 import * as Haptics from 'expo-haptics';
 
 type PressableWithAnimationProps = PressableProps & {
@@ -24,8 +23,8 @@ type PressableWithAnimationProps = PressableProps & {
 };
 
 const PressableWithAnimation = React.forwardRef<
-  PressableWithAnimationProps,
-  HTMLElement
+  any,
+  PressableWithAnimationProps
 >(({
   useHaptics = true,
   pressScale = 0.95,
@@ -39,8 +38,6 @@ const PressableWithAnimation = React.forwardRef<
   ...props
 }, ref) => {
   const theme = useTheme();
-  const styles = useThemeStyles();
-
   const scale = useSharedValue(1);
 
   const pressIn = () => {
@@ -50,7 +47,7 @@ const PressableWithAnimation = React.forwardRef<
     });
 
     if (useHaptics && !disabled) {
-      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
     }
   };
 
@@ -61,28 +58,30 @@ const PressableWithAnimation = React.forwardRef<
     });
   };
 
-  const pressStyle = [
-    {
-      transform: [{ scale }],
-    },
-    pressedStyle,
-  ];
+  const animatedStyle = useAnimatedStyle(() => {
+    return {
+      transform: [{ scale: scale.value }],
+    };
+  });
 
   return (
     <Pressable
       ref={ref}
-      style={[styles.pressable, style, !disabled && pressStyle]}
       onPressIn={pressIn}
       onPressOut={pressOut}
-      onPressCancel={pressOut}
       disabled={disabled}
       onPress={onPress}
       onLongPress={onLongPress}
+      style={style}
       {...props}
     >
-      {children}
+      <Animated.View style={[animatedStyle, pressedStyle]}>
+        {children}
+      </Animated.View>
     </Pressable>
   );
 });
+
+PressableWithAnimation.displayName = 'PressableWithAnimation';
 
 export default PressableWithAnimation;

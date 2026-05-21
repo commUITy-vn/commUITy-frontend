@@ -9,13 +9,13 @@ interface RequestCardProps {
 }
 
 // Exact badge colors from Strike 2 specification
-const URGENCY_COLORS: Record<number, { bg: string; text: string }> = {
+const URGENCY_COLORS: Record<UrgencyLevel, { bg: string; text: string }> = {
   [UrgencyLevel.HIGH]: { bg: '#FFE5E5', text: '#CC0000' }, // High Urgency / Danger
   [UrgencyLevel.MEDIUM]: { bg: '#FFF4E5', text: '#B35900' }, // Medium Urgency / Warning
   [UrgencyLevel.LOW]: { bg: '#E5F6EE', text: '#008040' }, // Low Urgency / Success
 };
 
-const STATUS_COLORS: Record<number, { bg: string; text: string }> = {
+const STATUS_COLORS: Record<SupportStatus, { bg: string; text: string }> = {
   [SupportStatus.PENDING]: { bg: '#E2E8F0', text: '#475569' }, // Pending / Neutral
   [SupportStatus.APPROVED]: { bg: '#E5F6EE', text: '#008040' }, // Low Urgency / Success / Approved
   [SupportStatus.IN_PROGRESS]: { bg: '#E0F2FE', text: '#0369A1' }, // In Progress / Info

@@ -1,8 +1,9 @@
 import { useState } from 'react';
-import { View, Text, FlatList, Pressable, type StyleProp, type ViewStyle } from 'react-native';
+import { View, Text, FlatList, Pressable, StyleSheet, TextInput, Platform, ActivityIndicator, type StyleProp, type ViewStyle } from 'react-native';
 import * as Haptics from 'expo-haptics';
 import { useTheme } from '@/hooks/useTheme';
 import { useRouter } from 'expo-router';
+import { MaterialIcons } from '@expo/vector-icons';
 
 type Conversation = {
   id: string;
@@ -16,7 +17,7 @@ type Conversation = {
 
 const CONVERSATIONS: Conversation[] = [
   {
-    id: '1',
+    id: '11111111-1111-1111-1111-111111111111',
     name: 'Nguyen Van A',
     avatarLetter: 'N',
     lastMessage: 'Chào bạn, tôi có thể giúp gì cho bạn?',
@@ -25,7 +26,7 @@ const CONVERSATIONS: Conversation[] = [
     avatarColor: '#F97316',
   },
   {
-    id: '2',
+    id: '22222222-2222-2222-2222-222222222222',
     name: 'Tran Thi B',
     avatarLetter: 'T',
     lastMessage: 'Cảm ơn bạn đã hỗ trợ, tôi sẽ liên hệ lại sau.',
@@ -34,7 +35,7 @@ const CONVERSATIONS: Conversation[] = [
     avatarColor: '#3B82F6',
   },
   {
-    id: '3',
+    id: '33333333-3333-3333-3333-333333333333',
     name: 'Le Van C',
     avatarLetter: 'L',
     lastMessage: 'Đã nhận được hỗ trợ từ bạn, rất cảm ơn!',
@@ -43,7 +44,7 @@ const CONVERSATIONS: Conversation[] = [
     avatarColor: '#10B981',
   },
   {
-    id: '4',
+    id: '44444444-4444-4444-4444-444444444444',
     name: 'Pham Thi D',
     avatarLetter: 'P',
     lastMessage: 'Bạn có thể giúp tôi với vấn đề này không?',
@@ -52,7 +53,7 @@ const CONVERSATIONS: Conversation[] = [
     avatarColor: '#8B5CF6',
   },
   {
-    id: '5',
+    id: '55555555-5555-5555-5555-555555555555',
     name: 'Hoang Van E',
     avatarLetter: 'H',
     lastMessage: 'Tôi sẽ đến địa điểm vào lúc 3 giờ chiều nay.',
@@ -176,14 +177,13 @@ const ConversationRow = ({
     </Pressable>
   );
 };
-
 import { useConversations } from '@/features/communication/hooks/useConversations';
-import { ActivityIndicator } from 'react-native';
 
 export default function MessagesScreen() {
   const theme = useTheme();
   const router = useRouter();
   const { data: conversations, isLoading } = useConversations();
+  const [searchQuery, setSearchQuery] = useState('');
 
   const handleConversationPress = (id: string) => {
     router.push({ pathname: '/messages/[id]', params: { id } } as any);
@@ -201,21 +201,70 @@ export default function MessagesScreen() {
       }))
     : CONVERSATIONS;
 
+  const filteredConversations = displayConversations.filter(c => 
+    c.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+    c.lastMessage.toLowerCase().includes(searchQuery.toLowerCase())
+  );
+
   return (
     <View style={{ flex: 1, backgroundColor: theme.appBG }}>
-      {/* Header */}
+      {/* Section Header */}
       <View
         style={{
           paddingHorizontal: 16,
           paddingTop: 16,
+          paddingBottom: 8,
+          backgroundColor: theme.appBG,
+        }}
+      >
+        <Text style={{ color: theme.text, fontSize: 28, fontWeight: '700' }}>
+          Inbox
+        </Text>
+      </View>
+
+      {/* Search Bar */}
+      <View
+        style={{
+          paddingHorizontal: 16,
           paddingBottom: 12,
-          borderBottomWidth: 1,
+          paddingTop: 4,
+          backgroundColor: theme.appBG,
+          borderBottomWidth: StyleSheet.hairlineWidth,
           borderBottomColor: theme.border,
         }}
       >
-        <Text style={{ color: theme.text, fontSize: 28, fontWeight: 'bold' }}>
-          Inbox
-        </Text>
+        <View
+          style={{
+            flexDirection: 'row',
+            alignItems: 'center',
+            backgroundColor: theme.highlightBG,
+            borderRadius: 8,
+            paddingHorizontal: 10,
+            height: 40,
+            borderWidth: 1,
+            borderColor: theme.border,
+          }}
+        >
+          <MaterialIcons name="search" size={20} color={theme.textSupporting} style={{ marginRight: 6 }} />
+          <TextInput
+            placeholder="Search conversations..."
+            placeholderTextColor={theme.placeholderText || theme.textSupporting}
+            value={searchQuery}
+            onChangeText={setSearchQuery}
+            style={{
+              flex: 1,
+              color: theme.text,
+              fontSize: 15,
+              padding: 0,
+              ...(Platform.OS === 'web' ? { outlineStyle: 'none' } : {}),
+            } as any}
+          />
+          {searchQuery.length > 0 && (
+            <Pressable onPress={() => setSearchQuery('')}>
+              <MaterialIcons name="close" size={18} color={theme.textSupporting} />
+            </Pressable>
+          )}
+        </View>
       </View>
 
       {/* Conversation List */}
@@ -225,7 +274,7 @@ export default function MessagesScreen() {
         </View>
       ) : (
         <FlatList
-          data={displayConversations}
+          data={filteredConversations}
           keyExtractor={(item) => item.id}
           renderItem={({ item }) => (
             <ConversationRow
@@ -233,18 +282,25 @@ export default function MessagesScreen() {
               onPress={() => handleConversationPress(item.id)}
             />
           )}
-        ItemSeparatorComponent={() => (
-          <View
-            style={{
-              height: 1,
-              backgroundColor: theme.border,
-              marginLeft: 76,
-            }}
-          />
-        )}
-        contentContainerStyle={{ paddingBottom: 16 }}
-        showsVerticalScrollIndicator={false}
-      />
+          ItemSeparatorComponent={() => (
+            <View
+              style={{
+                height: 1,
+                backgroundColor: theme.border,
+                marginLeft: 76,
+              }}
+            />
+          )}
+          contentContainerStyle={{ paddingBottom: 16 }}
+          showsVerticalScrollIndicator={false}
+          ListEmptyComponent={() => (
+            <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', marginTop: 40, paddingHorizontal: 20 }}>
+              <Text style={{ color: theme.textSupporting, textAlign: 'center' }}>
+                {searchQuery ? "No conversations match your search" : "No active threads in your inbox"}
+              </Text>
+            </View>
+          )}
+        />
       )}
     </View>
   );

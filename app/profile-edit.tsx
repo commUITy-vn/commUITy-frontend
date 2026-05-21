@@ -21,7 +21,7 @@ export default function ProfileEditScreen() {
     const theme = useTheme()
     const { user } = useAuthStore()
 
-    const [displayName, setDisplayName] = useState(user?.displayName || "")
+    const [displayName, setDisplayName] = useState(user?.fullName || "")
     const [email, setEmail] = useState(user?.email || "")
 
     const handleSave = async () => {
@@ -89,7 +89,7 @@ export default function ProfileEditScreen() {
                                 { color: theme.textLight },
                             ]}
                         >
-                            {displayName?.[0] || user?.displayName?.[0] || "U"}
+                            {displayName?.[0] || user?.fullName?.[0] || "U"}
                         </Text>
                     </View>
                     <Pressable style={localStyles.changePhotoBtn}>

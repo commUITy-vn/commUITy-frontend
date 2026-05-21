@@ -1,7 +1,8 @@
 import React, { useState } from 'react';
-import { Modal, View, Text, TextInput, TouchableOpacity, StyleSheet } from 'react-native';
+import { Modal, View, Text, TouchableOpacity, StyleSheet } from 'react-native';
 import { useTheme } from '@/hooks/useTheme';
 import { useThemeStyles } from '@/hooks/useThemeStyles';
+import { TextInput } from '@/components/ui';
 
 interface ApplyCollaboratorModalProps {
   isOpen: boolean;
@@ -10,7 +11,7 @@ interface ApplyCollaboratorModalProps {
 }
 
 export default function ApplyCollaboratorModal({ isOpen, onClose, onSubmit }: ApplyCollaboratorModalProps) {
-  const { theme } = useTheme();
+  const theme = useTheme();
   const styles = useThemeStyles();
   const [reason, setReason] = useState('');
 
@@ -26,23 +27,26 @@ export default function ApplyCollaboratorModal({ isOpen, onClose, onSubmit }: Ap
       transparent={true}
       onRequestClose={onClose}
     >
-      <View style={[styles.modalOverlay, { backgroundColor: theme.inverseTransparent }]}>
-        <View style={[styles.modalContainer, { backgroundColor: theme.componentBG, padding: 16, borderRadius: 12, margin: 24 }]}>
-          <Text style={[styles.title, { color: theme.text }]}>Apply as Collaborator</Text>
+      <View style={localStyles.modalOverlay}>
+        <View style={[localStyles.modalContainer, { backgroundColor: theme.componentBG || theme.appBG, borderColor: theme.border, borderWidth: 1 }]}>
+          <Text style={[styles.title, { color: theme.text, fontSize: 20, marginBottom: 16, textAlign: 'center', fontWeight: '700' }]}>Apply as Collaborator</Text>
+          
           <TextInput
-            style={[styles.textInput, { backgroundColor: theme.componentBG, color: theme.text, marginTop: 12, height: 100, textAlignVertical: 'top' }]}
+            label="Reason for applying"
             placeholder="Why do you want to be a collaborator?"
-            placeholderTextColor={theme.textSupporting}
             multiline
+            height={100}
             value={reason}
             onChangeText={setReason}
           />
-          <View style={{ flexDirection: 'row', justifyContent: 'flex-end', marginTop: 16 }}>
-            <TouchableOpacity onPress={onClose} style={[styles.button, { backgroundColor: theme.borderLighter, marginRight: 8 }]}>
-              <Text style={[styles.buttonText, { color: theme.text }]}>Cancel</Text>
+
+          <View style={{ flexDirection: 'row', gap: 10, marginTop: 16 }}>
+            <TouchableOpacity onPress={handleSubmit} style={[styles.button, { backgroundColor: theme.primary, flex: 1, paddingVertical: 12, borderRadius: 8, justifyContent: 'center', alignItems: 'center' }]}>
+              <Text style={[styles.buttonText, { color: theme.textLight || '#fff', fontWeight: '600' }]}>Submit</Text>
             </TouchableOpacity>
-            <TouchableOpacity onPress={handleSubmit} style={[styles.button, { backgroundColor: theme.primary }]}>
-              <Text style={[styles.buttonText, { color: theme.textLight }]}>Submit</Text>
+            
+            <TouchableOpacity onPress={onClose} style={[styles.button, { backgroundColor: theme.highlightBG, borderColor: theme.border, borderWidth: 1, flex: 1, paddingVertical: 12, borderRadius: 8, justifyContent: 'center', alignItems: 'center' }]}>
+              <Text style={[styles.buttonText, { color: theme.text, fontWeight: '600' }]}>Cancel</Text>
             </TouchableOpacity>
           </View>
         </View>
@@ -50,3 +54,24 @@ export default function ApplyCollaboratorModal({ isOpen, onClose, onSubmit }: Ap
     </Modal>
   );
 }
+
+const localStyles = StyleSheet.create({
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.4)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  modalContainer: {
+    width: '90%',
+    maxWidth: 400,
+    borderRadius: 12,
+    padding: 20,
+    elevation: 5,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.15,
+    shadowRadius: 6,
+  },
+});
+

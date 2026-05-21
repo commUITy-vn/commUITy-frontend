@@ -53,7 +53,7 @@ export default function CreateRequestSuccessScreen() {
         if (parentNav && parentNav.canGoBack()) {
             parentNav.goBack()
         } else {
-            router.replace("/(app)/")
+            router.replace("/(app)" as any)
         }
     }
 
@@ -88,8 +88,7 @@ export default function CreateRequestSuccessScreen() {
                         { color: theme.textSupporting },
                     ]}
                 >
-                    Your support request has been created successfully. You'll
-                    be notified when someone responds.
+                    {"Your support request has been created successfully. You'll be notified when someone responds."}
                 </Text>
 
                 {/* Quick stats */}
@@ -135,7 +134,7 @@ export default function CreateRequestSuccessScreen() {
                                 { color: theme.textSupporting },
                             ]}
                         >
-                            You'll get notified when someone responds
+                            {"You'll get notified when someone responds"}
                         </Text>
                     </View>
                 </View>

@@ -9,3 +9,4 @@ export * from './update-support-need';
 export * from './delete-support-need';
 export * from './add-contribution';
 export * from './apply-volunteer';
+export * from './volunteer-assignments';

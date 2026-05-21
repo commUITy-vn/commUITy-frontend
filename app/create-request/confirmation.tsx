@@ -5,7 +5,6 @@ import {
     Pressable,
     ScrollView,
     StyleSheet,
-    Alert,
     ActivityIndicator,
 } from "react-native"
 import { useRouter } from "expo-router"
@@ -13,13 +12,14 @@ import { MaterialIcons } from "@expo/vector-icons"
 import * as Haptics from "expo-haptics"
 import { useTheme } from "@/hooks/useTheme"
 import { useCreateRequestStore } from "@/stores/useCreateRequestStore"
-import { Button } from "@/components/ui"
+import { Button, ConfirmModal } from "@/components/ui"
 import {
     CATEGORY_LABELS,
     URGENCY_LABELS,
     ITEM_CATEGORY_LABELS,
 } from "@/features/support/types/support.types"
 import { useCreateSupportRequest } from "@/features/support/hooks/useCreateSupportRequest"
+import { createSupportNeed } from "@/features/support/api/create-support-need"
 
 export default function CreateRequestConfirmationScreen() {
     const router = useRouter()
@@ -29,17 +29,26 @@ export default function CreateRequestConfirmationScreen() {
 
     const createRequestMutation = useCreateSupportRequest()
     const [isSubmitting, setIsSubmitting] = useState(false)
+    const [alertModal, setAlertModal] = useState<{ visible: boolean; title: string; message: string }>({
+        visible: false,
+        title: "",
+        message: "",
+    })
+
+    const showAlert = (title: string, message: string) => {
+        setAlertModal({ visible: true, title, message })
+    }
 
     const handleSubmit = async () => {
         if (!categoryId) {
-            Alert.alert("Error", "Please select a category first.")
+            showAlert("Error", "Please select a category first.")
             return
         }
         await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy)
         setIsSubmitting(true)
 
         try {
-            await createRequestMutation.mutateAsync({
+            const createdRequest = await createRequestMutation.mutateAsync({
                 title,
                 description,
                 categoryId,
@@ -48,12 +57,42 @@ export default function CreateRequestConfirmationScreen() {
                 longitude: 106.660172,
             })
 
+            // Submit items if any exist
+            if (items && items.length > 0) {
+                // Group items by name to avoid duplicate needName constraints on backend
+                const groupedItems: { [name: string]: number } = {};
+                for (const item of items) {
+                    const name = item.name.trim();
+                    if (!name) continue;
+                    const qty = Number(item.neededQuantity) || 1;
+                    // Case-insensitive grouping to be extra safe against backend constraints
+                    const matchingKey = Object.keys(groupedItems).find(
+                        k => k.toLowerCase() === name.toLowerCase()
+                    );
+                    if (matchingKey) {
+                        groupedItems[matchingKey] += qty;
+                    } else {
+                        groupedItems[name] = qty;
+                    }
+                }
+
+                for (const [name, qty] of Object.entries(groupedItems)) {
+                    await createSupportNeed(createdRequest.id, {
+                        supportType: 'GOODS',
+                        needName: name,
+                        unit: 'PIECE', // Default unit since only quantity is specified in this view
+                        requiredQuantity: Math.max(0.01, qty),
+                    });
+                }
+            }
+
+            reset() // Clear the draft store on success
             setIsSubmitting(false)
             router.push("/create-request/success")
         } catch (error) {
             setIsSubmitting(false)
             const message = error instanceof Error ? error.message : "Failed to submit request. Please try again."
-            Alert.alert("Error", message)
+            showAlert("Error", message)
         }
     }
 
@@ -390,6 +429,16 @@ export default function CreateRequestConfirmationScreen() {
                     />
                 </View>
             </ScrollView>
+
+            <ConfirmModal
+                visible={alertModal.visible}
+                title={alertModal.title}
+                message={alertModal.message}
+                confirmText="OK"
+                cancelText=""
+                onConfirm={() => setAlertModal(prev => ({ ...prev, visible: false }))}
+                onCancel={() => setAlertModal(prev => ({ ...prev, visible: false }))}
+            />
         </View>
     )
 }

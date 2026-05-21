@@ -3,10 +3,13 @@ import { api } from '@/lib/api-client';
 export interface SupportNeedResponse {
   id: string;
   supportRequestId: string;
-  itemName: string;
+  supportType: 'MONEY' | 'GOODS';
+  needName: string;
   unit: string;
   requiredQuantity: number;
   receivedQuantity: number;
+  remainingQuantity: number;
+  isFulfilled: boolean;
 }
 
 export const getSupportNeeds = (supportRequestId: string): Promise<SupportNeedResponse[]> => {

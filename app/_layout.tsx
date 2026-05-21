@@ -82,16 +82,16 @@ export default function RootLayout() {
                     >
                         <Stack
                             screenOptions={{
+                                headerShown: false,
                                 animation: Platform.select({
                                     ios: "slide_from_right",
                                     android: "slide_from_right",
                                     default: "slide_from_right",
                                 }),
-                                animationDuration: 250,
                                 contentStyle: {
                                     backgroundColor: theme.appBG,
                                 },
-                            }}
+                            } as any}
                         >
                             <Stack.Screen
                                 name="(auth)"
@@ -110,8 +110,119 @@ export default function RootLayout() {
                                         android: "slide_from_right",
                                         default: "slide_from_right",
                                     }),
-                                    animationDuration: 250,
                                     animationTypeForReplace: "pop",
+                                    contentStyle: {
+                                        backgroundColor: theme.appBG,
+                                    },
+                                }}
+                            />
+                            <Stack.Screen
+                                name="request/[id]"
+                                options={{
+                                    headerShown: false,
+                                    animation: Platform.select({
+                                        ios: "slide_from_right",
+                                        android: "slide_from_right",
+                                        default: "slide_from_right",
+                                    }),
+                                    contentStyle: {
+                                        backgroundColor: theme.appBG,
+                                    },
+                                }}
+                            />
+                            <Stack.Screen
+                                name="messages/[id]"
+                                options={{
+                                    headerShown: false,
+                                    animation: Platform.select({
+                                        ios: "slide_from_right",
+                                        android: "slide_from_right",
+                                        default: "slide_from_right",
+                                    }),
+                                    contentStyle: {
+                                        backgroundColor: theme.appBG,
+                                    },
+                                }}
+                            />
+                            <Stack.Screen
+                                name="volunteer-dashboard"
+                                options={{
+                                    headerShown: false,
+                                    animation: Platform.select({
+                                        ios: "slide_from_right",
+                                        android: "slide_from_right",
+                                        default: "slide_from_right",
+                                    }),
+                                    contentStyle: {
+                                        backgroundColor: theme.appBG,
+                                    },
+                                }}
+                            />
+                            <Stack.Screen
+                                name="finance-dashboard"
+                                options={{
+                                    headerShown: false,
+                                    animation: Platform.select({
+                                        ios: "slide_from_right",
+                                        android: "slide_from_right",
+                                        default: "slide_from_right",
+                                    }),
+                                    contentStyle: {
+                                        backgroundColor: theme.appBG,
+                                    },
+                                }}
+                            />
+                            <Stack.Screen
+                                name="wallet"
+                                options={{
+                                    headerShown: false,
+                                    animation: Platform.select({
+                                        ios: "slide_from_right",
+                                        android: "slide_from_right",
+                                        default: "slide_from_right",
+                                    }),
+                                    contentStyle: {
+                                        backgroundColor: theme.appBG,
+                                    },
+                                }}
+                            />
+                            <Stack.Screen
+                                name="profile-edit"
+                                options={{
+                                    headerShown: false,
+                                    animation: Platform.select({
+                                        ios: "slide_from_right",
+                                        android: "slide_from_right",
+                                        default: "slide_from_right",
+                                    }),
+                                    contentStyle: {
+                                        backgroundColor: theme.appBG,
+                                    },
+                                }}
+                            />
+                            <Stack.Screen
+                                name="collaborator-dashboard"
+                                options={{
+                                    headerShown: false,
+                                    animation: Platform.select({
+                                        ios: "slide_from_right",
+                                        android: "slide_from_right",
+                                        default: "slide_from_right",
+                                    }),
+                                    contentStyle: {
+                                        backgroundColor: theme.appBG,
+                                    },
+                                }}
+                            />
+                            <Stack.Screen
+                                name="create-location"
+                                options={{
+                                    headerShown: false,
+                                    animation: Platform.select({
+                                        ios: "slide_from_right",
+                                        android: "slide_from_right",
+                                        default: "slide_from_right",
+                                    }),
                                     contentStyle: {
                                         backgroundColor: theme.appBG,
                                     },

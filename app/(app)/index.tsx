@@ -116,13 +116,6 @@ export default function HomeScreen() {
 
     return (
         <View style={[styles.container, { backgroundColor: theme.appBG }]}>
-            {/* Header / Brand Title - Expensify Style */}
-            <View style={localStyles.headerContainer}>
-                <Text style={[localStyles.headerText, { color: theme.text }]}>
-                    commUITy
-                </Text>
-            </View>
-
             {/* Filter Pills - Expensify style horizontal list */}
             <View
                 style={[
@@ -265,6 +258,14 @@ export default function HomeScreen() {
                         icon: "support",
                         onPress: () => {
                             navigateWithUnwind("/create-request")
+                        },
+                    },
+                    {
+                        key: "set-location",
+                        label: "Add / Manage Location",
+                        icon: "map",
+                        onPress: () => {
+                            navigateWithUnwind("/create-location")
                         },
                     },
                     {

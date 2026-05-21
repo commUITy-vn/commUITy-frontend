@@ -1,4 +1,4 @@
-import { View, Text, FlatList, Image, Pressable, StyleSheet, Modal, TextInput } from 'react-native';
+import { View, Text, FlatList, Image, Pressable, StyleSheet, Modal, ActivityIndicator, Platform, ScrollView } from 'react-native';
 import { useState } from 'react';
 import { useTheme } from '@/hooks/useTheme';
 import { useThemeStyles } from '@/hooks/useThemeStyles';
@@ -6,6 +6,8 @@ import { useRouter } from 'expo-router';
 import MaterialIcons from '@expo/vector-icons/MaterialIcons';
 import * as Haptics from 'expo-haptics';
 import { BorderRadius, Spacing } from '@/constants/theme';
+import { usePosts, useCreatePost, usePostComments, useCreatePostComment } from '@/features/community/hooks/usePosts';
+import { TextInput as TextInputUI } from '@/components/ui';
 
 interface Post {
   id: string;
@@ -77,6 +79,58 @@ const DUMMY_POSTS: Post[] = [
   },
 ];
 
+function getRelativeTime(dateString: string): string {
+  if (!dateString) return 'Just now';
+  if (dateString.includes('ago') || dateString.toLowerCase() === 'just now') {
+    return dateString;
+  }
+  try {
+    let clean = dateString;
+    // Normalize fractional seconds (e.g. .85436 -> .854)
+    clean = clean.replace(/(\.\d{3})\d+/, '$1');
+    // Ensure UTC Z if no timezone is specified and it has a 'T'
+    if (clean.includes('T') && !clean.endsWith('Z') && !clean.match(/[+-]\d{2}:?\d{2}$/)) {
+      clean = clean + 'Z';
+    }
+    const date = new Date(clean);
+    if (isNaN(date.getTime())) return dateString;
+    const now = new Date();
+    const diffMs = now.getTime() - date.getTime();
+    
+    // Handle potential clock drift between server and client
+    const diffSecs = Math.max(0, Math.floor(diffMs / 1000));
+    const diffMins = Math.floor(diffSecs / 60);
+    const diffHours = Math.floor(diffMins / 60);
+    const diffDays = Math.floor(diffHours / 24);
+
+    if (diffSecs < 60) {
+      return diffSecs <= 5 ? 'Just now' : `${diffSecs} seconds ago`;
+    }
+    if (diffMins < 60) {
+      return `${diffMins} minute${diffMins > 1 ? 's' : ''} ago`;
+    }
+    if (diffHours < 24) {
+      return `${diffHours} hour${diffHours > 1 ? 's' : ''} ago`;
+    }
+    if (diffDays < 7) {
+      return `${diffDays} day${diffDays > 1 ? 's' : ''} ago`;
+    }
+    return date.toLocaleDateString();
+  } catch (error) {
+    return dateString;
+  }
+}
+
+const DUMMY_COMMENTS: Record<string, any[]> = {
+  '1': [
+    { id: 'c1', authorName: 'Tran Thi B', avatar: 'https://i.pravatar.cc/150?img=2', content: 'Great job! Wish I could have joined.', timestamp: '1 hour ago' },
+    { id: 'c2', authorName: 'Le Van C', avatar: 'https://i.pravatar.cc/150?img=3', content: 'Incredible work, Nguyen Van A!', timestamp: '30 mins ago' },
+  ],
+  '2': [
+    { id: 'c3', authorName: 'Nguyen Van A', avatar: 'https://i.pravatar.cc/150?img=1', content: 'I am down to manage the water stations!', timestamp: '4 hours ago' },
+  ],
+};
+
 const PostCard = ({ post }: { post: Post }) => {
   const theme = useTheme();
   const themeStyles = useThemeStyles();
@@ -85,6 +139,23 @@ const PostCard = ({ post }: { post: Post }) => {
   const [likeCount, setLikeCount] = useState(post.likes);
   const [showComments, setShowComments] = useState(false);
   const [commentText, setCommentText] = useState('');
+
+  const { data: serverComments } = usePostComments(post.id);
+  const { mutateAsync: addServerComment } = useCreatePostComment();
+  const [localComments, setLocalComments] = useState<any[]>(DUMMY_COMMENTS[post.id] || []);
+
+  const commentsList = [
+    ...localComments,
+    ...(serverComments && Array.isArray(serverComments)
+      ? serverComments.map((c: any) => ({
+          id: c.id || String(Math.random()),
+          authorName: c.author || c.authorName || c.userName || 'User',
+          avatar: c.avatar || c.authorAvatarUrl || 'https://i.pravatar.cc/150',
+          content: c.content,
+          timestamp: getRelativeTime(c.timestamp || c.createdAt || 'Just now'),
+        }))
+      : []),
+  ];
 
   const handleLike = async () => {
     await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
@@ -95,6 +166,41 @@ const PostCard = ({ post }: { post: Post }) => {
   const handleComment = async () => {
     await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     setShowComments(true);
+  };
+
+  const handleSendComment = async () => {
+    if (!commentText.trim()) return;
+    await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    const content = commentText.trim();
+    setCommentText('');
+
+    try {
+      if (['1', '2', '3', '4', '5'].includes(post.id)) {
+        setLocalComments(prev => [
+          ...prev,
+          {
+            id: String(Date.now()),
+            authorName: 'Me',
+            avatar: 'https://i.pravatar.cc/150?img=8',
+            content,
+            timestamp: 'Just now',
+          },
+        ]);
+      } else {
+        await addServerComment({ postId: post.id, content });
+      }
+    } catch (error) {
+      setLocalComments(prev => [
+        ...prev,
+        {
+          id: String(Date.now()),
+          authorName: 'Me',
+          avatar: 'https://i.pravatar.cc/150?img=8',
+          content,
+          timestamp: 'Just now',
+        },
+      ]);
+    }
   };
 
   return (
@@ -153,7 +259,7 @@ const PostCard = ({ post }: { post: Post }) => {
             onPress={handleComment}
           >
             <MaterialIcons name="chat-bubble-outline" size={20} color={theme.icon} />
-            <Text style={[styles.actionText, { color: theme.textSupporting }]}>{post.comments}</Text>
+            <Text style={[styles.actionText, { color: theme.textSupporting }]}>{post.comments + localComments.length}</Text>
           </Pressable>
         </View>
       </View>
@@ -173,27 +279,66 @@ const PostCard = ({ post }: { post: Post }) => {
             <Text style={[styles.modalTitle, { color: theme.text }]}>Comments</Text>
             <View style={{ width: 24 }} />
           </View>
-          <View style={{ flex: 1, padding: Spacing.base, justifyContent: 'center', alignItems: 'center' }}>
-            <MaterialIcons name="chat-bubble-outline" size={48} color={theme.textSupporting} />
-            <Text style={{ color: theme.textSupporting, fontSize: 16, marginTop: 12, textAlign: 'center' }}>
-              Comments functionality coming soon!
-            </Text>
-          </View>
-          <View style={[styles.modalInputBar, { borderTopColor: theme.border, backgroundColor: theme.appBG }]}>
-            <TextInput
-              style={[styles.modalInput, { backgroundColor: theme.highlightBG, color: theme.text, borderColor: theme.border }]}
-              placeholder="Add a comment..."
-              placeholderTextColor={theme.placeholderText}
-              value={commentText}
-              onChangeText={setCommentText}
-            />
-            <Pressable
-              onPress={async () => {
-                if (commentText.trim()) {
-                  await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                  setCommentText('');
-                }
+          
+          <ScrollView 
+            style={{ flex: 1, padding: Spacing.base }}
+            contentContainerStyle={{ gap: 16, paddingBottom: 32 }}
+          >
+            {commentsList.length === 0 ? (
+              <View style={{ flex: 1, paddingVertical: 40, justifyContent: 'center', alignItems: 'center' }}>
+                <MaterialIcons name="chat-bubble-outline" size={48} color={theme.textSupporting} />
+                <Text style={{ color: theme.textSupporting, fontSize: 16, marginTop: 12, textAlign: 'center' }}>
+                  No comments yet. Start the conversation!
+                </Text>
+              </View>
+            ) : (
+              commentsList.map((item) => (
+                <View key={item.id} style={{ flexDirection: 'row', gap: 12 }}>
+                  <Image source={{ uri: item.avatar }} style={{ width: 36, height: 36, borderRadius: 18 }} />
+                  <View style={{ flex: 1, backgroundColor: theme.highlightBG, padding: 12, borderRadius: 12, borderWidth: 1, borderColor: theme.border }}>
+                    <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
+                      <Text style={{ fontWeight: '600', color: theme.text, fontSize: 14 }}>{item.authorName}</Text>
+                      <Text style={{ fontSize: 11, color: theme.textSupporting }}>{item.timestamp}</Text>
+                    </View>
+                    <Text style={{ fontSize: 14, color: theme.text, lineHeight: 20 }}>{item.content}</Text>
+                  </View>
+                </View>
+              ))
+            )}
+          </ScrollView>
+
+          <View style={[styles.modalInputBar, { borderTopColor: theme.border, backgroundColor: theme.appBG, paddingBottom: Platform.OS === 'ios' ? 24 : 12 }]}>
+            <View
+              style={{
+                flex: 1,
+                flexDirection: 'row',
+                alignItems: 'center',
+                borderRadius: 20,
+                borderWidth: 1,
+                borderColor: theme.border,
+                backgroundColor: theme.highlightBG,
+                paddingHorizontal: 12,
+                height: 40,
               }}
+            >
+              <TextInputUI
+                placeholder="Add a comment..."
+                placeholderTextColor={theme.placeholderText}
+                value={commentText}
+                onChangeText={setCommentText}
+                disableFloatingLabel
+                borderless
+                height={40}
+                containerStyle={{ flex: 1, marginBottom: 0 }}
+                style={{
+                  fontSize: 14,
+                  paddingTop: 0,
+                  paddingBottom: 0,
+                }}
+              />
+            </View>
+            <Pressable
+              onPress={handleSendComment}
               style={{ padding: 8 }}
             >
               <MaterialIcons name="send" size={24} color={commentText.trim() ? theme.primary : theme.textSupporting} />
@@ -205,20 +350,21 @@ const PostCard = ({ post }: { post: Post }) => {
   );
 };
 
-import { usePosts } from '@/features/community/hooks/usePosts';
-import { ActivityIndicator } from 'react-native';
-
 export default function ExploreScreen() {
   const theme = useTheme();
   const { data: posts, isLoading } = usePosts();
+  const { mutateAsync: createPost, isPending: isCreating } = useCreatePost();
+  
+  const [showCreatePost, setShowCreatePost] = useState(false);
+  const [newPostContent, setNewPostContent] = useState('');
 
   // Temporary adapter if backend data is not perfectly matching Post type
   const displayPosts = posts && Array.isArray(posts) && posts.length > 0 
     ? posts.map((p: any) => ({
         id: p.id || String(Math.random()),
-        author: p.author || p.userName || 'Unknown User',
-        avatar: p.avatar || p.userAvatar || 'https://i.pravatar.cc/150',
-        timestamp: p.timestamp || p.createdAt || 'Just now',
+        author: p.author || p.authorName || p.userName || 'Unknown User',
+        avatar: p.avatar || p.authorAvatarUrl || p.userAvatar || 'https://i.pravatar.cc/150',
+        timestamp: getRelativeTime(p.timestamp || p.createdAt || 'Just now'),
         content: p.content || '',
         tags: p.tags || [],
         likes: p.likes || p.reactionsCount || 0,
@@ -227,8 +373,59 @@ export default function ExploreScreen() {
       }))
     : DUMMY_POSTS;
 
+  const handleCreatePost = async () => {
+    if (!newPostContent.trim()) return;
+    await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    try {
+      await createPost({
+        content: newPostContent,
+        visibility: 'PUBLIC',
+      });
+      setNewPostContent('');
+      setShowCreatePost(false);
+      await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    } catch (err) {
+      console.error('Failed to create post:', err);
+    }
+  };
+
   return (
     <View style={[styles.container, { backgroundColor: theme.appBG }]}>
+      {/* Sleek Header */}
+      <View
+        style={{
+          flexDirection: 'row',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          paddingHorizontal: 16,
+          paddingTop: 16,
+          paddingBottom: 12,
+          borderBottomWidth: StyleSheet.hairlineWidth,
+          borderBottomColor: theme.border,
+          backgroundColor: theme.appBG,
+        }}
+      >
+        <Text style={{ color: theme.text, fontSize: 28, fontWeight: '700' }}>
+          Explore
+        </Text>
+        <Pressable
+          onPress={async () => {
+            await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+            setShowCreatePost(true);
+          }}
+          style={({ pressed }) => [
+            {
+              padding: 8,
+              borderRadius: 20,
+              backgroundColor: theme.highlightBG,
+            },
+            pressed && { opacity: 0.7 },
+          ]}
+        >
+          <MaterialIcons name="add" size={24} color={theme.primary} />
+        </Pressable>
+      </View>
+
       {isLoading ? (
         <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
           <ActivityIndicator size="large" color={theme.primary} />
@@ -242,6 +439,76 @@ export default function ExploreScreen() {
           showsVerticalScrollIndicator={false}
         />
       )}
+
+      {/* Create Post Modal */}
+      <Modal
+        visible={showCreatePost}
+        animationType="slide"
+        presentationStyle="pageSheet"
+        onRequestClose={() => setShowCreatePost(false)}
+      >
+        <View style={{ flex: 1, backgroundColor: theme.appBG }}>
+          <View
+            style={{
+              flexDirection: 'row',
+              justifyContent: 'space-between',
+              alignItems: 'center',
+              paddingHorizontal: 16,
+              paddingVertical: 14,
+              borderBottomWidth: 1,
+              borderBottomColor: theme.border,
+            }}
+          >
+            <Pressable onPress={() => setShowCreatePost(false)}>
+              <MaterialIcons name="close" size={24} color={theme.text} />
+            </Pressable>
+            <Text
+              style={{
+                fontSize: 18,
+                fontWeight: '600',
+                color: theme.text,
+              }}
+            >
+              Create Post
+            </Text>
+            <Pressable
+              onPress={handleCreatePost}
+              disabled={isCreating || !newPostContent.trim()}
+              style={({ pressed }) => [
+                {
+                  opacity: (isCreating || !newPostContent.trim()) ? 0.5 : 1,
+                },
+                pressed && { opacity: 0.7 },
+              ]}
+            >
+              <Text
+                style={{
+                  color: theme.primary,
+                  fontSize: 16,
+                  fontWeight: '600',
+                }}
+              >
+                Post
+              </Text>
+            </Pressable>
+          </View>
+
+          <View style={{ padding: 20, gap: 16 }}>
+            <TextInputUI
+              label="Share something with the community..."
+              placeholder="What is on your mind?"
+              value={newPostContent}
+              onChangeText={setNewPostContent}
+              multiline
+              height={120}
+              style={{
+                fontSize: 16,
+                color: theme.text,
+              }}
+            />
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 }

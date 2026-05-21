@@ -6,8 +6,9 @@ import {
     FlatList,
     TextInput,
     StyleSheet,
-    Alert,
+    Modal,
 } from "react-native"
+import { TextInput as TextInputUI } from "@/components/ui"
 import { useRouter, useLocalSearchParams } from "expo-router"
 import { MaterialIcons } from "@expo/vector-icons"
 import * as Haptics from "expo-haptics"
@@ -46,15 +47,18 @@ export default function CategoryPickerScreen() {
         params.selected || null,
     )
     const [searchQuery, setSearchQuery] = useState("")
+    const [localCategories, setLocalCategories] = useState<string[]>(categories)
+    const [isAddModalVisible, setIsAddModalVisible] = useState(false)
+    const [newCategoryName, setNewCategoryName] = useState("")
 
     // Filter categories based on search
     const filteredCategories = useMemo(() => {
-        if (!searchQuery.trim()) return categories
+        if (!searchQuery.trim()) return localCategories
         const query = searchQuery.toLowerCase()
-        return categories.filter((cat) =>
+        return localCategories.filter((cat) =>
             (categoryLabels[cat] || cat).toLowerCase().includes(query),
         )
-    }, [categories, searchQuery, categoryLabels])
+    }, [localCategories, searchQuery, categoryLabels])
 
     const handleCategorySelect = async (category: string) => {
         await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium)
@@ -71,16 +75,22 @@ export default function CategoryPickerScreen() {
     }
 
     const handleAddCategory = () => {
-        Alert.alert("Add Category", "Enter a new category name:", [
-            { text: "Cancel", style: "cancel" },
-            {
-                text: "Add",
-                onPress: (text) => {
-                    // In a real app, this would call an API
-                    console.log("New category:", text)
-                },
-            },
-        ])
+        setIsAddModalVisible(true)
+    }
+
+    const handleConfirmAddCategory = async () => {
+        if (!newCategoryName.trim()) return
+        await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light)
+        const name = newCategoryName.trim()
+        const newCatVal = name.toUpperCase().replace(/\s+/g, '_')
+        
+        // Add to labels dictionary dynamically
+        categoryLabels[newCatVal] = name
+        
+        setLocalCategories(prev => [newCatVal, ...prev])
+        setIsAddModalVisible(false)
+        setNewCategoryName("")
+        handleCategorySelect(newCatVal)
     }
 
     const renderCategoryItem = ({ item }: { item: string }) => {
@@ -134,7 +144,7 @@ export default function CategoryPickerScreen() {
             <Text
                 style={[localStyles.emptyText, { color: theme.textSupporting }]}
             >
-                No categories found for "{searchQuery}"
+                {"No categories found for \""}{searchQuery}{"\""}
             </Text>
         </View>
     )
@@ -244,6 +254,93 @@ export default function CategoryPickerScreen() {
                 ListEmptyComponent={ListEmptyComponent}
                 keyboardShouldPersistTaps="handled"
             />
+
+            {/* Add Category Modal */}
+            <Modal
+                visible={isAddModalVisible}
+                transparent
+                animationType="fade"
+                onRequestClose={() => setIsAddModalVisible(false)}
+            >
+                <Pressable 
+                    style={{
+                        flex: 1,
+                        backgroundColor: 'rgba(0, 0, 0, 0.6)',
+                        justifyContent: 'center',
+                        alignItems: 'center',
+                        padding: 24,
+                    }} 
+                    onPress={() => setIsAddModalVisible(false)}
+                >
+                    <Pressable
+                        style={{
+                            width: '100%',
+                            maxWidth: 320,
+                            borderRadius: 12,
+                            borderWidth: 1,
+                            borderColor: theme.border,
+                            backgroundColor: theme.componentBG,
+                            padding: 20,
+                            shadowColor: '#000',
+                            shadowOffset: { width: 0, height: 4 },
+                            shadowOpacity: 0.2,
+                            shadowRadius: 8,
+                            elevation: 5,
+                        }}
+                        onPress={(e) => e.stopPropagation()}
+                    >
+                        <Text style={{ fontSize: 18, fontWeight: '700', marginBottom: 8, textAlign: 'center', color: theme.text }}>
+                            Add Category
+                        </Text>
+                        <Text style={{ fontSize: 14, lineHeight: 20, textAlign: 'center', marginBottom: 16, color: theme.textSupporting }}>
+                            Enter a new category name:
+                        </Text>
+
+                        <TextInputUI
+                            label="Category Name"
+                            value={newCategoryName}
+                            onChangeText={setNewCategoryName}
+                            containerStyle={{ marginBottom: 20 }}
+                        />
+                        
+                        <View style={{ flexDirection: 'row', gap: 10 }}>
+                            <Pressable
+                                onPress={handleConfirmAddCategory}
+                                style={{
+                                    flex: 1,
+                                    height: 44,
+                                    borderRadius: 8,
+                                    backgroundColor: theme.primary,
+                                    justifyContent: 'center',
+                                    alignItems: 'center',
+                                }}
+                            >
+                                <Text style={{ fontSize: 14, fontWeight: '600', color: '#fff' }}>Add</Text>
+                            </Pressable>
+
+                            <Pressable
+                                onPress={() => {
+                                    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light)
+                                    setIsAddModalVisible(false)
+                                    setNewCategoryName("")
+                                }}
+                                style={{
+                                    flex: 1,
+                                    height: 44,
+                                    borderRadius: 8,
+                                    borderWidth: 1,
+                                    borderColor: theme.border,
+                                    backgroundColor: theme.highlightBG,
+                                    justifyContent: 'center',
+                                    alignItems: 'center',
+                                }}
+                            >
+                                <Text style={{ fontSize: 14, fontWeight: '600', color: theme.text }}>Cancel</Text>
+                            </Pressable>
+                        </View>
+                    </Pressable>
+                </Pressable>
+            </Modal>
         </View>
     )
 }

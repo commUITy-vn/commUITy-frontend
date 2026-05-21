@@ -16,12 +16,8 @@ export function ThemedText({
   ...rest
 }: ThemedTextProps) {
   const theme = useTheme();
-  let color;
-  if (type === 'link') {
-    color = theme.link;
-  } else {
-    color = useThemeColor({ light: lightColor, dark: darkColor }, 'text');
-  }
+  const themeColor = useThemeColor({ light: lightColor, dark: darkColor }, 'text');
+  const color = type === 'link' ? theme.link : themeColor;
 
   return (
     <Text

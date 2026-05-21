@@ -16,10 +16,9 @@ export default function CreateRequestLayout() {
                     android: "slide_from_right",
                     default: "slide_from_right",
                 }),
-                animationDuration: 250,
                 animationTypeForReplace: "pop",
                 contentStyle: { backgroundColor: theme.appBG },
-            }}
+            } as any}
         >
             <Stack.Screen name="index" options={forcedAnimation} />
             <Stack.Screen name="details" options={forcedAnimation} />

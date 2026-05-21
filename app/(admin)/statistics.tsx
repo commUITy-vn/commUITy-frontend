@@ -1,7 +1,6 @@
 import React from 'react';
 import { View, Text, ScrollView, StyleSheet } from 'react-native';
 import { useTheme } from '@/hooks/useTheme';
-import { useThemeStyles } from '@/hooks/useThemeStyles';
 
 // Dummy data
 const dummyStats = {
@@ -22,25 +21,24 @@ const lineData = Array.from({ length: 10 }, () => Math.floor(Math.random() * 80)
 
 export default function AdminStatistics() {
   const theme = useTheme();
-  const styles = useThemeStyles();
 
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.contentContainer}>
       {/* Top Row Summary Cards */}
       <View style={styles.row}>
-        <View style={[styles.card, { backgroundColor: theme.cardBackground }]}>
+        <View style={[styles.card, { backgroundColor: theme.componentBG || theme.highlightBG }]}>
           <Text style={[styles.cardTitle, { color: theme.text }]}>{'Total Requests'}</Text>
           <Text style={[styles.cardValue, { color: theme.text }]}>{dummyStats.totalRequests}</Text>
         </View>
-        <View style={[styles.card, { backgroundColor: theme.cardBackground }]}>
+        <View style={[styles.card, { backgroundColor: theme.componentBG || theme.highlightBG }]}>
           <Text style={[styles.cardTitle, { color: theme.text }]}>{'Completed Requests'}</Text>
           <Text style={[styles.cardValue, { color: theme.text }]}>{dummyStats.completedRequests}</Text>
         </View>
-        <View style={[styles.card, { backgroundColor: theme.cardBackground }]}>
+        <View style={[styles.card, { backgroundColor: theme.componentBG || theme.highlightBG }]}>
           <Text style={[styles.cardTitle, { color: theme.text }]}>{'Total Donations'}</Text>
           <Text style={[styles.cardValue, { color: theme.text }]}>${dummyStats.totalDonations.toLocaleString()}</Text>
         </View>
-        <View style={[styles.card, { backgroundColor: theme.cardBackground }]}>
+        <View style={[styles.card, { backgroundColor: theme.componentBG || theme.highlightBG }]}>
           <Text style={[styles.cardTitle, { color: theme.text }]}>{'Active Volunteers'}</Text>
           <Text style={[styles.cardValue, { color: theme.text }]}>{dummyStats.activeVolunteers}</Text>
         </View>

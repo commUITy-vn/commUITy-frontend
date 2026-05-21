@@ -1,5 +1,6 @@
 import { api } from '@/lib/api-client';
-import type { SupportNeedResponse, CreateSupportNeedRequest } from './create-support-need';
+import type { CreateSupportNeedRequest } from './create-support-need';
+import type { SupportNeedResponse } from './get-support-needs';
 
 export const updateSupportNeed = (
   needId: string,

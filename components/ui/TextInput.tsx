@@ -32,17 +32,21 @@ type TextInputProps = RNTextInput['props'] & {
   label?: string;
   errorText?: string;
   containerStyle?: any;
+  disableFloatingLabel?: boolean;
+  borderless?: boolean;
+  height?: number;
 };
 
 const AnimatedText = createAnimatedComponent(Text);
 const AnimatedView = createAnimatedComponent(View);
 
-const TextInput = React.forwardRef<RNTextInput, TextInputProps>(
-  ({label, errorText, containerStyle, style, onFocus, onBlur, onChangeText, value, ...props}, ref) => {
+export const TextInput = React.forwardRef<RNTextInput, TextInputProps>(
+  ({label, errorText, containerStyle, style, onFocus, onBlur, onChangeText, value, disableFloatingLabel, borderless, height, ...props}, ref) => {
     const styles = useThemeStyles();
     const theme = useTheme();
     const [isFocused, setIsFocused] = useState(false);
     const hasValue = value ? value.length > 0 : false;
+    const disableFloatingLabelProp = disableFloatingLabel ?? false;
 
     const labelScale = useSharedValue(1);
     const labelTranslateY = useSharedValue(0);
@@ -72,10 +76,11 @@ const TextInput = React.forwardRef<RNTextInput, TextInputProps>(
         : theme.bordersBold;
     }, [isFocused, theme.borderFocus, errorText, theme.borderFocus, theme.bordersBold, theme.danger]);
 
-    const showFloatingLabel = isFocused || hasValue || !!label;
+    const showFloatingLabel = disableFloatingLabelProp ? false : (isFocused || hasValue || !!label);
 
     const updateLabelState = useCallback(
       (focused: boolean, val: string | undefined) => {
+        if (disableFloatingLabelProp) return;
         const hasVal = val ? val.length > 0 : false;
         const shouldFloat = focused || hasVal;
 
@@ -89,7 +94,7 @@ const TextInput = React.forwardRef<RNTextInput, TextInputProps>(
           easing: Easing.inOut(Easing.ease),
         });
       },
-      [labelScale, labelTranslateY],
+      [labelScale, labelTranslateY, disableFloatingLabelProp],
     );
 
     const handleFocus = (e: any) => {
@@ -118,7 +123,8 @@ const TextInput = React.forwardRef<RNTextInput, TextInputProps>(
     }));
 
     const containerAnimatedStyle = useAnimatedStyle(() => ({
-      borderColor: borderColorShared.value,
+      borderColor: borderless ? 'transparent' : borderColorShared.value,
+      borderWidth: borderless ? 0 : 1,
     }));
 
     return (
@@ -128,14 +134,15 @@ const TextInput = React.forwardRef<RNTextInput, TextInputProps>(
             styles.inputContainer,
             containerAnimatedStyle,
             {
-              height: 56,
+              height: height ?? (props.multiline ? undefined : 56),
               justifyContent: 'center',
-              paddingHorizontal: 10,
+              paddingHorizontal: borderless ? 0 : 10,
               backgroundColor: 'transparent',
+              ...(borderless ? { padding: 0, paddingBottom: 0, borderRadius: 0 } : {}),
             }
           ]}
         >
-          {showFloatingLabel && (
+          {showFloatingLabel && label && (
             <AnimatedView
               style={[
                 styles.inputLabelContainer,
@@ -168,11 +175,12 @@ const TextInput = React.forwardRef<RNTextInput, TextInputProps>(
                 paddingLeft: INPUT_PADDING_LEFT,
                 paddingTop: showFloatingLabel ? INPUT_PADDING_TOP_FOCUSED : 0,
                 fontSize: 16,
-                ...(Platform.OS === 'web' ? {outlineStyle: 'none'} as any : {}),
+                ...(height ? { height } : {}),
+                ...(Platform.OS === 'web' ? { outline: 'none', outlineStyle: 'none', borderStyle: 'none', borderWidth: 0 } as any : {}),
               },
               style,
             ]}
-            placeholder={showFloatingLabel ? '' : props.placeholder}
+            placeholder={(!disableFloatingLabelProp && label) ? (isFocused ? props.placeholder : '') : props.placeholder}
             placeholderTextColor={theme.placeholderText}
             onFocus={handleFocus}
             onBlur={handleBlur}
@@ -187,6 +195,8 @@ const TextInput = React.forwardRef<RNTextInput, TextInputProps>(
     );
   },
 );
+
+TextInput.displayName = 'TextInput';
 
 export default Object.assign(TextInput, {
   displayName: 'TextInput',

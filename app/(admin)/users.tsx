@@ -12,9 +12,9 @@ const dummyUsers = [
 
 const UsersScreen = () => {
   const theme = useTheme();
-  const styles = useThemeStyles();
+  const styles = useGeneratedStyles();
 
-  const renderItem = ({ item }) => (
+  const renderItem = ({ item }: { item: any }) => (
     <View style={styles.userCard}>
       <Text style={styles.userName}>{item.name}</Text>
       <Text style={styles.userInfo}>Role: {item.role}</Text>
@@ -49,7 +49,7 @@ const UsersScreen = () => {
 export default UsersScreen;
 
 // Styles respecting UI guidelines
-const createStyles = (theme) =>
+const createStyles = (theme: any) =>
   StyleSheet.create({
     listContainer: {
       padding: 16,

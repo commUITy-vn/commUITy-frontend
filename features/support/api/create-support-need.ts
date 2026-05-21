@@ -2,7 +2,8 @@ import { api } from '@/lib/api-client';
 import type { SupportNeedResponse } from './get-support-needs';
 
 export interface CreateSupportNeedRequest {
-  itemName: string;
+  supportType: 'MONEY' | 'GOODS';
+  needName: string;
   unit: string;
   requiredQuantity: number;
 }

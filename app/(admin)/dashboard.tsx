@@ -6,7 +6,7 @@ import { useRouter } from 'expo-router';
 
 const Dashboard = () => {
   const theme = useTheme();
-  const styles = useThemeStyles();
+  const styles = useGeneratedStyles();
   const router = useRouter();
 
   const stats = [
@@ -54,7 +54,7 @@ const Dashboard = () => {
 export default Dashboard;
 
 // Styles using theme hooks and multiples of 4/8 for spacing
-const createStyles = (theme) =>
+const createStyles = (theme: any) =>
   StyleSheet.create({
     container: {
       flex: 1,

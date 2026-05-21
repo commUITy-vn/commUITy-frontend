@@ -1,9 +1,9 @@
 import React, { useState } from 'react';
-import { Modal, View, Text, TextInput, Pressable, StyleSheet } from 'react-native';
-import { Picker } from '@react-native-picker/picker';
+import { Modal, View, Text, Pressable, StyleSheet } from 'react-native';
 import { useTheme } from '@/hooks/useTheme';
 import { useThemeStyles } from '@/hooks/useThemeStyles';
 import { useSharedValue, useAnimatedStyle, withTiming, Easing, createAnimatedComponent } from 'react-native-reanimated';
+import { TextInput, CustomPicker } from '@/components/ui';
 
 const AnimatedText = createAnimatedComponent(Text);
 const AnimatedView = createAnimatedComponent(View);
@@ -26,20 +26,28 @@ export const CreateExpenseModal: React.FC<Props> = ({ visible, onClose }) => {
   const scaleValue = useSharedValue(0);
   const opacityValue = useSharedValue(0);
 
-  // Animate entrance when modal becomes visible
-  // Note: Using useEffect would cause issues, so we'll initialize with values
-  // In a real app with react-native-screens, this would be handled differently
-  // For now, we'll just set initial values and animate when visible
-  if (visible) {
-    scaleValue.value = withTiming(1, {
-      duration: 200,
-      easing: Easing.out(Easing.exp),
-    });
-    opacityValue.value = withTiming(1, {
-      duration: 200,
-      easing: Easing.out(Easing.exp),
-    });
-  }
+  React.useEffect(() => {
+    if (visible) {
+      scaleValue.value = withTiming(1, {
+        duration: 200,
+        easing: Easing.out(Easing.exp),
+      });
+      opacityValue.value = withTiming(1, {
+        duration: 200,
+        easing: Easing.out(Easing.exp),
+      });
+    } else {
+      scaleValue.value = 0;
+      opacityValue.value = 0;
+    }
+  }, [visible]);
+
+  const animatedStyle = useAnimatedStyle(() => {
+    return {
+      transform: [{ scale: scaleValue.value }],
+      opacity: opacityValue.value,
+    };
+  });
 
   const submitExpense = () => {
     // Dummy submit - in real app would call API
@@ -49,37 +57,48 @@ export const CreateExpenseModal: React.FC<Props> = ({ visible, onClose }) => {
 
   return (
     <Modal visible={visible} animationType="slide" transparent>
-      <View style={styles.modalOverlay}>
+      <View style={localStyles.modalOverlay}>
         <AnimatedView style={[
-                styles.modalContent,
-                { backgroundColor: '#fff', padding: 16 },
-                {
-                  transform: [{ scale: scaleValue.value }],
-                  opacity: opacityValue.value,
-                }
+                localStyles.modalContent,
+                { backgroundColor: theme.componentBG || theme.appBG, borderColor: theme.border, borderWidth: 1 },
+                animatedStyle
               ]}>
           <AnimatedText style={[
-                styles.text,
-                { fontSize: 18, marginBottom: 8 }
+                localStyles.title,
+                { color: theme.text }
               ]}>Record Expense</AnimatedText>
+          
           <TextInput
-            placeholder="Amount"
+            label="Amount"
+            placeholder="0.00"
             keyboardType="numeric"
             value={amount}
             onChangeText={setAmount}
-            style={[styles.input, { marginBottom: 8 }]}
+            containerStyle={{ marginBottom: 12 }}
           />
-          <Picker selectedValue={category} onValueChange={setCategory} style={{ marginBottom: 8 }}>
-            {categories.map((c) => (
-              <Picker.Item label={c} value={c} />
-            ))}
-          </Picker>
+          
+          <View style={{ marginBottom: 12 }}>
+            <Text style={{ fontSize: 13, fontWeight: '600', color: theme.textSupporting, marginBottom: 6, marginLeft: 4 }}>
+              Category
+            </Text>
+            <CustomPicker
+              selectedValue={category}
+              onValueChange={setCategory}
+              items={categories.map(c => ({ label: c, value: c }))}
+            />
+          </View>
+
           <TextInput
-            placeholder="Description"
+            label="Description"
+            placeholder="What was this expense for?"
             value={description}
             onChangeText={setDescription}
-            style={[styles.input, { marginBottom: 8 }]}
+            multiline
+            height={80}
+            containerStyle={{ marginBottom: 16 }}
+            style={{ textAlignVertical: 'top', paddingTop: 8 }}
           />
+
           <Pressable
             onPress={submitExpense}
             style={[styles.button, { backgroundColor: theme.primary, paddingVertical: 12, marginBottom: 8 }]}
@@ -94,3 +113,30 @@ export const CreateExpenseModal: React.FC<Props> = ({ visible, onClose }) => {
     </Modal>
   );
 };
+
+const localStyles = StyleSheet.create({
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.4)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 20,
+  },
+  modalContent: {
+    width: '100%',
+    maxWidth: 400,
+    borderRadius: 16,
+    padding: 20,
+    elevation: 5,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.15,
+    shadowRadius: 6,
+  },
+  title: {
+    fontSize: 20,
+    fontWeight: '700',
+    marginBottom: 16,
+    textAlign: 'center',
+  },
+});
