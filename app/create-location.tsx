@@ -61,7 +61,7 @@ export default function CreateLocationScreen() {
         <body>
             <div id="map"></div>
             <script>
-                var map = L.map('map', { zoomControl: false }).setView([${initialLat}, ${initialLng}], 15);
+                var map = L.map('map', { zoomControl: false, scrollWheelZoom: false }).setView([${initialLat}, ${initialLng}], 15);
                 L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
                     maxZoom: 19,
                     attribution: '&copy; <a href="https://openstreetmap.org/copyright">OSM</a>'
@@ -216,7 +216,12 @@ export default function CreateLocationScreen() {
 
     return (
         <KeyboardAvoidingView
-            style={{ flex: 1, backgroundColor: theme.appBG }}
+            style={{
+                flex: 1,
+                backgroundColor: theme.appBG,
+                height: (Platform.OS === "web" ? "100vh" : "100%") as any,
+                maxHeight: (Platform.OS === "web" ? "100vh" : undefined) as any,
+            }}
             behavior={Platform.OS === "ios" ? "padding" : undefined}
         >
             {/* Header */}

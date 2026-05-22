@@ -166,7 +166,16 @@ export default function WalletScreen() {
   };
 
   return (
-    <View style={[stylesGlobal.container, { backgroundColor: theme.appBG }]}>
+    <View
+      style={[
+        stylesGlobal.container,
+        {
+          backgroundColor: theme.appBG,
+          height: (Platform.OS === 'web' ? '100vh' : '100%') as any,
+          maxHeight: (Platform.OS === 'web' ? '100vh' : undefined) as any,
+        },
+      ]}
+    >
       {/* Premium Header */}
       <View style={[styles.header, { borderBottomColor: theme.border }]}>
         <Pressable

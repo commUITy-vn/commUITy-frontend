@@ -1,5 +1,5 @@
 import React from "react"
-import { View, Text, FlatList, Pressable, StyleSheet, ActivityIndicator } from "react-native"
+import { View, Text, FlatList, Pressable, StyleSheet, ActivityIndicator, Platform } from "react-native"
 import { useTheme } from "@/hooks/useTheme"
 import { useRouter } from "expo-router"
 import * as Haptics from "expo-haptics"
@@ -19,7 +19,16 @@ export default function CollaboratorDashboard() {
     }))
 
     return (
-        <View style={[styles.container, { backgroundColor: theme.appBG }]}>
+        <View
+            style={[
+                styles.container,
+                {
+                    backgroundColor: theme.appBG,
+                    height: (Platform.OS === "web" ? "100vh" : "100%") as any,
+                    maxHeight: (Platform.OS === "web" ? "100vh" : undefined) as any,
+                },
+            ]}
+        >
             {/* Header (Back chevron + title + Add Location button) */}
             <View
                 style={[

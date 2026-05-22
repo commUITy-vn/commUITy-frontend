@@ -8,11 +8,13 @@ import { useThemeStyles } from '@/hooks/useThemeStyles';
 import { TransactionList } from '@/features/finance/components/TransactionList';
 import { CreateExpenseModal } from '@/features/finance/components/CreateExpenseModal';
 import { useMyFunds } from '@/features/finance/hooks/useMyFunds';
+import { useAuthStore } from '@/features/auth/stores/useAuthStore';
 
 export const FinanceDashboard = () => {
   const theme = useTheme();
   const stylesGlobal = useThemeStyles();
   const router = useRouter();
+  const { user } = useAuthStore();
   const [modalVisible, setModalVisible] = useState(false);
 
   const { funds, isLoading, isError } = useMyFunds();
@@ -49,17 +51,17 @@ export const FinanceDashboard = () => {
         {/* Top Section / Live Balance card */}
         {isLoading ? (
           <View style={[styles.card, { backgroundColor: theme.primary, padding: 24, justifyContent: 'center', alignItems: 'center' }]}>
-            <ActivityIndicator color="#fff" />
+            <ActivityIndicator color={theme.textLight} />
           </View>
         ) : isError ? (
           <View style={[styles.card, { backgroundColor: theme.primary, padding: 24 }]}>
-            <Text style={[styles.cardTitle, { color: '#fff' }]}>Current Balance</Text>
-            <Text style={[styles.cardAmount, { color: '#fff', fontSize: 24 }]}>Failed to load balance</Text>
+            <Text style={[styles.cardTitle, { color: theme.textLight }]}>Current Balance</Text>
+            <Text style={[styles.cardAmount, { color: theme.textLight, fontSize: 24 }]}>Failed to load balance</Text>
           </View>
         ) : (
           <View style={[styles.card, { backgroundColor: theme.primary, padding: 16 }]}>
-            <Text style={[styles.cardTitle, { color: '#fff' }]}>Current Balance</Text>
-            <Text style={[styles.cardAmount, { color: '#fff', fontSize: 24 }]}>
+            <Text style={[styles.cardTitle, { color: theme.textLight }]}>Current Balance</Text>
+            <Text style={[styles.cardAmount, { color: theme.textLight, fontSize: 24 }]}>
               ₫ {totalBalance.toLocaleString()}
             </Text>
           </View>
@@ -81,12 +83,14 @@ export const FinanceDashboard = () => {
         </View>
 
         {/* Action Row */}
-        <Pressable
-          style={[styles.button, { backgroundColor: theme.primary, marginTop: 16, paddingVertical: 12 }]}
-          onPress={openModal}
-        >
-          <Text style={[styles.buttonText, { color: '#fff' }]}>Record Expense</Text>
-        </Pressable>
+        {(user?.role === 'ADMIN' || user?.role === 'COLLABORATOR') && (
+          <Pressable
+            style={[styles.button, { backgroundColor: theme.primary, marginTop: 16, paddingVertical: 12 }]}
+            onPress={openModal}
+          >
+            <Text style={[styles.buttonText, { color: theme.textLight }]}>Record Expense</Text>
+          </Pressable>
+        )}
 
         {/* Bottom Section */}
         <Text style={[styles.sectionTitle, { color: theme.text, marginTop: 24, marginBottom: 8 }]}>

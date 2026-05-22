@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { View, Text, FlatList, TouchableOpacity, StyleSheet, Pressable, ActivityIndicator } from 'react-native';
+import { View, Text, FlatList, TouchableOpacity, StyleSheet, Pressable, ActivityIndicator, Platform } from 'react-native';
 import { useRouter } from 'expo-router';
 import { MaterialIcons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
@@ -134,10 +134,16 @@ export default function VolunteerDashboardScreen() {
     : 100;
 
   return (
-    <View style={[
-      stylesGlobal.container,
-      { backgroundColor: theme.appBG },
-    ]}>
+    <View
+      style={[
+        stylesGlobal.container,
+        {
+          backgroundColor: theme.appBG,
+          height: (Platform.OS === 'web' ? '100vh' : '100%') as any,
+          maxHeight: (Platform.OS === 'web' ? '100vh' : undefined) as any,
+        },
+      ]}
+    >
       {/* Header (Back chevron + title) */}
       <View
         style={[

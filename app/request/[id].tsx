@@ -1,7 +1,8 @@
-import { View, Text, StyleSheet, ScrollView, ActivityIndicator } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, ActivityIndicator, Modal, TextInput as RNTextInput, Image, Platform } from 'react-native';
 import { useTheme } from '@/hooks/useTheme';
 import { useThemeStyles } from '@/hooks/useThemeStyles';
 import { ConfirmModal } from '@/components/ui';
+import TextInput from '@/components/ui/TextInput';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import * as Haptics from 'expo-haptics';
 import { Pressable } from 'react-native';
@@ -9,8 +10,19 @@ import { SupportItemProgress } from '@/features/support/components/SupportItemPr
 import { ContributeItemModal } from '@/features/support/components/ContributeItemModal';
 import { useSupportRequestById } from '@/features/support/hooks/useSupportRequestById';
 import { useSupportNeeds } from '@/features/support/hooks/useSupportNeeds';
-import { useState } from 'react';
+import { useState, useEffect, useRef } from 'react';
+import { api } from '@/lib/api-client';
 import { MaterialIcons } from '@expo/vector-icons';
+import { useAuthStore } from '@/features/auth/stores/useAuthStore';
+import { UserRole } from '@/features/auth/types';
+import {
+  VolunteerAssignment,
+  getMyAssignments,
+  applyToSupportRequest,
+  approveVolunteer,
+  rejectVolunteer,
+  getAssignmentsBySupportRequest,
+} from '@/features/support/api/volunteer-assignments';
 import {
   SupportStatus,
   UrgencyLevel,
@@ -103,6 +115,105 @@ export default function RequestDetailScreen() {
   const { data: request, isLoading: isRequestLoading, isError: isRequestError } = useSupportRequestById(id);
   const { needs, isLoading: isNeedsLoading, contribute, isContributing } = useSupportNeeds(id);
 
+  const { user } = useAuthStore();
+  const [myAssignments, setMyAssignments] = useState<VolunteerAssignment[]>([]);
+  const [requestAssignments, setRequestAssignments] = useState<VolunteerAssignment[]>([]);
+  const [isVolunteerLoading, setIsVolunteerLoading] = useState(false);
+  const [rejectionModalVisible, setRejectionModalVisible] = useState(false);
+  const [selectedApplicant, setSelectedApplicant] = useState<VolunteerAssignment | null>(null);
+  const [rejectionReason, setRejectionReason] = useState('');
+  const [rejectionError, setRejectionError] = useState('');
+
+  const loadAssignments = async () => {
+    if (!user) return;
+    setIsVolunteerLoading(true);
+    try {
+      if (user.role === UserRole.VOLUNTEER) {
+        const data = await getMyAssignments();
+        setMyAssignments(data);
+      } else if (
+        user.role === UserRole.ADMIN ||
+        user.role === UserRole.COLLABORATOR ||
+        request?.requesterId === user.id
+      ) {
+        const data = await getAssignmentsBySupportRequest(id);
+        setRequestAssignments(data);
+      }
+    } catch (err) {
+      console.error('Failed to load assignments:', err);
+    } finally {
+      setIsVolunteerLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    if (request && user) {
+      loadAssignments();
+    }
+  }, [request, user]);
+
+  const handleApplyToVolunteer = async () => {
+    setIsVolunteerLoading(true);
+    try {
+      await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      await applyToSupportRequest(id);
+      showAlert('Applied to Volunteer', 'Your application to volunteer has been submitted successfully.');
+      loadAssignments();
+    } catch (err: any) {
+      showAlert('Error', err?.message || 'Failed to submit application to volunteer.');
+    } finally {
+      setIsVolunteerLoading(false);
+    }
+  };
+
+  const handleApproveVolunteer = async (volunteerId: string) => {
+    try {
+      await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      const res = await approveVolunteer(id, volunteerId);
+      showAlert('Success', 'Volunteer approved successfully!');
+      
+      if (res.conversationId) {
+        requestAnimationFrame(() => {
+          router.push(`/messages/${res.conversationId}`);
+        });
+      } else {
+        loadAssignments();
+      }
+    } catch (err: any) {
+      showAlert('Error', err?.message || 'Failed to approve volunteer.');
+    }
+  };
+
+  const handleOpenRejectModal = (assignment: VolunteerAssignment) => {
+    setSelectedApplicant(assignment);
+    setRejectionReason('');
+    setRejectionError('');
+    setRejectionModalVisible(true);
+  };
+
+  const handleConfirmReject = async () => {
+    if (!selectedApplicant) return;
+    if (!rejectionReason.trim()) {
+      setRejectionError('Rejection reason is required');
+      return;
+    }
+    if (rejectionReason.trim().length > 200) {
+      setRejectionError('Rejection reason must not exceed 200 characters');
+      return;
+    }
+    try {
+      await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
+      await rejectVolunteer(id, selectedApplicant.volunteerId, rejectionReason.trim());
+      setRejectionModalVisible(false);
+      setSelectedApplicant(null);
+      setRejectionReason('');
+      showAlert('Success', 'Volunteer application has been rejected.');
+      loadAssignments();
+    } catch (err: any) {
+      setRejectionError(err?.message || 'Failed to reject volunteer.');
+    }
+  };
+
   const [selectedItem, setSelectedItem] = useState<SupportItem | null>(null);
   const [modalVisible, setModalVisible] = useState(false);
   const [alertModal, setAlertModal] = useState<{ visible: boolean; title: string; message: string }>({
@@ -122,6 +233,13 @@ export default function RequestDetailScreen() {
     neededQuantity: need.requiredQuantity,
     receivedQuantity: need.receivedQuantity,
   }));
+
+  const isOwner = user && request && request.requesterId === user.id;
+  const isStaff = user && (user.role === UserRole.ADMIN || user.role === UserRole.COLLABORATOR);
+  const myAssignment = myAssignments.find((a) => a.supportRequestId === id) || requestAssignments.find(a => a.volunteerId === user?.id);
+  const showApplicantsSection = (isOwner || isStaff) && requestAssignments.length > 0;
+  const showApplyToVolunteerButton = user?.role === UserRole.VOLUNTEER && !myAssignment && request && request.status === 'APPROVED';
+  const showHelpButton = !isOwner && mappedItems.length > 0 && request && (request.status === 'APPROVED' || request.status === 'IN_PROGRESS');
 
   const handleBack = async () => {
     await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
@@ -294,6 +412,133 @@ export default function RequestDetailScreen() {
             )}
           </View>
         </View>
+
+        {/* Volunteer status card (For Volunteers) */}
+        {user?.role === UserRole.VOLUNTEER && (() => {
+          if (!myAssignment) return null;
+          return (
+            <View style={[localStyles.card, { backgroundColor: theme.componentBG, borderColor: theme.border, marginTop: 16 }]}>
+              <Text style={[localStyles.sectionTitle, { color: theme.text, marginTop: 0 }]}>
+                Your Volunteer Application
+              </Text>
+              <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 12 }}>
+                <Text style={{ fontSize: 15, color: theme.textSupporting, marginRight: 8 }}>
+                  Status:
+                </Text>
+                <View style={[localStyles.badge, { backgroundColor: getStatusBg(myAssignment.status) }]}>
+                  <Text style={[localStyles.badgeText, { color: getStatusText(myAssignment.status) }]}>
+                    {myAssignment.status}
+                  </Text>
+                </View>
+              </View>
+              {myAssignment.rejectionReason ? (
+                <Text style={{ fontSize: 14, color: theme.danger || '#CC0000', fontStyle: 'italic', marginTop: 8 }}>
+                  Reason: {myAssignment.rejectionReason}
+                </Text>
+              ) : null}
+            </View>
+          );
+        })()}
+
+        {/* Volunteer Applicants Section (For Owner / Staff) */}
+        {showApplicantsSection && (
+          <View style={[localStyles.card, { backgroundColor: theme.componentBG, borderColor: theme.border, marginTop: 16 }]}>
+            <Text style={[localStyles.sectionTitle, { color: theme.text, marginTop: 0 }]}>
+              Volunteer Applicants ({requestAssignments.length})
+            </Text>
+            
+            {requestAssignments.length > 0 ? (
+              <View style={{ gap: 12, marginTop: 12 }}>
+                {requestAssignments.map((assignment) => (
+                  <View
+                    key={assignment.id}
+                    style={{
+                      padding: 14,
+                      borderRadius: 8,
+                      borderWidth: 1,
+                      borderColor: theme.border,
+                      backgroundColor: theme.appBG,
+                    }}
+                  >
+                    <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <Text style={{ fontSize: 16, fontWeight: '600', color: theme.text }}>
+                        {assignment.volunteerName}
+                      </Text>
+                      <View style={[localStyles.badge, { backgroundColor: getStatusBg(assignment.status) }]}>
+                        <Text style={[localStyles.badgeText, { color: getStatusText(assignment.status) }]}>
+                          {assignment.status}
+                        </Text>
+                      </View>
+                    </View>
+                    
+                    <View style={{ marginTop: 8, gap: 4 }}>
+                      {assignment.volunteerEmail ? (
+                        <Text style={{ fontSize: 13, color: theme.textSupporting }}>
+                          Email: {assignment.volunteerEmail}
+                        </Text>
+                      ) : null}
+                      {assignment.volunteerPhone ? (
+                        <Text style={{ fontSize: 13, color: theme.textSupporting }}>
+                          Phone: {assignment.volunteerPhone}
+                        </Text>
+                      ) : null}
+                      {assignment.rejectionReason ? (
+                        <Text style={{ fontSize: 13, color: theme.danger || '#CC0000', fontStyle: 'italic', marginTop: 4 }}>
+                          Reason: {assignment.rejectionReason}
+                        </Text>
+                      ) : null}
+                    </View>
+
+                    {assignment.status === 'PENDING' && (
+                      <View style={{ flexDirection: 'row', gap: 10, marginTop: 12 }}>
+                        <Pressable
+                          style={({ pressed }) => [
+                            {
+                              flex: 1,
+                              paddingVertical: 10,
+                              borderRadius: 6,
+                              backgroundColor: '#E5F6EE',
+                              borderWidth: 1,
+                              borderColor: '#008040',
+                              alignItems: 'center',
+                              opacity: pressed ? 0.8 : 1,
+                            }
+                          ]}
+                          onPress={() => handleApproveVolunteer(assignment.volunteerId)}
+                        >
+                          <Text style={{ fontSize: 14, fontWeight: '600', color: '#008040' }}>Approve</Text>
+                        </Pressable>
+                        
+                        <Pressable
+                          style={({ pressed }) => [
+                            {
+                              flex: 1,
+                              paddingVertical: 10,
+                              borderRadius: 6,
+                              backgroundColor: '#FFE5E5',
+                              borderWidth: 1,
+                              borderColor: '#CC0000',
+                              alignItems: 'center',
+                              opacity: pressed ? 0.8 : 1,
+                            }
+                          ]}
+                          onPress={() => handleOpenRejectModal(assignment)}
+                        >
+                          <Text style={{ fontSize: 14, fontWeight: '600', color: '#CC0000' }}>Reject</Text>
+                        </Pressable>
+                      </View>
+                    )}
+                  </View>
+                ))}
+              </View>
+            ) : (
+              <Text style={{ color: theme.textSupporting, fontStyle: 'italic', marginTop: 8 }}>
+                No volunteers have applied yet.
+              </Text>
+            )}
+          </View>
+        )}
+        
       </ScrollView>
 
       {/* Contribution Modal */}
@@ -304,7 +549,130 @@ export default function RequestDetailScreen() {
         onConfirm={handleConfirmContribution}
       />
 
-      {mappedItems.length > 0 && (
+      {/* Rejection Reason Modal */}
+      <Modal
+        visible={rejectionModalVisible}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setRejectionModalVisible(false)}
+      >
+        <View
+          style={{
+            flex: 1,
+            justifyContent: 'center',
+            alignItems: 'center',
+            backgroundColor: 'rgba(0,0,0,0.5)',
+            padding: 20,
+          }}
+        >
+          <View
+            style={{
+              width: '100%',
+              maxWidth: 400,
+              backgroundColor: theme.componentBG,
+              borderRadius: 12,
+              borderWidth: 1,
+              borderColor: theme.border,
+              padding: 20,
+              shadowColor: '#000',
+              shadowOffset: { width: 0, height: 4 },
+              shadowOpacity: 0.3,
+              shadowRadius: 8,
+              elevation: 8,
+            }}
+          >
+            <Text style={{ fontSize: 18, fontWeight: 'bold', color: theme.text, marginBottom: 12 }}>
+              Reject Volunteer Application
+            </Text>
+            
+            <Text style={{ fontSize: 14, color: theme.textSupporting, marginBottom: 16 }}>
+              {"Please provide a reason for rejecting " + selectedApplicant?.volunteerName + "'s application."}
+            </Text>
+            
+            <TextInput
+              label="Rejection Reason"
+              value={rejectionReason}
+              onChangeText={(text) => {
+                setRejectionReason(text);
+                if (text.trim()) setRejectionError('');
+              }}
+              errorText={rejectionError}
+              multiline
+              numberOfLines={3}
+              placeholder="e.g. Volunteer slots are already filled."
+              height={100}
+            />
+            
+            <View style={{ flexDirection: 'row', gap: 12, marginTop: 8 }}>
+              <Pressable
+                style={({ pressed }) => [
+                  {
+                    flex: 1,
+                    paddingVertical: 12,
+                    borderRadius: 8,
+                    borderWidth: 1,
+                    borderColor: theme.border,
+                    alignItems: 'center',
+                    backgroundColor: theme.highlightBG,
+                    opacity: pressed ? 0.8 : 1,
+                  }
+                ]}
+                onPress={() => {
+                  setRejectionModalVisible(false);
+                  setSelectedApplicant(null);
+                  setRejectionReason('');
+                  setRejectionError('');
+                }}
+              >
+                <Text style={{ fontSize: 15, fontWeight: '600', color: theme.textSupporting }}>Cancel</Text>
+              </Pressable>
+              
+              <Pressable
+                style={({ pressed }) => [
+                  {
+                    flex: 1,
+                    paddingVertical: 12,
+                    borderRadius: 8,
+                    backgroundColor: theme.danger || '#CC0000',
+                    alignItems: 'center',
+                    opacity: pressed ? 0.8 : 1,
+                  }
+                ]}
+                onPress={handleConfirmReject}
+              >
+                <Text style={{ fontSize: 15, fontWeight: '600', color: '#FFFFFF' }}>Submit</Text>
+              </Pressable>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      {showApplyToVolunteerButton && (
+        <View style={localStyles.footer}>
+          <Pressable
+            style={({ pressed }) => [
+              localStyles.helpButton,
+              {
+                backgroundColor: theme.primary,
+                opacity: pressed || isVolunteerLoading ? 0.9 : 1,
+                shadowColor: theme.inverse,
+              },
+            ]}
+            onPress={handleApplyToVolunteer}
+            disabled={isVolunteerLoading}
+          >
+            {isVolunteerLoading ? (
+              <ActivityIndicator color={theme.textLight} />
+            ) : (
+              <Text style={[localStyles.helpButtonText, { color: theme.textLight }]}>
+                Apply to Volunteer
+              </Text>
+            )}
+          </Pressable>
+        </View>
+      )}
+
+      {showHelpButton && (
         <View style={localStyles.footer}>
           <Pressable
             style={({ pressed }) => [

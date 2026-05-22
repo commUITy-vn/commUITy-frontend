@@ -7,7 +7,11 @@ export default function RegisterScreen() {
     const theme = useTheme();
 
     const handleNavigateToLogin = () => {
-        router.push('/(auth)/login');
+        if (router.canGoBack()) {
+            router.back();
+        } else {
+            router.replace('/(auth)/login');
+        }
     };
 
     return (

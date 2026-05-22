@@ -92,24 +92,11 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   register: async (data: RegisterRequest) => {
     try {
       set({ isLoading: true, error: null });
-      const response = await registerApi(data);
-
-      await storage.setItemAsync(STORAGE_KEY_ACCESS_TOKEN, response.accessToken);
-      await storage.setItemAsync(STORAGE_KEY_REFRESH_TOKEN, response.refreshToken);
-
-      // Fetch real user data from /me endpoint
-      const user = await getUserProfile();
-      await storage.setItemAsync(STORAGE_KEY_USER, JSON.stringify(user));
-
-      set({
-        isAuthenticated: true,
-        user,
-        isLoading: false,
-        error: null,
-      });
+      await registerApi(data);
+      set({ isLoading: false, error: null });
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Registration failed';
-      set({ isLoading: false, error: message, isAuthenticated: false });
+      set({ isLoading: false, error: message });
       throw error;
     }
   },

@@ -7,10 +7,13 @@ import MaterialIcons from '@expo/vector-icons/MaterialIcons';
 import * as Haptics from 'expo-haptics';
 import { BorderRadius, Spacing } from '@/constants/theme';
 import { usePosts, useCreatePost, usePostComments, useCreatePostComment } from '@/features/community/hooks/usePosts';
-import { TextInput as TextInputUI } from '@/components/ui';
+import { TextInput as TextInputUI, BottomSheet, Button } from '@/components/ui';
+import { getUser } from '@/features/users/api/get-user';
+import { createPrivateConversation } from '@/features/communication/api/create-private-conversation';
 
 interface Post {
   id: string;
+  authorId?: string;
   author: string;
   avatar: string;
   timestamp: string;
@@ -24,6 +27,7 @@ interface Post {
 const DUMMY_POSTS: Post[] = [
   {
     id: '1',
+    authorId: '11111111-1111-1111-1111-111111111111',
     author: 'Nguyen Van A',
     avatar: 'https://i.pravatar.cc/150?img=1',
     timestamp: '2 hours ago',
@@ -35,6 +39,7 @@ const DUMMY_POSTS: Post[] = [
   },
   {
     id: '2',
+    authorId: '22222222-2222-2222-2222-222222222222',
     author: 'Tran Thi B',
     avatar: 'https://i.pravatar.cc/150?img=2',
     timestamp: '5 hours ago',
@@ -46,6 +51,7 @@ const DUMMY_POSTS: Post[] = [
   },
   {
     id: '3',
+    authorId: '33333333-3333-3333-3333-333333333333',
     author: 'Le Van C',
     avatar: 'https://i.pravatar.cc/150?img=3',
     timestamp: '1 day ago',
@@ -57,6 +63,7 @@ const DUMMY_POSTS: Post[] = [
   },
   {
     id: '4',
+    authorId: '44444444-4444-4444-4444-444444444444',
     author: 'Pham Thi D',
     avatar: 'https://i.pravatar.cc/150?img=4',
     timestamp: '2 days ago',
@@ -68,6 +75,7 @@ const DUMMY_POSTS: Post[] = [
   },
   {
     id: '5',
+    authorId: '55555555-5555-5555-5555-555555555555',
     author: 'Hoang Van E',
     avatar: 'https://i.pravatar.cc/150?img=5',
     timestamp: '3 days ago',
@@ -131,7 +139,7 @@ const DUMMY_COMMENTS: Record<string, any[]> = {
   ],
 };
 
-const PostCard = ({ post }: { post: Post }) => {
+const PostCard = ({ post, onAuthorPress }: { post: Post; onAuthorPress?: (authorId: string) => void }) => {
   const theme = useTheme();
   const themeStyles = useThemeStyles();
   const router = useRouter();
@@ -216,11 +224,24 @@ const PostCard = ({ post }: { post: Post }) => {
         ]}
       >
         <View style={styles.header}>
-          <Image source={{ uri: post.avatar }} style={[styles.avatar, { borderColor: theme.border }]} />
-          <View style={styles.authorInfo}>
-            <Text style={[styles.authorName, { color: theme.text }]}>{post.author}</Text>
-            <Text style={[styles.timestamp, { color: theme.textSupporting }]}>{post.timestamp}</Text>
-          </View>
+          <Pressable
+            onPress={async () => {
+              if (post.authorId) {
+                await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                onAuthorPress?.(post.authorId);
+              }
+            }}
+            style={({ pressed }) => [
+              { flexDirection: 'row', alignItems: 'center', flex: 1 },
+              pressed && { opacity: 0.7 }
+            ]}
+          >
+            <Image source={{ uri: post.avatar }} style={[styles.avatar, { borderColor: theme.border }]} />
+            <View style={styles.authorInfo}>
+              <Text style={[styles.authorName, { color: theme.text }]}>{post.author}</Text>
+              <Text style={[styles.timestamp, { color: theme.textSupporting }]}>{post.timestamp}</Text>
+            </View>
+          </Pressable>
         </View>
 
         <Text style={[styles.content, { color: theme.text }]}>{post.content}</Text>
@@ -352,19 +373,27 @@ const PostCard = ({ post }: { post: Post }) => {
 
 export default function ExploreScreen() {
   const theme = useTheme();
+  const router = useRouter();
   const { data: posts, isLoading } = usePosts();
   const { mutateAsync: createPost, isPending: isCreating } = useCreatePost();
   
   const [showCreatePost, setShowCreatePost] = useState(false);
   const [newPostContent, setNewPostContent] = useState('');
 
+  // Profile bottom sheet states
+  const [selectedAuthorId, setSelectedAuthorId] = useState<string | null>(null);
+  const [isProfileVisible, setIsProfileVisible] = useState(false);
+  const [profileData, setProfileData] = useState<any>(null);
+  const [isProfileLoading, setIsProfileLoading] = useState(false);
+
   // Temporary adapter if backend data is not perfectly matching Post type
   const displayPosts = posts && Array.isArray(posts) && posts.length > 0 
     ? posts.map((p: any) => ({
         id: p.id || String(Math.random()),
+        authorId: p.authorId || p.userId || (p.user && p.user.id) || p.creatorId || p.createdBy,
         author: p.author || p.authorName || p.userName || 'Unknown User',
         avatar: p.avatar || p.authorAvatarUrl || p.userAvatar || 'https://i.pravatar.cc/150',
-        timestamp: getRelativeTime(p.timestamp || p.createdAt || 'Just now'),
+        timestamp: getRelativeTime(p.createdAt || p.timestamp || 'Just now'),
         content: p.content || '',
         tags: p.tags || [],
         likes: p.likes || p.reactionsCount || 0,
@@ -372,6 +401,78 @@ export default function ExploreScreen() {
         isLiked: p.isLiked || false,
       }))
     : DUMMY_POSTS;
+
+  const getMockProfile = (authorId: string, authorName?: string) => {
+    const dummy = DUMMY_POSTS.find(p => p.authorId === authorId);
+    const name = dummy?.author || authorName || 'Người dùng';
+    const nameLower = name.toLowerCase().replace(/\s+/g, '.');
+    const email = `${nameLower}@commuity.org`;
+    const phone = '0987 654 321';
+    let role = 'VOLUNTEER';
+    if (name.includes('Nguyen Van A')) role = 'ADMIN';
+    else if (name.includes('Tran Thi B')) role = 'COLLABORATOR';
+
+    return {
+      id: authorId,
+      fullName: name,
+      email,
+      phone,
+      role,
+      avatarUrl: dummy?.avatar || 'https://i.pravatar.cc/150',
+    };
+  };
+
+  const handleAuthorPress = async (authorId: string) => {
+    setSelectedAuthorId(authorId);
+    setIsProfileVisible(true);
+    setIsProfileLoading(true);
+    setProfileData(null);
+
+    try {
+      const currentPost = displayPosts.find(p => p.authorId === authorId);
+      const authorName = currentPost?.author;
+
+      const res = await getUser(authorId);
+      if (res) {
+        setProfileData(res);
+      } else {
+        setProfileData(getMockProfile(authorId, authorName));
+      }
+    } catch (err) {
+      console.warn('Failed to fetch user details, using mock fallback:', err);
+      const currentPost = displayPosts.find(p => p.authorId === authorId);
+      const authorName = currentPost?.author;
+      setProfileData(getMockProfile(authorId, authorName));
+    } finally {
+      setIsProfileLoading(false);
+    }
+  };
+
+  const handleDirectMessage = async () => {
+    if (!selectedAuthorId) return;
+    await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    
+    // Close bottom sheet first
+    setIsProfileVisible(false);
+    
+    try {
+      const res: any = await createPrivateConversation({ receiverId: selectedAuthorId });
+      const conversationId = res?.id || res?.data?.id;
+      if (conversationId) {
+        requestAnimationFrame(() => {
+          router.push({ pathname: '/messages/[id]', params: { id: conversationId } } as any);
+        });
+      } else {
+        console.error('No conversation ID returned', res);
+      }
+    } catch (err) {
+      console.error('Failed to create private conversation, navigating to mock chat:', err);
+      // Fallback: Navigate to the mock chat room with the author id
+      requestAnimationFrame(() => {
+        router.push({ pathname: '/messages/[id]', params: { id: selectedAuthorId } } as any);
+      });
+    }
+  };
 
   const handleCreatePost = async () => {
     if (!newPostContent.trim()) return;
@@ -434,11 +535,138 @@ export default function ExploreScreen() {
         <FlatList
           data={displayPosts}
           keyExtractor={(item) => item.id}
-          renderItem={({ item }) => <PostCard post={item} />}
+          renderItem={({ item }) => <PostCard post={item} onAuthorPress={handleAuthorPress} />}
           contentContainerStyle={styles.listContent}
           showsVerticalScrollIndicator={false}
         />
       )}
+
+      {/* Profile Details Bottom Sheet */}
+      <BottomSheet isVisible={isProfileVisible} onClose={() => setIsProfileVisible(false)}>
+        {isProfileLoading ? (
+          <View style={{ padding: 40, justifyContent: 'center', alignItems: 'center' }}>
+            <ActivityIndicator size="large" color={theme.primary} />
+          </View>
+        ) : profileData ? (
+          <View style={{ padding: 24, alignItems: 'center' }}>
+            {/* Avatar bubble */}
+            <View
+              style={{
+                width: 80,
+                height: 80,
+                borderRadius: 40,
+                backgroundColor: theme.highlightBG,
+                borderWidth: 2,
+                borderColor: theme.border,
+                justifyContent: 'center',
+                alignItems: 'center',
+                marginBottom: 16,
+                ...Platform.select({
+                  ios: {
+                    shadowColor: theme.inverse,
+                    shadowOffset: { width: 0, height: 2 },
+                    shadowOpacity: 0.1,
+                    shadowRadius: 4,
+                  },
+                  android: {
+                    elevation: 3,
+                  },
+                  default: {},
+                }),
+              }}
+            >
+              <Text style={{ color: theme.text, fontSize: 32, fontWeight: '700' }}>
+                {profileData.fullName?.charAt(0).toUpperCase() ?? '?'}
+              </Text>
+            </View>
+
+            {/* Name */}
+            <Text
+              style={{
+                color: theme.text,
+                fontSize: 22,
+                fontWeight: '700',
+                textAlign: 'center',
+                marginBottom: 6,
+              }}
+            >
+              {profileData.fullName}
+            </Text>
+
+            {/* Role Tag */}
+            <View
+              style={{
+                backgroundColor: theme.highlightBG,
+                borderColor: theme.border,
+                borderWidth: 1,
+                borderRadius: 12,
+                paddingHorizontal: 12,
+                paddingVertical: 4,
+                marginBottom: 24,
+              }}
+            >
+              <Text
+                style={{
+                  color: theme.primary,
+                  fontSize: 12,
+                  fontWeight: '600',
+                  textTransform: 'uppercase',
+                }}
+              >
+                {profileData.role === 'ADMIN' ? 'Admin' : profileData.role === 'COLLABORATOR' ? 'Collaborator' : 'Volunteer'}
+              </Text>
+            </View>
+
+            {/* Info fields */}
+            <View
+              style={{
+                width: '100%',
+                backgroundColor: theme.highlightBG,
+                borderRadius: 16,
+                borderWidth: 1,
+                borderColor: theme.border,
+                padding: 16,
+                gap: 16,
+                marginBottom: 24,
+              }}
+            >
+              <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                <MaterialIcons name="email" size={20} color={theme.textSupporting} style={{ marginRight: 12 }} />
+                <View style={{ flex: 1 }}>
+                  <Text style={{ color: theme.textSupporting, fontSize: 12 }}>Email</Text>
+                  <Text style={{ color: theme.text, fontSize: 15, fontWeight: '500' }} numberOfLines={1}>
+                    {profileData.email || 'N/A'}
+                  </Text>
+                </View>
+              </View>
+
+              <View style={{ height: StyleSheet.hairlineWidth, backgroundColor: theme.border }} />
+
+              <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                <MaterialIcons name="phone" size={20} color={theme.textSupporting} style={{ marginRight: 12 }} />
+                <View style={{ flex: 1 }}>
+                  <Text style={{ color: theme.textSupporting, fontSize: 12 }}>Phone</Text>
+                  <Text style={{ color: theme.text, fontSize: 15, fontWeight: '500' }}>
+                    {profileData.phone || 'N/A'}
+                  </Text>
+                </View>
+              </View>
+            </View>
+
+            {/* DM Button */}
+            <Button
+              text="Direct Message"
+              primary
+              onPress={handleDirectMessage}
+              style={{ width: '100%', borderRadius: 100 }}
+            />
+          </View>
+        ) : (
+          <View style={{ padding: 40, justifyContent: 'center', alignItems: 'center' }}>
+            <Text style={{ color: theme.textSupporting }}>Could not load profile details.</Text>
+          </View>
+        )}
+      </BottomSheet>
 
       {/* Create Post Modal */}
       <Modal

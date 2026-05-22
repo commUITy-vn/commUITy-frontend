@@ -19,7 +19,7 @@ export const useChat = (conversationId: string) => {
 
   // Mutate message sending
   const sendMutation = useMutation({
-    mutationFn: (content: string) => apiSendMessage(conversationId, { content }),
+    mutationFn: (data: { content: string; mediaIds?: string[] }) => apiSendMessage(conversationId, data),
     onSuccess: (newMessage: any) => {
       // Optimistically append the new sent message if not already done by websocket
       queryClient.setQueryData(queryKey, (old: any) => {
@@ -87,9 +87,8 @@ export const useChat = (conversationId: string) => {
     };
   }, [conversationId, queryClient]);
 
-  const sendMessage = async (content: string) => {
-    if (!content.trim()) return;
-    await sendMutation.mutateAsync(content);
+  const sendMessage = async (content: string, mediaIds?: string[]) => {
+    await sendMutation.mutateAsync({ content, mediaIds });
   };
 
   return {

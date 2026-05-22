@@ -1,9 +1,11 @@
 import { useState } from 'react';
-import { View, Text, FlatList, Pressable, StyleSheet, TextInput, Platform, ActivityIndicator, type StyleProp, type ViewStyle } from 'react-native';
+import { View, Text, FlatList, Pressable, StyleSheet, TextInput, Platform, ActivityIndicator } from 'react-native';
 import * as Haptics from 'expo-haptics';
 import { useTheme } from '@/hooks/useTheme';
 import { useRouter } from 'expo-router';
 import { MaterialIcons } from '@expo/vector-icons';
+import { useConversations } from '@/features/communication/hooks/useConversations';
+import { useAuthStore } from '@/features/auth/stores/useAuthStore';
 
 type Conversation = {
   id: string;
@@ -12,7 +14,27 @@ type Conversation = {
   lastMessage: string;
   timestamp: string;
   unreadCount: number;
-  avatarColor: string;
+};
+
+const formatRelativeTime = (dateStr?: string) => {
+  if (!dateStr) return '';
+  try {
+    const date = new Date(dateStr);
+    const now = new Date();
+    const diffMs = now.getTime() - date.getTime();
+    const diffSecs = Math.floor(diffMs / 1000);
+    const diffMins = Math.floor(diffSecs / 60);
+    const diffHours = Math.floor(diffMins / 60);
+    const diffDays = Math.floor(diffHours / 24);
+
+    if (diffSecs < 60) return 'Vừa xong';
+    if (diffMins < 60) return `${diffMins} phút trước`;
+    if (diffHours < 24) return `${diffHours} giờ trước`;
+    if (diffDays === 1) return 'Hôm qua';
+    return `${diffDays} ngày trước`;
+  } catch (e) {
+    return '';
+  }
 };
 
 const CONVERSATIONS: Conversation[] = [
@@ -23,7 +45,6 @@ const CONVERSATIONS: Conversation[] = [
     lastMessage: 'Chào bạn, tôi có thể giúp gì cho bạn?',
     timestamp: '2 phút trước',
     unreadCount: 3,
-    avatarColor: '#F97316',
   },
   {
     id: '22222222-2222-2222-2222-222222222222',
@@ -32,7 +53,6 @@ const CONVERSATIONS: Conversation[] = [
     lastMessage: 'Cảm ơn bạn đã hỗ trợ, tôi sẽ liên hệ lại sau.',
     timestamp: '1 giờ trước',
     unreadCount: 0,
-    avatarColor: '#3B82F6',
   },
   {
     id: '33333333-3333-3333-3333-333333333333',
@@ -41,7 +61,6 @@ const CONVERSATIONS: Conversation[] = [
     lastMessage: 'Đã nhận được hỗ trợ từ bạn, rất cảm ơn!',
     timestamp: 'Hôm qua',
     unreadCount: 1,
-    avatarColor: '#10B981',
   },
   {
     id: '44444444-4444-4444-4444-444444444444',
@@ -50,7 +69,6 @@ const CONVERSATIONS: Conversation[] = [
     lastMessage: 'Bạn có thể giúp tôi với vấn đề này không?',
     timestamp: 'Hôm qua',
     unreadCount: 0,
-    avatarColor: '#8B5CF6',
   },
   {
     id: '55555555-5555-5555-5555-555555555555',
@@ -59,7 +77,6 @@ const CONVERSATIONS: Conversation[] = [
     lastMessage: 'Tôi sẽ đến địa điểm vào lúc 3 giờ chiều nay.',
     timestamp: '2 ngày trước',
     unreadCount: 2,
-    avatarColor: '#EF4444',
   },
 ];
 
@@ -78,6 +95,9 @@ const ConversationRow = ({
     onPress();
   };
 
+  const isUnread = item.unreadCount > 0;
+  const isDark = theme.appBG === '#0F172A';
+
   return (
     <Pressable
       onPress={handlePress}
@@ -87,37 +107,61 @@ const ConversationRow = ({
         {
           flexDirection: 'row',
           alignItems: 'center',
-          paddingHorizontal: 16,
-          paddingVertical: 12,
-          backgroundColor: pressed || isPressed ? theme.highlightBG : theme.appBG,
+          height: 64,
+          paddingHorizontal: 8,
+          marginHorizontal: 12,
+          marginVertical: 2,
+          borderRadius: 8,
+          backgroundColor: pressed || isPressed ? theme.highlightBG : 'transparent',
         },
       ]}
     >
-      {/* Avatar */}
-      <View
-        style={{
-          width: 48,
-          height: 48,
-          borderRadius: 24,
-          backgroundColor: item.avatarColor,
-          justifyContent: 'center',
-          alignItems: 'center',
-          marginRight: 12,
-        }}
-      >
-        <Text style={{ color: '#FFFFFF', fontSize: 18, fontWeight: 'bold' }}>
-          {item.avatarLetter}
-        </Text>
+      {/* Avatar Container with Online Badge */}
+      <View style={{ marginRight: 12, position: 'relative' }}>
+        <View
+          style={{
+            width: 40,
+            height: 40,
+            borderRadius: 20,
+            backgroundColor: isUnread ? (isDark ? 'rgba(3, 212, 124, 0.15)' : '#E5F6EE') : theme.border,
+            justifyContent: 'center',
+            alignItems: 'center',
+          }}
+        >
+          <Text
+            style={{
+              color: isUnread ? theme.success : theme.textSupporting,
+              fontSize: 15,
+              fontWeight: '700',
+            }}
+          >
+            {item.avatarLetter}
+          </Text>
+        </View>
+        {/* Active/Online indicator */}
+        <View
+          style={{
+            position: 'absolute',
+            bottom: 0,
+            right: 0,
+            width: 12,
+            height: 12,
+            borderRadius: 6,
+            backgroundColor: theme.success,
+            borderWidth: 2,
+            borderColor: isPressed ? theme.highlightBG : theme.appBG,
+          }}
+        />
       </View>
 
       {/* Content */}
       <View style={{ flex: 1, justifyContent: 'center' }}>
-        <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 4 }}>
+        <View style={{ flexDirection: 'row', alignItems: 'baseline', marginBottom: 2 }}>
           <Text
             style={{
-              color: theme.text,
-              fontSize: 16,
-              fontWeight: item.unreadCount > 0 ? '700' : '500',
+              color: isUnread ? theme.text : theme.textSupporting,
+              fontSize: 15,
+              fontWeight: isUnread ? '700' : '500',
               flex: 1,
             }}
             numberOfLines={1}
@@ -126,8 +170,9 @@ const ConversationRow = ({
           </Text>
           <Text
             style={{
-              color: theme.textSupporting,
-              fontSize: 12,
+              color: isUnread ? theme.success : theme.textSupporting,
+              fontSize: 11,
+              fontWeight: isUnread ? '600' : '400',
               marginLeft: 8,
             }}
           >
@@ -138,34 +183,33 @@ const ConversationRow = ({
         <View style={{ flexDirection: 'row', alignItems: 'center' }}>
           <Text
             style={{
-              color: theme.textSupporting,
-              fontSize: 14,
+              color: isUnread ? theme.text : theme.textSupporting,
+              fontSize: 13,
               flex: 1,
-              fontWeight: item.unreadCount > 0 ? '500' : '400',
+              fontWeight: isUnread ? '600' : '400',
             }}
             numberOfLines={1}
           >
             {item.lastMessage}
           </Text>
 
-          {item.unreadCount > 0 && (
+          {isUnread && (
             <View
               style={{
-                backgroundColor: theme.primary,
+                backgroundColor: theme.success,
                 borderRadius: 10,
-                minWidth: 20,
-                height: 20,
+                paddingHorizontal: 6,
+                paddingVertical: 2,
                 justifyContent: 'center',
                 alignItems: 'center',
                 marginLeft: 8,
-                paddingHorizontal: 6,
               }}
             >
               <Text
                 style={{
-                  color: theme.textLight,
-                  fontSize: 12,
-                  fontWeight: 'bold',
+                  color: theme.buttonSuccessText,
+                  fontSize: 10,
+                  fontWeight: '700',
                 }}
               >
                 {item.unreadCount}
@@ -177,11 +221,11 @@ const ConversationRow = ({
     </Pressable>
   );
 };
-import { useConversations } from '@/features/communication/hooks/useConversations';
 
 export default function MessagesScreen() {
   const theme = useTheme();
   const router = useRouter();
+  const { user } = useAuthStore();
   const { data: conversations, isLoading } = useConversations();
   const [searchQuery, setSearchQuery] = useState('');
 
@@ -190,15 +234,18 @@ export default function MessagesScreen() {
   };
 
   const displayConversations = conversations && Array.isArray(conversations) && conversations.length > 0
-    ? conversations.map((c: any) => ({
-        id: c.id || String(Math.random()),
-        name: c.name || 'Unknown',
-        avatarLetter: (c.name || 'U').charAt(0).toUpperCase(),
-        lastMessage: c.lastMessage?.content || 'No messages yet',
-        timestamp: c.lastMessage?.timestamp || c.updatedAt || 'Just now',
-        unreadCount: c.unreadCount || 0,
-        avatarColor: '#3B82F6', // Could derive from string hash
-      }))
+    ? conversations.map((c: any) => {
+        const otherMember = c.members?.find((m: any) => m.userId !== user?.id);
+        const name = otherMember?.fullName || 'Người dùng';
+        return {
+          id: c.id || String(Math.random()),
+          name,
+          avatarLetter: name.charAt(0).toUpperCase(),
+          lastMessage: c.lastMessageContent || 'Chưa có tin nhắn',
+          timestamp: formatRelativeTime(c.lastMessageCreatedAt) || formatRelativeTime(c.createdAt) || 'Vừa xong',
+          unreadCount: c.unreadCount || 0,
+        };
+      })
     : CONVERSATIONS;
 
   const filteredConversations = displayConversations.filter(c => 
@@ -211,13 +258,13 @@ export default function MessagesScreen() {
       {/* Section Header */}
       <View
         style={{
-          paddingHorizontal: 16,
-          paddingTop: 16,
+          paddingHorizontal: 20,
+          paddingTop: 20,
           paddingBottom: 8,
           backgroundColor: theme.appBG,
         }}
       >
-        <Text style={{ color: theme.text, fontSize: 28, fontWeight: '700' }}>
+        <Text style={{ color: theme.text, fontSize: 22, fontWeight: '700' }}>
           Inbox
         </Text>
       </View>
@@ -229,8 +276,6 @@ export default function MessagesScreen() {
           paddingBottom: 12,
           paddingTop: 4,
           backgroundColor: theme.appBG,
-          borderBottomWidth: StyleSheet.hairlineWidth,
-          borderBottomColor: theme.border,
         }}
       >
         <View
@@ -282,21 +327,12 @@ export default function MessagesScreen() {
               onPress={() => handleConversationPress(item.id)}
             />
           )}
-          ItemSeparatorComponent={() => (
-            <View
-              style={{
-                height: 1,
-                backgroundColor: theme.border,
-                marginLeft: 76,
-              }}
-            />
-          )}
           contentContainerStyle={{ paddingBottom: 16 }}
           showsVerticalScrollIndicator={false}
           ListEmptyComponent={() => (
             <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', marginTop: 40, paddingHorizontal: 20 }}>
               <Text style={{ color: theme.textSupporting, textAlign: 'center' }}>
-                {searchQuery ? "No conversations match your search" : "No active threads in your inbox"}
+                {searchQuery ? "Không tìm thấy hội thoại phù hợp" : "Chưa có cuộc hội thoại nào"}
               </Text>
             </View>
           )}

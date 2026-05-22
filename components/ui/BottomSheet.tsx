@@ -29,7 +29,7 @@ type BottomSheetOption = {
 type BottomSheetProps = {
     isVisible: boolean
     onClose: () => void
-    options: BottomSheetOption[]
+    options?: BottomSheetOption[]
     title?: string
     /**
      * Fires synchronously when the close animation begins
@@ -37,6 +37,7 @@ type BottomSheetProps = {
      * trigger side-effects like FAB unwind.
      */
     onCloseStart?: () => void
+    children?: React.ReactNode
 }
 
 const AnimatedPressable = Animated.createAnimatedComponent(Pressable)
@@ -107,6 +108,7 @@ export const BottomSheet: React.FC<BottomSheetProps> = ({
     options,
     title,
     onCloseStart,
+    children,
 }) => {
     const theme = useTheme()
 
@@ -194,7 +196,7 @@ export const BottomSheet: React.FC<BottomSheetProps> = ({
                 onPress={handleClose}
                 style={[
                     StyleSheet.absoluteFill,
-                    { backgroundColor: "rgba(0,0,0,0.5)" },
+                    { backgroundColor: theme.overlay },
                     backdropAnimatedStyle,
                 ]}
             />
@@ -235,17 +237,19 @@ export const BottomSheet: React.FC<BottomSheetProps> = ({
                     </View>
                 ) : null}
 
-                {/* Options */}
-                <View style={localStyles.optionsContainer}>
-                    {options.map((option, index) => (
-                        <BottomSheetOptionItem
-                            key={option.key}
-                            option={option}
-                            index={index}
-                            onPress={handleOptionPress}
-                        />
-                    ))}
-                </View>
+                {/* Options or custom children */}
+                {children ? children : (
+                    <View style={localStyles.optionsContainer}>
+                        {options?.map((option, index) => (
+                            <BottomSheetOptionItem
+                                key={option.key}
+                                option={option}
+                                index={index}
+                                onPress={handleOptionPress}
+                            />
+                        ))}
+                    </View>
+                )}
 
                 {/* Safe area bottom padding */}
                 <View

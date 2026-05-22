@@ -17,7 +17,6 @@ type RegisterFormProps = {
 const roleOptions = [
     { label: 'Volunteer', value: UserRole.VOLUNTEER },
     { label: 'Requester', value: UserRole.REQUESTER },
-    { label: 'Collaborator', value: UserRole.COLLABORATOR },
 ];
 
 export const RegisterForm: React.FC<RegisterFormProps> = ({ onNavigateToLogin }) => {
@@ -90,6 +89,7 @@ export const RegisterForm: React.FC<RegisterFormProps> = ({ onNavigateToLogin })
                 phone: phone.trim() || undefined,
                 role,
             });
+            onNavigateToLogin();
         } catch {
             // Error is already set in the store
         }
