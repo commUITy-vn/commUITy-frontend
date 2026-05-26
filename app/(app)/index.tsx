@@ -247,9 +247,9 @@ export default function HomeScreen() {
     const renderRequestCard = (item: UnifiedFeedItem) => {
         const progress = getSimulatedProgress(item.status)
         const isPending = item.status === 'PENDING'
-        const isApproved = item.status === 'APPROVED'
+        const isApproved = item.status === 'APPROVED' || item.status === 'ACCEPTED'
         const isInProgress = item.status === 'IN_PROGRESS'
-        const isFulfilled = item.status === 'FULFILLED'
+        const isFulfilled = item.status === 'FULFILLED' || item.status === 'COMPLETED'
 
         let statusText = item.status || 'PENDING'
         let statusColor = theme.textSupporting

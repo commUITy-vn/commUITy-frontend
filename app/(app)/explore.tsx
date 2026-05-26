@@ -1,5 +1,5 @@
 import { View, Text, FlatList, Image, Pressable, StyleSheet, Modal, ActivityIndicator, Platform, ScrollView } from 'react-native';
-import { useState } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { useTheme } from '@/hooks/useTheme';
 import { useThemeStyles } from '@/hooks/useThemeStyles';
 import { useRouter } from 'expo-router';
@@ -10,6 +10,8 @@ import { usePosts, useCreatePost, usePostComments, useCreatePostComment } from '
 import { TextInput as TextInputUI, BottomSheet, Button } from '@/components/ui';
 import { getUser } from '@/features/users/api/get-user';
 import { createPrivateConversation } from '@/features/communication/api/create-private-conversation';
+import { api } from '@/lib/api-client';
+import { storage } from '@/lib/storage';
 
 interface Post {
   id: string;
@@ -24,68 +26,7 @@ interface Post {
   isLiked: boolean;
 }
 
-const DUMMY_POSTS: Post[] = [
-  {
-    id: '1',
-    authorId: '11111111-1111-1111-1111-111111111111',
-    author: 'Nguyen Van A',
-    avatar: 'https://i.pravatar.cc/150?img=1',
-    timestamp: '2 hours ago',
-    content: 'Just finished volunteering at the local food bank! It was such a rewarding experience helping families in need. #volunteering #community',
-    tags: ['volunteering', 'community'],
-    likes: 24,
-    comments: 8,
-    isLiked: false,
-  },
-  {
-    id: '2',
-    authorId: '22222222-2222-2222-2222-222222222222',
-    author: 'Tran Thi B',
-    avatar: 'https://i.pravatar.cc/150?img=2',
-    timestamp: '5 hours ago',
-    content: 'Looking for volunteers to help with the upcoming charity run. We need people to manage water stations and guide runners. DM me if interested!',
-    tags: ['charity', 'volunteering', 'run'],
-    likes: 56,
-    comments: 12,
-    isLiked: true,
-  },
-  {
-    id: '3',
-    authorId: '33333333-3333-3333-3333-333333333333',
-    author: 'Le Van C',
-    avatar: 'https://i.pravatar.cc/150?img=3',
-    timestamp: '1 day ago',
-    content: 'Successfully donated 500 books to the children\'s library today. Education is the foundation of a better future. Thank you everyone who contributed! 📚',
-    tags: ['donation', 'education', 'books'],
-    likes: 89,
-    comments: 15,
-    isLiked: false,
-  },
-  {
-    id: '4',
-    authorId: '44444444-4444-4444-4444-444444444444',
-    author: 'Pham Thi D',
-    avatar: 'https://i.pravatar.cc/150?img=4',
-    timestamp: '2 days ago',
-    content: 'Join us this Saturday for a beach cleanup event! Bring your friends and family. Let\'s keep our environment clean together. 🌊🧹',
-    tags: ['environment', 'cleanup', 'beach'],
-    likes: 112,
-    comments: 23,
-    isLiked: true,
-  },
-  {
-    id: '5',
-    authorId: '55555555-5555-5555-5555-555555555555',
-    author: 'Hoang Van E',
-    avatar: 'https://i.pravatar.cc/150?img=5',
-    timestamp: '3 days ago',
-    content: 'Just launched my new mentorship program for underprivileged students. If you\'re interested in mentoring or know someone who could benefit, please reach out!',
-    tags: ['mentorship', 'education', 'community'],
-    likes: 67,
-    comments: 19,
-    isLiked: false,
-  },
-];
+const DUMMY_POSTS: Post[] = [];
 
 function getRelativeTime(dateString: string): string {
   if (!dateString) return 'Just now';
@@ -129,15 +70,99 @@ function getRelativeTime(dateString: string): string {
   }
 }
 
-const DUMMY_COMMENTS: Record<string, any[]> = {
-  '1': [
-    { id: 'c1', authorName: 'Tran Thi B', avatar: 'https://i.pravatar.cc/150?img=2', content: 'Great job! Wish I could have joined.', timestamp: '1 hour ago' },
-    { id: 'c2', authorName: 'Le Van C', avatar: 'https://i.pravatar.cc/150?img=3', content: 'Incredible work, Nguyen Van A!', timestamp: '30 mins ago' },
-  ],
-  '2': [
-    { id: 'c3', authorName: 'Nguyen Van A', avatar: 'https://i.pravatar.cc/150?img=1', content: 'I am down to manage the water stations!', timestamp: '4 hours ago' },
-  ],
+const DUMMY_COMMENTS: Record<string, any[]> = {};
+
+const Avatar = ({ uri, name, size = 44, theme }: { uri?: string; name?: string; size?: number; theme: any }) => {
+  const isImageValid = uri && (uri.startsWith('http://') || uri.startsWith('https://') || uri.startsWith('file://') || uri.startsWith('data:'));
+  
+  if (isImageValid) {
+    return (
+      <Image
+        source={{ uri }}
+        style={{
+          width: size,
+          height: size,
+          borderRadius: size / 2,
+          borderWidth: 1,
+          borderColor: theme.border,
+        }}
+      />
+    );
+  }
+
+  const initial = name ? name.charAt(0).toUpperCase() : 'U';
+  return (
+    <View
+      style={{
+        width: size,
+        height: size,
+        borderRadius: size / 2,
+        backgroundColor: theme.primary,
+        justifyContent: 'center',
+        alignItems: 'center',
+        borderWidth: 1,
+        borderColor: theme.border,
+      }}
+    >
+      <Text style={{ color: '#FFFFFF', fontSize: size * 0.45, fontWeight: '700' }}>
+        {initial}
+      </Text>
+    </View>
+  );
 };
+
+function ReactionPopup({
+  onSelect,
+  theme,
+  style,
+}: {
+  onSelect: (emoji: string) => void;
+  theme: any;
+  style?: any;
+}) {
+  const quickEmojis = ['👍', '❤️', '😂', '🎉', '😮', '😢'];
+  return (
+    <View
+      style={[
+        {
+          position: 'absolute',
+          bottom: 28,
+          right: 0,
+          backgroundColor: theme.componentBG,
+          borderWidth: 1,
+          borderColor: theme.border,
+          borderRadius: 20,
+          paddingHorizontal: 8,
+          paddingVertical: 6,
+          flexDirection: 'row',
+          gap: 4,
+          shadowColor: theme.inverse,
+          shadowOffset: { width: 0, height: 4 },
+          shadowOpacity: 0.15,
+          shadowRadius: 8,
+          elevation: 8,
+          zIndex: 100,
+        },
+        style,
+      ]}
+    >
+      {quickEmojis.map((emoji) => (
+        <Pressable
+          key={emoji}
+          onPress={() => onSelect(emoji)}
+          style={({ pressed }) => ({
+            paddingHorizontal: 4,
+            paddingVertical: 2,
+            borderRadius: 6,
+            backgroundColor: pressed ? theme.highlightBG : 'transparent',
+          })}
+        >
+          <Text style={{ fontSize: 20 }}>{emoji}</Text>
+        </Pressable>
+      ))}
+    </View>
+  );
+}
 
 const PostCard = ({ post, onAuthorPress }: { post: Post; onAuthorPress?: (authorId: string) => void }) => {
   const theme = useTheme();
@@ -152,23 +177,84 @@ const PostCard = ({ post, onAuthorPress }: { post: Post; onAuthorPress?: (author
   const { mutateAsync: addServerComment } = useCreatePostComment();
   const [localComments, setLocalComments] = useState<any[]>(DUMMY_COMMENTS[post.id] || []);
 
+  // Comments Reactions Local State
+  const [commentReactions, setCommentReactions] = useState<Record<string, Record<string, string[]>>>({});
+  const [showCommentReactionPickerId, setShowCommentReactionPickerId] = useState<string | null>(null);
+
+  // Comment Media Upload State
+  const [selectedCommentMedia, setSelectedCommentMedia] = useState<any | null>(null);
+  const [isCommentUploading, setIsCommentUploading] = useState(false);
+  const commentFileInputRef = useRef<HTMLInputElement>(null);
+  const [replyingToComment, setReplyingToComment] = useState<{ id: string; authorName: string } | null>(null);
+
   const commentsList = [
     ...localComments,
     ...(serverComments && Array.isArray(serverComments)
       ? serverComments.map((c: any) => ({
           id: c.id || String(Math.random()),
           authorName: c.author || c.authorName || c.userName || 'User',
-          avatar: c.avatar || c.authorAvatarUrl || 'https://i.pravatar.cc/150',
+          avatar: c.avatar || c.authorAvatarUrl || c.userAvatarUrl || 'https://i.pravatar.cc/150',
           content: c.content,
           timestamp: getRelativeTime(c.timestamp || c.createdAt || 'Just now'),
+          media: c.media || undefined,
+          parentCommentId: c.parentCommentId || undefined,
         }))
       : []),
   ];
 
+  const commentsCount = serverComments !== undefined
+    ? commentsList.length
+    : (post.comments || 0) + localComments.length;
+
+  // Load persisted states on mount or post.id change
+  useEffect(() => {
+    const loadPersistedData = async () => {
+      try {
+        const likesDataStr = await storage.getItemAsync(`explore_likes_${post.id}`);
+        if (likesDataStr) {
+          const likesData = JSON.parse(likesDataStr);
+          setIsLiked(likesData.isLiked);
+          setLikeCount(likesData.likes);
+        } else {
+          setIsLiked(post.isLiked);
+          setLikeCount(post.likes);
+        }
+
+        const localCommentsStr = await storage.getItemAsync(`explore_comments_${post.id}`);
+        if (localCommentsStr) {
+          setLocalComments(JSON.parse(localCommentsStr));
+        } else {
+          setLocalComments([]);
+        }
+
+        const reactionsStr = await storage.getItemAsync(`explore_comment_reactions_${post.id}`);
+        if (reactionsStr) {
+          setCommentReactions(JSON.parse(reactionsStr));
+        } else {
+          setCommentReactions({});
+        }
+      } catch (err) {
+        console.error('Failed to load persisted explore data:', err);
+      }
+    };
+    loadPersistedData();
+  }, [post.id, post.isLiked, post.likes]);
+
   const handleLike = async () => {
     await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    setIsLiked(!isLiked);
-    setLikeCount(prevCount => (isLiked ? prevCount - 1 : prevCount + 1));
+    const newIsLiked = !isLiked;
+    const newLikeCount = newIsLiked ? likeCount + 1 : likeCount - 1;
+    setIsLiked(newIsLiked);
+    setLikeCount(newLikeCount);
+
+    try {
+      await storage.setItemAsync(
+        `explore_likes_${post.id}`,
+        JSON.stringify({ isLiked: newIsLiked, likes: newLikeCount })
+      );
+    } catch (err) {
+      console.error('Failed to persist like state:', err);
+    }
   };
 
   const handleComment = async () => {
@@ -176,39 +262,146 @@ const PostCard = ({ post, onAuthorPress }: { post: Post; onAuthorPress?: (author
     setShowComments(true);
   };
 
+  const handleCommentFileChange = async (e: any) => {
+    if (Platform.OS !== 'web') return;
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setIsCommentUploading(true);
+    try {
+      await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+      const localUrl = URL.createObjectURL(file);
+      const isImg = file.type.startsWith('image/');
+      const fileType = isImg ? 'IMAGE' : 'DOCUMENT';
+      const createPayload = {
+        fileName: file.name,
+        fileUrl: localUrl,
+        fileType,
+        mimeType: file.type || 'application/octet-stream',
+        fileSize: file.size,
+        altText: file.name,
+        isPublic: true,
+      };
+      const mediaRes = await api.post<any>('/api/v1/media', createPayload);
+      setSelectedCommentMedia({
+        id: mediaRes.id || String(Math.random()),
+        fileName: file.name,
+        fileUrl: localUrl,
+        fileType,
+        mimeType: file.type || 'application/octet-stream',
+        fileSize: file.size,
+      });
+    } catch (err) {
+      console.error('Failed to upload comment file:', err);
+      // Fallback local media if upload fails
+      setSelectedCommentMedia({
+        id: String(Date.now()),
+        fileName: file.name,
+        fileUrl: URL.createObjectURL(file),
+        fileType: file.type.startsWith('image/') ? 'IMAGE' : 'DOCUMENT',
+        mimeType: file.type,
+        fileSize: file.size,
+      });
+    } finally {
+      setIsCommentUploading(false);
+      if (commentFileInputRef.current) commentFileInputRef.current.value = '';
+    }
+  };
+
+  const persistComments = async (updatedComments: any[]) => {
+    try {
+      await storage.setItemAsync(
+        `explore_comments_${post.id}`,
+        JSON.stringify(updatedComments)
+      );
+    } catch (err) {
+      console.error('Failed to persist local comments:', err);
+    }
+  };
+
   const handleSendComment = async () => {
-    if (!commentText.trim()) return;
+    if (!commentText.trim() && !selectedCommentMedia) return;
     await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     const content = commentText.trim();
+    const mediaItem = selectedCommentMedia;
+    const parentCommentId = replyingToComment?.id || undefined;
+    
     setCommentText('');
+    setSelectedCommentMedia(null);
+    setReplyingToComment(null);
 
     try {
       if (['1', '2', '3', '4', '5'].includes(post.id)) {
-        setLocalComments(prev => [
-          ...prev,
+        const newComments = [
+          ...localComments,
           {
             id: String(Date.now()),
             authorName: 'Me',
             avatar: 'https://i.pravatar.cc/150?img=8',
             content,
             timestamp: 'Just now',
+            media: mediaItem ? [mediaItem] : undefined,
+            parentCommentId,
           },
-        ]);
+        ];
+        setLocalComments(newComments);
+        await persistComments(newComments);
       } else {
-        await addServerComment({ postId: post.id, content });
+        await addServerComment({ postId: post.id, content, parentCommentId });
+        // Server might not support comments media, so we save locally for display
+        if (mediaItem) {
+          const newComments = [
+            ...localComments,
+            {
+              id: String(Date.now()),
+              authorName: 'Me',
+              avatar: 'https://i.pravatar.cc/150?img=8',
+              content,
+              timestamp: 'Just now',
+              media: [mediaItem],
+              parentCommentId,
+            },
+          ];
+          setLocalComments(newComments);
+          await persistComments(newComments);
+        }
       }
     } catch (error) {
-      setLocalComments(prev => [
-        ...prev,
+      const newComments = [
+        ...localComments,
         {
           id: String(Date.now()),
           authorName: 'Me',
           avatar: 'https://i.pravatar.cc/150?img=8',
           content,
           timestamp: 'Just now',
+          media: mediaItem ? [mediaItem] : undefined,
         },
-      ]);
+      ];
+      setLocalComments(newComments);
+      await persistComments(newComments);
     }
+  };
+
+  const toggleCommentReaction = async (commentId: string, emoji: string) => {
+    await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    const userName = 'Me';
+    setCommentReactions((prev) => {
+      const msgReactions = prev[commentId] || {};
+      const usersList = msgReactions[emoji] || [];
+      const newUsersList = usersList.includes(userName)
+        ? usersList.filter((u) => u !== userName)
+        : [...usersList, userName];
+      const newMsgReactions = { ...msgReactions };
+      if (newUsersList.length === 0) delete newMsgReactions[emoji];
+      else newMsgReactions[emoji] = newUsersList;
+      const updated = { ...prev, [commentId]: newMsgReactions };
+
+      storage.setItemAsync(`explore_comment_reactions_${post.id}`, JSON.stringify(updated))
+        .catch(err => console.error('Failed to persist comment reactions:', err));
+
+      return updated;
+    });
+    setShowCommentReactionPickerId(null);
   };
 
   return (
@@ -236,7 +429,7 @@ const PostCard = ({ post, onAuthorPress }: { post: Post; onAuthorPress?: (author
               pressed && { opacity: 0.7 }
             ]}
           >
-            <Image source={{ uri: post.avatar }} style={[styles.avatar, { borderColor: theme.border }]} />
+            <Avatar uri={post.avatar} name={post.author} size={44} theme={theme} />
             <View style={styles.authorInfo}>
               <Text style={[styles.authorName, { color: theme.text }]}>{post.author}</Text>
               <Text style={[styles.timestamp, { color: theme.textSupporting }]}>{post.timestamp}</Text>
@@ -280,7 +473,7 @@ const PostCard = ({ post, onAuthorPress }: { post: Post; onAuthorPress?: (author
             onPress={handleComment}
           >
             <MaterialIcons name="chat-bubble-outline" size={20} color={theme.icon} />
-            <Text style={[styles.actionText, { color: theme.textSupporting }]}>{post.comments + localComments.length}</Text>
+            <Text style={[styles.actionText, { color: theme.textSupporting }]}>{commentsCount}</Text>
           </Pressable>
         </View>
       </View>
@@ -305,30 +498,357 @@ const PostCard = ({ post, onAuthorPress }: { post: Post; onAuthorPress?: (author
             style={{ flex: 1, padding: Spacing.base }}
             contentContainerStyle={{ gap: 16, paddingBottom: 32 }}
           >
-            {commentsList.length === 0 ? (
-              <View style={{ flex: 1, paddingVertical: 40, justifyContent: 'center', alignItems: 'center' }}>
-                <MaterialIcons name="chat-bubble-outline" size={48} color={theme.textSupporting} />
-                <Text style={{ color: theme.textSupporting, fontSize: 16, marginTop: 12, textAlign: 'center' }}>
-                  No comments yet. Start the conversation!
-                </Text>
-              </View>
-            ) : (
-              commentsList.map((item) => (
-                <View key={item.id} style={{ flexDirection: 'row', gap: 12 }}>
-                  <Image source={{ uri: item.avatar }} style={{ width: 36, height: 36, borderRadius: 18 }} />
-                  <View style={{ flex: 1, backgroundColor: theme.highlightBG, padding: 12, borderRadius: 12, borderWidth: 1, borderColor: theme.border }}>
-                    <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
-                      <Text style={{ fontWeight: '600', color: theme.text, fontSize: 14 }}>{item.authorName}</Text>
-                      <Text style={{ fontSize: 11, color: theme.textSupporting }}>{item.timestamp}</Text>
-                    </View>
-                    <Text style={{ fontSize: 14, color: theme.text, lineHeight: 20 }}>{item.content}</Text>
+            {(() => {
+              const rootComments = commentsList.filter((c: any) => !c.parentCommentId);
+              const replies = commentsList.filter((c: any) => c.parentCommentId);
+
+              if (rootComments.length === 0) {
+                return (
+                  <View style={{ flex: 1, paddingVertical: 40, justifyContent: 'center', alignItems: 'center' }}>
+                    <MaterialIcons name="chat-bubble-outline" size={48} color={theme.textSupporting} />
+                    <Text style={{ color: theme.textSupporting, fontSize: 16, marginTop: 12, textAlign: 'center' }}>
+                      No comments yet. Start the conversation!
+                    </Text>
                   </View>
-                </View>
-              ))
-            )}
+                );
+              }
+
+              return rootComments.map((item) => {
+                const msgReactions = commentReactions[item.id] || {};
+                const showPicker = showCommentReactionPickerId === item.id;
+                const commentReplies = replies.filter((r: any) => r.parentCommentId === item.id);
+
+                return (
+                  <View key={item.id} style={{ gap: 12 }}>
+                    {/* Main Root Comment */}
+                    <View style={{ flexDirection: 'row', gap: 12 }}>
+                      <Avatar uri={item.avatar} name={item.authorName} size={36} theme={theme} />
+                      <View style={{ flex: 1, backgroundColor: theme.highlightBG, padding: 12, borderRadius: 12, borderWidth: 1, borderColor: theme.border }}>
+                        <View style={{ flexDirection: 'row', alignItems: 'baseline', marginBottom: 4, gap: 8 }}>
+                          <Text style={{ fontWeight: '600', color: theme.text, fontSize: 14 }}>{item.authorName}</Text>
+                          <Text style={{ fontSize: 11, color: theme.textSupporting }}>{item.timestamp}</Text>
+                        </View>
+                        <Text style={{ fontSize: 14, color: theme.text, lineHeight: 20 }}>{item.content}</Text>
+
+                        {/* Media preview inside comment */}
+                        {item.media && item.media.map((med: any) => (
+                          <View key={med.id} style={{ marginTop: 6 }}>
+                            {med.fileType === 'IMAGE' ? (
+                              <Image
+                                source={{ uri: med.fileUrl }}
+                                style={{ width: 200, height: 120, borderRadius: 8, borderWidth: 1, borderColor: theme.border }}
+                                resizeMode="cover"
+                              />
+                            ) : (
+                              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, padding: 8, backgroundColor: theme.appBG, borderRadius: 8, borderWidth: 1, borderColor: theme.border }}>
+                                <MaterialIcons name="insert-drive-file" size={20} color={theme.primary} />
+                                <Text style={{ fontSize: 12, color: theme.text }} numberOfLines={1}>{med.fileName}</Text>
+                              </View>
+                            )}
+                          </View>
+                        ))}
+
+                        {/* Action Bar (React & Reply triggers) */}
+                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 16, marginTop: 6, position: 'relative', zIndex: 10 }}>
+                          <View style={{ position: 'relative' }}>
+                            <Pressable
+                              onPress={() => setShowCommentReactionPickerId(showPicker ? null : item.id)}
+                              style={({ pressed }) => ({
+                                flexDirection: 'row',
+                                alignItems: 'center',
+                                gap: 4,
+                                paddingVertical: 2,
+                                paddingHorizontal: 6,
+                                borderRadius: 4,
+                                backgroundColor: pressed || showPicker ? theme.border : 'transparent',
+                              })}
+                            >
+                              <MaterialIcons name="add-reaction" size={13} color={theme.textSupporting} />
+                              <Text style={{ fontSize: 11, color: theme.textSupporting, fontWeight: '600' }}>React</Text>
+                            </Pressable>
+                            
+                            {showPicker && (
+                              <ReactionPopup
+                                onSelect={(emoji) => toggleCommentReaction(item.id, emoji)}
+                                theme={theme}
+                                style={{ bottom: 24, left: 0 }}
+                              />
+                            )}
+                          </View>
+
+                          <Pressable
+                            onPress={async () => {
+                              await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                              setReplyingToComment({ id: item.id, authorName: item.authorName });
+                            }}
+                            style={({ pressed }) => ({
+                              flexDirection: 'row',
+                              alignItems: 'center',
+                              gap: 4,
+                              paddingVertical: 2,
+                              paddingHorizontal: 6,
+                              borderRadius: 4,
+                              backgroundColor: pressed ? theme.border : 'transparent',
+                            })}
+                          >
+                            <MaterialIcons name="reply" size={13} color={theme.textSupporting} />
+                            <Text style={{ fontSize: 11, color: theme.textSupporting, fontWeight: '600' }}>Reply</Text>
+                          </Pressable>
+                        </View>
+
+                        {/* Display comment reactions count badges */}
+                        {Object.keys(msgReactions).length > 0 && (
+                          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 4, marginTop: 8 }}>
+                            {Object.entries(msgReactions).map(([emoji, users]) => (
+                              <Pressable
+                                key={emoji}
+                                onPress={() => toggleCommentReaction(item.id, emoji)}
+                                style={{
+                                  flexDirection: 'row',
+                                  alignItems: 'center',
+                                  backgroundColor: (users as string[]).includes('Me')
+                                    ? theme.activeComponentBG || theme.highlightBG
+                                    : theme.highlightBG,
+                                  borderWidth: 1,
+                                  borderColor: (users as string[]).includes('Me')
+                                    ? theme.primary
+                                    : theme.border,
+                                  borderRadius: 10,
+                                  paddingHorizontal: 6,
+                                  paddingVertical: 2,
+                                  gap: 4,
+                                }}
+                              >
+                                <Text style={{ fontSize: 12 }}>{emoji}</Text>
+                                <Text
+                                  style={{
+                                    fontSize: 11,
+                                    fontWeight: '600',
+                                    color: (users as string[]).includes('Me')
+                                      ? theme.primary
+                                      : theme.textSupporting,
+                                  }}
+                                >
+                                  {(users as string[]).length}
+                                </Text>
+                              </Pressable>
+                            ))}
+                          </View>
+                        )}
+                      </View>
+                    </View>
+
+                    {/* Threaded Child Replies */}
+                    {commentReplies.length > 0 && (
+                      <View style={{ paddingLeft: 24, gap: 12, borderLeftWidth: 1.5, borderLeftColor: theme.border, marginLeft: 18 }}>
+                        {commentReplies.map((reply: any) => {
+                          const replyReactions = commentReactions[reply.id] || {};
+                          const showReplyPicker = showCommentReactionPickerId === reply.id;
+                          return (
+                            <View key={reply.id} style={{ flexDirection: 'row', gap: 10 }}>
+                              <Avatar uri={reply.avatar} name={reply.authorName} size={28} theme={theme} />
+                              <View style={{ flex: 1, backgroundColor: theme.appBG, padding: 10, borderRadius: 10, borderWidth: 1, borderColor: theme.border }}>
+                                <View style={{ flexDirection: 'row', alignItems: 'baseline', marginBottom: 4, gap: 8 }}>
+                                  <Text style={{ fontWeight: '600', color: theme.text, fontSize: 13 }}>{reply.authorName}</Text>
+                                  <Text style={{ fontSize: 10, color: theme.textSupporting }}>{reply.timestamp}</Text>
+                                </View>
+                                <Text style={{ fontSize: 13, color: theme.text, lineHeight: 18 }}>{reply.content}</Text>
+
+                                {/* Child actions (React only) */}
+                                <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 4, position: 'relative', zIndex: 10 }}>
+                                  <View style={{ position: 'relative' }}>
+                                    <Pressable
+                                      onPress={() => setShowCommentReactionPickerId(showReplyPicker ? null : reply.id)}
+                                      style={({ pressed }) => ({
+                                        flexDirection: 'row',
+                                        alignItems: 'center',
+                                        gap: 4,
+                                        paddingVertical: 2,
+                                        paddingHorizontal: 6,
+                                        borderRadius: 4,
+                                        backgroundColor: pressed || showReplyPicker ? theme.border : 'transparent',
+                                      })}
+                                    >
+                                      <MaterialIcons name="add-reaction" size={12} color={theme.textSupporting} />
+                                      <Text style={{ fontSize: 10, color: theme.textSupporting, fontWeight: '600' }}>React</Text>
+                                    </Pressable>
+                                    
+                                    {showReplyPicker && (
+                                      <ReactionPopup
+                                        onSelect={(emoji) => toggleCommentReaction(reply.id, emoji)}
+                                        theme={theme}
+                                        style={{ bottom: 24, left: 0 }}
+                                      />
+                                    )}
+                                  </View>
+                                </View>
+
+                                {/* Child Reactions badges */}
+                                {Object.keys(replyReactions).length > 0 && (
+                                  <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 4, marginTop: 6 }}>
+                                    {Object.entries(replyReactions).map(([emoji, users]) => (
+                                      <Pressable
+                                        key={emoji}
+                                        onPress={() => toggleCommentReaction(reply.id, emoji)}
+                                        style={{
+                                          flexDirection: 'row',
+                                          alignItems: 'center',
+                                          backgroundColor: (users as string[]).includes('Me')
+                                            ? theme.activeComponentBG || theme.highlightBG
+                                            : theme.highlightBG,
+                                          borderWidth: 1,
+                                          borderColor: (users as string[]).includes('Me')
+                                            ? theme.primary
+                                            : theme.border,
+                                          borderRadius: 8,
+                                          paddingHorizontal: 5,
+                                          paddingVertical: 1.5,
+                                          gap: 3,
+                                        }}
+                                      >
+                                        <Text style={{ fontSize: 10 }}>{emoji}</Text>
+                                        <Text
+                                          style={{
+                                            fontSize: 9,
+                                            fontWeight: '600',
+                                            color: (users as string[]).includes('Me')
+                                              ? theme.primary
+                                              : theme.textSupporting,
+                                          }}
+                                        >
+                                          {(users as string[]).length}
+                                        </Text>
+                                      </Pressable>
+                                    ))}
+                                  </View>
+                                )}
+                              </View>
+                            </View>
+                          );
+                        })}
+                      </View>
+                    )}
+                  </View>
+                );
+              });
+            })()}
           </ScrollView>
 
+          {/* Hidden file input (web only) */}
+          {Platform.OS === 'web' && (
+            <input
+              type="file"
+              ref={commentFileInputRef}
+              style={{ display: 'none' }}
+              onChange={handleCommentFileChange}
+            />
+          )}
+
+          {/* Comment Media Attachment Preview Strip */}
+          {selectedCommentMedia && (
+            <View
+              style={{
+                paddingHorizontal: 16,
+                paddingVertical: 10,
+                backgroundColor: theme.highlightBG,
+                borderTopWidth: 1,
+                borderTopColor: theme.border,
+                flexDirection: 'row',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+              }}
+            >
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+                {selectedCommentMedia.fileType === 'IMAGE' ? (
+                  <Image
+                    source={{ uri: selectedCommentMedia.fileUrl }}
+                    style={{ width: 44, height: 44, borderRadius: 6 }}
+                  />
+                ) : (
+                  <View
+                    style={{
+                      width: 44,
+                      height: 44,
+                      borderRadius: 6,
+                      backgroundColor: theme.appBG,
+                      justifyContent: 'center',
+                      alignItems: 'center',
+                      borderWidth: 1,
+                      borderColor: theme.border,
+                    }}
+                  >
+                    <MaterialIcons name="insert-drive-file" size={24} color={theme.textSupporting} />
+                  </View>
+                )}
+                <View>
+                  <Text style={{ color: theme.text, fontSize: 13, fontWeight: '600' }} numberOfLines={1}>
+                    {selectedCommentMedia.fileName}
+                  </Text>
+                  <Text style={{ color: theme.textSupporting, fontSize: 11 }}>
+                    {(selectedCommentMedia.fileSize / 1024).toFixed(1)} KB
+                  </Text>
+                </View>
+              </View>
+              <Pressable
+                onPress={() => setSelectedCommentMedia(null)}
+                style={{ padding: 6, borderRadius: 20, backgroundColor: theme.border }}
+              >
+                <MaterialIcons name="close" size={16} color={theme.text} />
+              </Pressable>
+            </View>
+          )}
+
+          {replyingToComment && (
+            <View
+              style={{
+                flexDirection: 'row',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                paddingHorizontal: 16,
+                paddingVertical: 8,
+                backgroundColor: theme.highlightBG,
+                borderTopWidth: 1,
+                borderTopColor: theme.border,
+              }}
+            >
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                <MaterialIcons name="reply" size={16} color={theme.primary} />
+                <Text style={{ color: theme.text, fontSize: 13 }}>
+                  Replying to <Text style={{ fontWeight: '600' }}>@{replyingToComment.authorName}</Text>
+                </Text>
+              </View>
+              <Pressable
+                onPress={() => setReplyingToComment(null)}
+                style={{ padding: 4 }}
+              >
+                <MaterialIcons name="close" size={16} color={theme.textSupporting} />
+              </Pressable>
+            </View>
+          )}
+
           <View style={[styles.modalInputBar, { borderTopColor: theme.border, backgroundColor: theme.appBG, paddingBottom: Platform.OS === 'ios' ? 24 : 12 }]}>
+            {/* Attachment Button */}
+            <Pressable
+              onPress={() => {
+                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                if (Platform.OS === 'web') commentFileInputRef.current?.click();
+              }}
+              disabled={isCommentUploading}
+              style={({ pressed }) => ({
+                padding: 8,
+                borderRadius: 20,
+                backgroundColor: pressed ? theme.highlightBG : 'transparent',
+                justifyContent: 'center',
+                alignItems: 'center',
+              })}
+            >
+              {isCommentUploading ? (
+                <ActivityIndicator size="small" color={theme.icon} />
+              ) : (
+                <MaterialIcons name="add" size={24} color={theme.textSupporting} />
+              )}
+            </Pressable>
+
             <View
               style={{
                 flex: 1,
@@ -362,7 +882,7 @@ const PostCard = ({ post, onAuthorPress }: { post: Post; onAuthorPress?: (author
               onPress={handleSendComment}
               style={{ padding: 8 }}
             >
-              <MaterialIcons name="send" size={24} color={commentText.trim() ? theme.primary : theme.textSupporting} />
+              <MaterialIcons name="send" size={24} color={(commentText.trim() || selectedCommentMedia) ? theme.primary : theme.textSupporting} />
             </Pressable>
           </View>
         </View>
@@ -724,7 +1244,6 @@ export default function ExploreScreen() {
           <View style={{ padding: 20, gap: 16 }}>
             <TextInputUI
               label="Share something with the community..."
-              placeholder="What is on your mind?"
               value={newPostContent}
               onChangeText={setNewPostContent}
               multiline

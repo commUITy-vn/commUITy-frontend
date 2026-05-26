@@ -1,117 +1,240 @@
 import React from 'react';
-import { View, Text, Pressable, ScrollView, StyleSheet } from 'react-native';
+import { View, Text, Pressable, ScrollView, StyleSheet, Platform } from 'react-native';
 import { useTheme } from '@/hooks/useTheme';
-import { useThemeStyles } from '@/hooks/useThemeStyles';
 import { useRouter } from 'expo-router';
+import * as Haptics from 'expo-haptics';
+import { MaterialIcons } from '@expo/vector-icons';
+import { BorderRadius, Spacing } from '@/constants/theme';
 
-const Dashboard = () => {
+export default function AdminDashboard() {
   const theme = useTheme();
-  const styles = useGeneratedStyles();
   const router = useRouter();
 
   const stats = [
-    { label: 'Total Users', value: '1,204' },
-    { label: 'Pending Requests', value: '15' },
-    { label: 'Open Reports', value: '3' },
-    { label: 'System Health', value: '99%' },
+    { label: 'Total Users', value: '1,204', icon: 'people' },
+    { label: 'Pending Requests', value: '15', icon: 'pending-actions' },
+    { label: 'Open Reports', value: '3', icon: 'report' },
+    { label: 'System Health', value: '99%', icon: 'bolt' },
   ];
 
+  const adminOptions = [
+    {
+      title: 'User Management',
+      subtitle: 'Manage roles, view statuses, block/unblock members',
+      route: '/(admin)/users',
+      icon: 'people-outline',
+    },
+    {
+      title: 'Moderation Queue',
+      subtitle: 'Review pending requests and investigate user reports',
+      route: '/(admin)/moderation',
+      icon: 'gavel',
+    },
+    {
+      title: 'System Statistics',
+      subtitle: 'View category summaries and donation metrics',
+      route: '/(admin)/statistics',
+      icon: 'bar-chart',
+    },
+  ];
+
+  const handleBack = async () => {
+    await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    router.back();
+  };
+
+  const handleNavigate = async (route: string) => {
+    await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    router.push(route as any);
+  };
+
   return (
-    <ScrollView style={styles.container} contentContainerStyle={styles.contentContainer}>
-      <Text style={styles.header}>Admin Control Center</Text>
-      <View style={styles.grid}>
-        {stats.map((item, idx) => (
-          <View key={idx} style={styles.card}>
-            <Text style={styles.cardValue}>{item.value}</Text>
-            <Text style={styles.cardLabel}>{item.label}</Text>
-          </View>
-        ))}
-      </View>
-      <View style={styles.linksContainer}>
-        <Pressable
-          style={({ pressed }) => [
-            styles.linkButton,
-            { backgroundColor: pressed ? theme.linkHover : theme.link },
-          ]}
-          onPress={() => router.push('/(admin)/users')}
-        >
-          <Text style={styles.linkText}>User Management</Text>
+    <View style={[styles.container, { backgroundColor: theme.appBG }]}>
+      {/* Sleek Header (Back chevron + title) */}
+      <View style={[styles.header, { borderBottomColor: theme.border, backgroundColor: theme.componentBG }]}>
+        <Pressable onPress={handleBack} style={styles.backButton}>
+          <MaterialIcons name="chevron-left" size={28} color={theme.primary} />
         </Pressable>
-        <Pressable
-          style={({ pressed }) => [
-            styles.linkButton,
-            { backgroundColor: pressed ? theme.linkHover : theme.link },
-          ]}
-          onPress={() => router.push('/(admin)/moderation')}
-        >
-          <Text style={styles.linkText}>Moderation Queue</Text>
-        </Pressable>
+        <Text style={[styles.headerTitle, { color: theme.text }]}>Admin Panel</Text>
+        <View style={{ width: 44 }} />
       </View>
-    </ScrollView>
+
+      <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
+        {/* Statistics Grid */}
+        <View style={styles.grid}>
+          {stats.map((item, idx) => (
+            <View
+              key={idx}
+              style={[
+                styles.statCard,
+                {
+                  backgroundColor: theme.componentBG,
+                  borderColor: theme.border,
+                },
+              ]}
+            >
+              <View style={styles.statHeader}>
+                <MaterialIcons name={item.icon as any} size={20} color={theme.primary} />
+                <Text style={[styles.statValue, { color: theme.text }]}>{item.value}</Text>
+              </View>
+              <Text style={[styles.statLabel, { color: theme.textSupporting }]}>{item.label}</Text>
+            </View>
+          ))}
+        </View>
+
+        {/* Section Title */}
+        <Text style={[styles.sectionTitle, { color: theme.text }]}>Management Console</Text>
+
+        {/* Settings-style Navigation Options */}
+        <View style={[styles.listContainer, { backgroundColor: theme.componentBG, borderColor: theme.border }]}>
+          {adminOptions.map((opt, idx) => {
+            const isLast = idx === adminOptions.length - 1;
+            return (
+              <Pressable
+                key={idx}
+                onPress={() => handleNavigate(opt.route)}
+                style={({ pressed }) => [
+                  styles.optionRow,
+                  {
+                    backgroundColor: pressed ? theme.highlightBG : 'transparent',
+                    borderBottomColor: theme.border,
+                    borderBottomWidth: isLast ? 0 : StyleSheet.hairlineWidth,
+                  },
+                ]}
+              >
+                <View style={[styles.optionIconContainer, { backgroundColor: theme.highlightBG }]}>
+                  <MaterialIcons name={opt.icon as any} size={22} color={theme.primary} />
+                </View>
+                <View style={styles.optionTextContainer}>
+                  <Text style={[styles.optionTitle, { color: theme.text }]}>{opt.title}</Text>
+                  <Text style={[styles.optionSubtitle, { color: theme.textSupporting }]} numberOfLines={1}>
+                    {opt.subtitle}
+                  </Text>
+                </View>
+                <MaterialIcons name="chevron-right" size={24} color={theme.icon} />
+              </Pressable>
+            );
+          })}
+        </View>
+      </ScrollView>
+    </View>
   );
-};
+}
 
-export default Dashboard;
-
-// Styles using theme hooks and multiples of 4/8 for spacing
-const createStyles = (theme: any) =>
-  StyleSheet.create({
-    container: {
-      flex: 1,
-      backgroundColor: theme.appBG,
-    },
-    contentContainer: {
-      padding: 16,
-    },
-    header: {
-      fontSize: 24,
-      fontWeight: '600',
-      color: theme.text,
-      marginBottom: 16,
-    },
-    grid: {
-      flexDirection: 'row',
-      flexWrap: 'wrap',
-      justifyContent: 'space-between',
-      marginBottom: 24,
-    },
-    card: {
-      width: '48%',
-      backgroundColor: theme.cardBG || theme.appBG,
-      padding: 12,
-      borderRadius: 8,
-      marginBottom: 12,
-    },
-    cardValue: {
-      fontSize: 20,
-      fontWeight: '600',
-      color: theme.text,
-    },
-    cardLabel: {
-      fontSize: 14,
-      color: theme.textSupporting,
-    },
-    linksContainer: {
-      flexDirection: 'row',
-      justifyContent: 'space-around',
-    },
-    linkButton: {
-      paddingVertical: 10,
-      paddingHorizontal: 16,
-      borderRadius: 8,
-    },
-    linkText: {
-      color: theme.linkText || '#fff',
-      fontWeight: '500',
-    },
-  });
-
-// Hook to generate styles with current theme
-const useGeneratedStyles = () => {
-  const theme = useTheme();
-  return createStyles(theme);
-};
-
-// Replace useThemeStyles with generated styles in component
-// (Assuming useThemeStyles returns same structure)
-// This is a placeholder to respect UI guidelines.
+const styles = StyleSheet.create({
+  container: {
+    flex: 1,
+  },
+  header: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 8,
+    paddingVertical: 12,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    ...Platform.select({
+      ios: {
+        paddingTop: 12,
+      },
+    }),
+  },
+  backButton: {
+    padding: 8,
+  },
+  headerTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+    textAlign: 'center',
+  },
+  content: {
+    padding: Spacing.base,
+    gap: Spacing.base,
+  },
+  grid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    justifyContent: 'space-between',
+    gap: 12,
+    marginBottom: 8,
+  },
+  statCard: {
+    width: '48%',
+    padding: 14,
+    borderRadius: BorderRadius.md,
+    borderWidth: 1,
+    gap: 6,
+    ...Platform.select({
+      ios: {
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 1 },
+        shadowOpacity: 0.05,
+        shadowRadius: 2,
+      },
+      android: {
+        elevation: 1,
+      },
+      default: {},
+    }),
+  },
+  statHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  statValue: {
+    fontSize: 22,
+    fontWeight: '700',
+  },
+  statLabel: {
+    fontSize: 12,
+    fontWeight: '500',
+  },
+  sectionTitle: {
+    fontSize: 15,
+    fontWeight: '600',
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+    marginTop: 8,
+  },
+  listContainer: {
+    borderRadius: BorderRadius.lg,
+    borderWidth: 1,
+    overflow: 'hidden',
+    ...Platform.select({
+      ios: {
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 1 },
+        shadowOpacity: 0.05,
+        shadowRadius: 2,
+      },
+      android: {
+        elevation: 1,
+      },
+      default: {},
+    }),
+  },
+  optionRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 16,
+  },
+  optionIconContainer: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: 14,
+  },
+  optionTextContainer: {
+    flex: 1,
+    gap: 2,
+  },
+  optionTitle: {
+    fontSize: 15,
+    fontWeight: '600',
+  },
+  optionSubtitle: {
+    fontSize: 12,
+  },
+});

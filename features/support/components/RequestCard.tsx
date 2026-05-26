@@ -34,9 +34,9 @@ export const RequestCard = ({ request, onPress }: RequestCardProps) => {
     }
   };
 
-  const descriptionPreview = request.description.length > 100
-    ? `${request.description.substring(0, 100)}...`
-    : request.description;
+  const descriptionPreview = (request.description || '').length > 100
+    ? `${(request.description || '').substring(0, 100)}...`
+    : (request.description || '');
 
   const urgencyColor = URGENCY_COLORS[request.urgency];
   const statusColor = STATUS_COLORS[request.status];

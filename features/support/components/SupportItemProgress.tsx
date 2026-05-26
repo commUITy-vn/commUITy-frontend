@@ -4,15 +4,23 @@ import { SupportItem, ITEM_CATEGORY_LABELS } from '@/features/support/types/supp
 
 interface SupportItemProgressProps {
   item: SupportItem;
+  isCompleted?: boolean;
 }
 
-export const SupportItemProgress = ({ item }: SupportItemProgressProps) => {
+export const SupportItemProgress = ({ item, isCompleted }: SupportItemProgressProps) => {
   const theme = useTheme();
 
-  const progressPercentage = Math.min(
-    (item.receivedQuantity / item.neededQuantity) * 100,
-    100
-  );
+  const isCompletedProp = isCompleted ?? false;
+  const progressPercentage = isCompletedProp
+    ? 100
+    : Math.min(
+        (item.receivedQuantity / item.neededQuantity) * 100,
+        100
+      );
+
+  const receivedText = isCompletedProp
+    ? `${item.neededQuantity}/${item.neededQuantity}`
+    : `${item.receivedQuantity}/${item.neededQuantity}`;
 
   return (
     <View style={styles.container}>
@@ -25,7 +33,7 @@ export const SupportItemProgress = ({ item }: SupportItemProgressProps) => {
         </Text>
       </View>
       <Text style={[styles.quantity, { color: theme.textSupporting }]}>
-        {item.receivedQuantity}/{item.neededQuantity} received
+        {receivedText} received
       </Text>
       <View style={[styles.progressTrack, { backgroundColor: theme.border }]}>
         <View

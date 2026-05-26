@@ -10,11 +10,12 @@ import { SupportItemProgress } from '@/features/support/components/SupportItemPr
 import { ContributeItemModal } from '@/features/support/components/ContributeItemModal';
 import { useSupportRequestById } from '@/features/support/hooks/useSupportRequestById';
 import { useSupportNeeds } from '@/features/support/hooks/useSupportNeeds';
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect } from 'react';
 import { api } from '@/lib/api-client';
 import { MaterialIcons } from '@expo/vector-icons';
 import { useAuthStore } from '@/features/auth/stores/useAuthStore';
 import { UserRole } from '@/features/auth/types';
+import { useQueryClient } from '@tanstack/react-query';
 import {
   VolunteerAssignment,
   getMyAssignments,
@@ -24,21 +25,23 @@ import {
   getAssignmentsBySupportRequest,
 } from '@/features/support/api/volunteer-assignments';
 import {
-  SupportStatus,
   UrgencyLevel,
-  SupportCategory,
-  STATUS_LABELS,
   URGENCY_LABELS,
-  CATEGORY_LABELS,
   SupportItem,
   ItemCategory,
 } from '@/features/support/types/support.types';
+import { approveSupportRequest } from '@/features/support/api/approve-support-request';
+import { rejectSupportRequest } from '@/features/support/api/reject-support-request';
+import { createSupportNeed } from '@/features/support/api/create-support-need';
+import { updateSupportNeed } from '@/features/support/api/update-support-need';
+import { deleteSupportNeed } from '@/features/support/api/delete-support-need';
 
 export default function RequestDetailScreen() {
   const theme = useTheme();
   const styles = useThemeStyles();
   const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
+  const queryClient = useQueryClient();
 
   const getUrgencyBg = (urgency: UrgencyLevel): string => {
     switch (urgency) {
@@ -71,11 +74,12 @@ export default function RequestDetailScreen() {
       case 'PENDING':
         return '#E2E8F0';
       case 'APPROVED':
+      case 'ACCEPTED':
+      case 'FULFILLED':
+      case 'COMPLETED':
         return '#E5F6EE';
       case 'IN_PROGRESS':
         return '#E0F2FE';
-      case 'FULFILLED':
-        return '#E5F6EE';
       case 'REJECTED':
         return '#FFE5E5';
       case 'CANCELLED':
@@ -90,11 +94,12 @@ export default function RequestDetailScreen() {
       case 'PENDING':
         return '#475569';
       case 'APPROVED':
+      case 'ACCEPTED':
+      case 'FULFILLED':
+      case 'COMPLETED':
         return '#008040';
       case 'IN_PROGRESS':
         return '#0369A1';
-      case 'FULFILLED':
-        return '#008040';
       case 'REJECTED':
         return '#CC0000';
       case 'CANCELLED':
@@ -123,6 +128,22 @@ export default function RequestDetailScreen() {
   const [selectedApplicant, setSelectedApplicant] = useState<VolunteerAssignment | null>(null);
   const [rejectionReason, setRejectionReason] = useState('');
   const [rejectionError, setRejectionError] = useState('');
+
+  // Request review state
+  const [isReviewing, setIsReviewing] = useState(false);
+  const [requestRejectionModalVisible, setRequestRejectionModalVisible] = useState(false);
+  const [requestRejectionReason, setRequestRejectionReason] = useState('');
+  const [requestRejectionError, setRequestRejectionError] = useState('');
+
+  // Support needs management state
+  const [needModalVisible, setNeedModalVisible] = useState(false);
+  const [editingNeed, setEditingNeed] = useState<any | null>(null); // null means adding
+  const [needType, setNeedType] = useState<'MONEY' | 'GOODS'>('GOODS');
+  const [needName, setNeedName] = useState('');
+  const [needUnit, setNeedUnit] = useState('PIECE');
+  const [needQuantity, setNeedQuantity] = useState('');
+  const [needError, setNeedError] = useState('');
+  const [isNeedActionLoading, setIsNeedActionLoading] = useState(false);
 
   const loadAssignments = async () => {
     if (!user) return;
@@ -172,7 +193,7 @@ export default function RequestDetailScreen() {
       const res = await approveVolunteer(id, volunteerId);
       showAlert('Success', 'Volunteer approved successfully!');
       
-      if (res.conversationId) {
+      if (isOwner && res.conversationId) {
         requestAnimationFrame(() => {
           router.push(`/messages/${res.conversationId}`);
         });
@@ -214,6 +235,118 @@ export default function RequestDetailScreen() {
     }
   };
 
+  // Support request review handlers
+  const handleApproveRequest = async () => {
+    setIsReviewing(true);
+    try {
+      await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      await approveSupportRequest(id);
+      showAlert('Request Approved', 'The support request has been successfully approved.');
+      queryClient.invalidateQueries({ queryKey: ['supportRequest', id] });
+    } catch (err: any) {
+      showAlert('Error', err?.message || 'Failed to approve support request.');
+    } finally {
+      setIsReviewing(false);
+    }
+  };
+
+  const handleOpenRequestRejectModal = () => {
+    setRequestRejectionReason('');
+    setRequestRejectionError('');
+    setRequestRejectionModalVisible(true);
+  };
+
+  const handleConfirmRequestReject = async () => {
+    if (!requestRejectionReason.trim()) {
+      setRequestRejectionError('Rejection reason is required');
+      return;
+    }
+    setIsReviewing(true);
+    try {
+      await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
+      await rejectSupportRequest(id, requestRejectionReason.trim());
+      setRequestRejectionModalVisible(false);
+      showAlert('Request Rejected', 'The support request has been rejected.');
+      queryClient.invalidateQueries({ queryKey: ['supportRequest', id] });
+    } catch (err: any) {
+      setRequestRejectionError(err?.message || 'Failed to reject support request.');
+    } finally {
+      setIsReviewing(false);
+    }
+  };
+
+  // Support Need handlers
+  const handleOpenAddNeedModal = () => {
+    setEditingNeed(null);
+    setNeedType('GOODS');
+    setNeedName('');
+    setNeedUnit('PIECE');
+    setNeedQuantity('');
+    setNeedError('');
+    setNeedModalVisible(true);
+  };
+
+  const handleOpenEditNeedModal = (item: any) => {
+    const originalNeed = needs.find(n => n.id === item.id);
+    setEditingNeed(originalNeed || item);
+    setNeedType(originalNeed?.supportType || 'GOODS');
+    setNeedName(originalNeed?.needName || item.name);
+    setNeedUnit(originalNeed?.unit || 'PIECE');
+    setNeedQuantity(String(originalNeed?.requiredQuantity || item.neededQuantity || ''));
+    setNeedError('');
+    setNeedModalVisible(true);
+  };
+
+  const handleSaveNeed = async () => {
+    if (!needName.trim()) {
+      setNeedError('Item name is required');
+      return;
+    }
+    const parsedQty = parseFloat(needQuantity);
+    if (isNaN(parsedQty) || parsedQty <= 0) {
+      setNeedError('Quantity must be greater than 0');
+      return;
+    }
+
+    setIsNeedActionLoading(true);
+    try {
+      await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+      const payload = {
+        supportType: needType,
+        needName: needName.trim(),
+        unit: needUnit,
+        requiredQuantity: parsedQty,
+      };
+
+      if (editingNeed) {
+        await updateSupportNeed(editingNeed.id, payload);
+        showAlert('Success', 'Item updated successfully.');
+      } else {
+        await createSupportNeed(id, payload);
+        showAlert('Success', 'Item added successfully.');
+      }
+      setNeedModalVisible(false);
+      queryClient.invalidateQueries({ queryKey: ['supportNeeds', id] });
+      queryClient.invalidateQueries({ queryKey: ['supportRequest', id] });
+    } catch (err: any) {
+      setNeedError(err?.message || 'Failed to save needed item.');
+    } finally {
+      setIsNeedActionLoading(false);
+    }
+  };
+
+  const handleDeleteNeed = async (needId: string) => {
+    try {
+      await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
+      await deleteSupportNeed(needId);
+      showAlert('Success', 'Item deleted successfully.');
+      queryClient.invalidateQueries({ queryKey: ['supportNeeds', id] });
+      queryClient.invalidateQueries({ queryKey: ['supportRequest', id] });
+    } catch (err: any) {
+      showAlert('Error', err?.message || 'Failed to delete needed item.');
+    }
+  };
+
   const [selectedItem, setSelectedItem] = useState<SupportItem | null>(null);
   const [modalVisible, setModalVisible] = useState(false);
   const [alertModal, setAlertModal] = useState<{ visible: boolean; title: string; message: string }>({
@@ -238,8 +371,15 @@ export default function RequestDetailScreen() {
   const isStaff = user && (user.role === UserRole.ADMIN || user.role === UserRole.COLLABORATOR);
   const myAssignment = myAssignments.find((a) => a.supportRequestId === id) || requestAssignments.find(a => a.volunteerId === user?.id);
   const showApplicantsSection = (isOwner || isStaff) && requestAssignments.length > 0;
-  const showApplyToVolunteerButton = user?.role === UserRole.VOLUNTEER && !myAssignment && request && request.status === 'APPROVED';
-  const showHelpButton = !isOwner && mappedItems.length > 0 && request && (request.status === 'APPROVED' || request.status === 'IN_PROGRESS');
+  
+  // Volunteer Apply: approved or in-progress support requests
+  const showApplyToVolunteerButton = user?.role === UserRole.VOLUNTEER && !myAssignment && request && (request.status === 'APPROVED' || request.status === 'IN_PROGRESS');
+  
+  // Volunteer must be accepted, collaborator can always contribute
+  const isVolunteerAccepted = user?.role === UserRole.VOLUNTEER && myAssignment && (myAssignment.status === 'ACCEPTED' || myAssignment.status === 'APPROVED' || myAssignment.status === 'IN_PROGRESS' || myAssignment.status === 'COMPLETED');
+  const showHelpButton = !isOwner && mappedItems.length > 0 && request && (request.status === 'APPROVED' || request.status === 'IN_PROGRESS') && (
+    isStaff || isVolunteerAccepted
+  );
 
   const handleBack = async () => {
     await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
@@ -390,28 +530,132 @@ export default function RequestDetailScreen() {
           </Text>
 
           {/* Needed Items Section */}
-          <Text style={[localStyles.sectionTitle, { color: theme.text }]}>Needed Items</Text>
+          <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 12 }}>
+            <Text style={[localStyles.sectionTitle, { color: theme.text, marginTop: 0 }]}>Needed Items</Text>
+            {isOwner && (request.status === 'PENDING' || request.status === 'APPROVED') && (
+              <Pressable
+                onPress={handleOpenAddNeedModal}
+                style={({ pressed }) => [
+                  { flexDirection: 'row', alignItems: 'center', gap: 4, paddingVertical: 4, paddingHorizontal: 8, borderRadius: 8, backgroundColor: theme.highlightBG },
+                  pressed && { opacity: 0.8 }
+                ]}
+              >
+                <MaterialIcons name="add" size={16} color={theme.primary} />
+                <Text style={{ fontSize: 13, fontWeight: '600', color: theme.primary }}>Add Item</Text>
+              </Pressable>
+            )}
+          </View>
+
           <View style={localStyles.itemsContainer}>
             {mappedItems.length > 0 ? (
-              mappedItems.map((item) => (
-                <Pressable
-                  key={item.id}
-                  onPress={() => {
-                    setSelectedItem(item);
-                    setModalVisible(true);
-                  }}
-                  style={({ pressed }) => [
-                    pressed && { opacity: 0.7 }
-                  ]}
-                >
-                  <SupportItemProgress item={item} />
-                </Pressable>
-              ))
+              mappedItems.map((item) => {
+                const canInteract = showHelpButton || (isOwner && (request.status === 'PENDING' || request.status === 'APPROVED'));
+                const isCompleted = request.status === 'COMPLETED' || request.status === 'FULFILLED';
+                if (canInteract) {
+                  return (
+                    <Pressable
+                      key={item.id}
+                      onPress={() => {
+                        if (isOwner && (request.status === 'PENDING' || request.status === 'APPROVED')) {
+                          handleOpenEditNeedModal(item);
+                        } else if (showHelpButton) {
+                          setSelectedItem(item);
+                          setModalVisible(true);
+                        }
+                      }}
+                      style={({ pressed }) => [
+                        pressed && { opacity: 0.7 }
+                      ]}
+                    >
+                      <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+                        <View style={{ flex: 1 }}>
+                          <SupportItemProgress item={item} isCompleted={isCompleted} />
+                        </View>
+                        {isOwner && (request.status === 'PENDING' || request.status === 'APPROVED') && (
+                          <View style={{ flexDirection: 'row', gap: 8, marginLeft: 8 }}>
+                            <Pressable onPress={() => handleOpenEditNeedModal(item)} style={{ padding: 4 }}>
+                              <MaterialIcons name="edit" size={20} color={theme.primary} />
+                            </Pressable>
+                            <Pressable onPress={() => handleDeleteNeed(item.id)} style={{ padding: 4 }}>
+                              <MaterialIcons name="delete" size={20} color={theme.danger} />
+                            </Pressable>
+                          </View>
+                        )}
+                      </View>
+                    </Pressable>
+                  );
+                } else {
+                  return (
+                    <View key={item.id} style={{ paddingVertical: 4 }}>
+                      <SupportItemProgress item={item} isCompleted={isCompleted} />
+                    </View>
+                  );
+                }
+              })
             ) : (
               <Text style={{ color: theme.textSupporting, fontStyle: 'italic' }}>No items requested.</Text>
             )}
           </View>
         </View>
+
+        {/* Support Request Review Panel (For Staff) */}
+        {request.status === 'PENDING' && isStaff && (
+          <View style={[localStyles.card, { backgroundColor: theme.componentBG, borderColor: theme.border, marginTop: 16, gap: 12 }]}>
+            <Text style={[localStyles.sectionTitle, { color: theme.text, marginTop: 0 }]}>
+              Review Support Request
+            </Text>
+            <Text style={{ fontSize: 14, color: theme.textSupporting }}>
+              As an Admin or Collaborator, you can approve or reject this pending support request.
+            </Text>
+            <View style={{ flexDirection: 'row', gap: 12, marginTop: 4 }}>
+              <Pressable
+                disabled={isReviewing}
+                onPress={handleApproveRequest}
+                style={({ pressed }) => [
+                  {
+                    flex: 1,
+                    paddingVertical: 12,
+                    borderRadius: 8,
+                    backgroundColor: '#E5F6EE',
+                    borderWidth: 1,
+                    borderColor: '#008040',
+                    alignItems: 'center',
+                    opacity: pressed || isReviewing ? 0.8 : 1,
+                  }
+                ]}
+              >
+                {isReviewing ? (
+                  <ActivityIndicator color="#008040" />
+                ) : (
+                  <Text style={{ fontSize: 15, fontWeight: '600', color: '#008040' }}>Approve Request</Text>
+                )}
+              </Pressable>
+              
+              <Pressable
+                disabled={isReviewing}
+                onPress={handleOpenRequestRejectModal}
+                style={({ pressed }) => [
+                  {
+                    flex: 1,
+                    paddingVertical: 12,
+                    borderRadius: 8,
+                    backgroundColor: '#FFE5E5',
+                    borderWidth: 1,
+                    borderColor: '#CC0000',
+                    alignItems: 'center',
+                    opacity: pressed || isReviewing ? 0.8 : 1,
+                  }
+                ]}
+              >
+                {isReviewing ? (
+                  <ActivityIndicator color="#CC0000" />
+                ) : (
+                  <Text style={{ fontSize: 15, fontWeight: '600', color: '#CC0000' }}>Reject Request</Text>
+                )}
+              </Pressable>
+            </View>
+          </View>
+        )}
 
         {/* Volunteer status card (For Volunteers) */}
         {user?.role === UserRole.VOLUNTEER && (() => {
@@ -549,7 +793,7 @@ export default function RequestDetailScreen() {
         onConfirm={handleConfirmContribution}
       />
 
-      {/* Rejection Reason Modal */}
+      {/* Volunteer Rejection Reason Modal */}
       <Modal
         visible={rejectionModalVisible}
         transparent
@@ -599,7 +843,6 @@ export default function RequestDetailScreen() {
               errorText={rejectionError}
               multiline
               numberOfLines={3}
-              placeholder="e.g. Volunteer slots are already filled."
               height={100}
             />
             
@@ -641,6 +884,244 @@ export default function RequestDetailScreen() {
                 onPress={handleConfirmReject}
               >
                 <Text style={{ fontSize: 15, fontWeight: '600', color: '#FFFFFF' }}>Submit</Text>
+              </Pressable>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Support Request Rejection Reason Modal */}
+      <Modal
+        visible={requestRejectionModalVisible}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setRequestRejectionModalVisible(false)}
+      >
+        <View
+          style={{
+            flex: 1,
+            justifyContent: 'center',
+            alignItems: 'center',
+            backgroundColor: 'rgba(0,0,0,0.5)',
+            padding: 20,
+          }}
+        >
+          <View
+            style={{
+              width: '100%',
+              maxWidth: 400,
+              backgroundColor: theme.componentBG,
+              borderRadius: 12,
+              borderWidth: 1,
+              borderColor: theme.border,
+              padding: 20,
+              shadowColor: '#000',
+              shadowOffset: { width: 0, height: 4 },
+              shadowOpacity: 0.3,
+              shadowRadius: 8,
+              elevation: 8,
+            }}
+          >
+            <Text style={{ fontSize: 18, fontWeight: 'bold', color: theme.text, marginBottom: 12 }}>
+              Reject Support Request
+            </Text>
+            
+            <Text style={{ fontSize: 14, color: theme.textSupporting, marginBottom: 16 }}>
+              Please provide a reason for rejecting this support request.
+            </Text>
+            
+            <TextInput
+              label="Rejection Reason"
+              value={requestRejectionReason}
+              onChangeText={(text) => {
+                setRequestRejectionReason(text);
+                if (text.trim()) setRequestRejectionError('');
+              }}
+              errorText={requestRejectionError}
+              multiline
+              numberOfLines={3}
+              height={100}
+            />
+            
+            <View style={{ flexDirection: 'row', gap: 12, marginTop: 8 }}>
+              <Pressable
+                style={({ pressed }) => [
+                  {
+                    flex: 1,
+                    paddingVertical: 12,
+                    borderRadius: 8,
+                    borderWidth: 1,
+                    borderColor: theme.border,
+                    alignItems: 'center',
+                    backgroundColor: theme.highlightBG,
+                    opacity: pressed ? 0.8 : 1,
+                  }
+                ]}
+                onPress={() => {
+                  setRequestRejectionModalVisible(false);
+                  setRequestRejectionReason('');
+                  setRequestRejectionError('');
+                }}
+              >
+                <Text style={{ fontSize: 15, fontWeight: '600', color: theme.textSupporting }}>Cancel</Text>
+              </Pressable>
+              
+              <Pressable
+                style={({ pressed }) => [
+                  {
+                    flex: 1,
+                    paddingVertical: 12,
+                    borderRadius: 8,
+                    backgroundColor: theme.danger || '#CC0000',
+                    alignItems: 'center',
+                    opacity: pressed ? 0.8 : 1,
+                  }
+                ]}
+                onPress={handleConfirmRequestReject}
+              >
+                <Text style={{ fontSize: 15, fontWeight: '600', color: '#FFFFFF' }}>Submit</Text>
+              </Pressable>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Support Need Add / Edit Modal */}
+      <Modal
+        visible={needModalVisible}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setNeedModalVisible(false)}
+      >
+        <View
+          style={{
+            flex: 1,
+            justifyContent: 'center',
+            alignItems: 'center',
+            backgroundColor: 'rgba(0,0,0,0.5)',
+            padding: 20,
+          }}
+        >
+          <View
+            style={{
+              width: '100%',
+              maxWidth: 400,
+              backgroundColor: theme.componentBG,
+              borderRadius: 12,
+              borderWidth: 1,
+              borderColor: theme.border,
+              padding: 20,
+              shadowColor: '#000',
+              shadowOffset: { width: 0, height: 4 },
+              shadowOpacity: 0.3,
+              shadowRadius: 8,
+              elevation: 8,
+            }}
+          >
+            <Text style={{ fontSize: 18, fontWeight: 'bold', color: theme.text, marginBottom: 16 }}>
+              {editingNeed ? 'Edit Needed Item' : 'Add Needed Item'}
+            </Text>
+            
+            {needError ? (
+              <View style={{ backgroundColor: theme.danger + '15', padding: 10, borderRadius: 8, borderWidth: 1, borderColor: theme.danger, marginBottom: 12 }}>
+                <Text style={{ color: theme.danger, fontSize: 13 }}>{needError}</Text>
+              </View>
+            ) : null}
+
+            {/* Type selector (MONEY or GOODS) */}
+            <View style={{ marginBottom: 12 }}>
+              <Text style={{ fontSize: 13, color: theme.textSupporting, marginBottom: 6 }}>Support Type</Text>
+              <View style={{ flexDirection: 'row', gap: 10 }}>
+                {(['GOODS', 'MONEY'] as const).map((t) => (
+                  <Pressable
+                    key={t}
+                    onPress={() => setNeedType(t)}
+                    style={({ pressed }) => [
+                      {
+                        flex: 1,
+                        paddingVertical: 10,
+                        borderRadius: 8,
+                        borderWidth: 1.5,
+                        borderColor: needType === t ? theme.primary : theme.border,
+                        backgroundColor: needType === t ? theme.highlightBG : theme.componentBG,
+                        alignItems: 'center',
+                      },
+                      pressed && { opacity: 0.8 }
+                    ]}
+                  >
+                    <Text style={{ fontSize: 14, fontWeight: '600', color: needType === t ? theme.primary : theme.textSupporting }}>
+                      {t}
+                    </Text>
+                  </Pressable>
+                ))}
+              </View>
+            </View>
+
+            <TextInput
+              label="Item Name"
+              value={needName}
+              onChangeText={(text) => {
+                setNeedName(text);
+                if (text.trim()) setNeedError('');
+              }}
+            />
+
+            <TextInput
+              label="Unit"
+              value={needUnit}
+              onChangeText={setNeedUnit}
+            />
+
+            <TextInput
+              label="Required Quantity"
+              value={needQuantity}
+              onChangeText={(text) => {
+                setNeedQuantity(text);
+                if (text.trim()) setNeedError('');
+              }}
+              keyboardType="numeric"
+            />
+            
+            <View style={{ flexDirection: 'row', gap: 12, marginTop: 16 }}>
+              <Pressable
+                style={({ pressed }) => [
+                  {
+                    flex: 1,
+                    paddingVertical: 12,
+                    borderRadius: 8,
+                    borderWidth: 1,
+                    borderColor: theme.border,
+                    alignItems: 'center',
+                    backgroundColor: theme.highlightBG,
+                    opacity: pressed ? 0.8 : 1,
+                  }
+                ]}
+                onPress={() => {
+                  setNeedModalVisible(false);
+                }}
+              >
+                <Text style={{ fontSize: 15, fontWeight: '600', color: theme.textSupporting }}>Cancel</Text>
+              </Pressable>
+              
+              <Pressable
+                disabled={isNeedActionLoading}
+                style={({ pressed }) => [
+                  {
+                    flex: 1,
+                    paddingVertical: 12,
+                    borderRadius: 8,
+                    backgroundColor: theme.primary,
+                    alignItems: 'center',
+                    opacity: pressed || isNeedActionLoading ? 0.8 : 1,
+                  }
+                ]}
+                onPress={handleSaveNeed}
+              >
+                {isNeedActionLoading ? (
+                  <ActivityIndicator color={theme.textLight} />
+                ) : (
+                  <Text style={{ fontSize: 15, fontWeight: '600', color: theme.textLight }}>Save</Text>
+                )}
               </Pressable>
             </View>
           </View>
