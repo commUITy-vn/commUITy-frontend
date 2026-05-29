@@ -40,11 +40,6 @@ const getHereMapHtml = (apiKey: string) => `
 </html>
 `;
 
-const DUMMY_LOCATIONS = [
-  { id: 1, name: 'District 1 Support Center', address: '123 Nguyen Hue, D1, HCMC' },
-  { id: 2, name: 'District 7 Support Hub', address: '456 Phu My Hung, D7, HCMC' },
-];
-
 import { useSupportLocations } from '@/features/maps/hooks/useSupportLocations';
 
 const NativeWebView = WebView as any;
@@ -62,7 +57,7 @@ export default function MapScreen() {
         name: loc.name || 'Support Center',
         address: loc.address || 'Unknown Address',
       }))
-    : DUMMY_LOCATIONS;
+    : [];
 
   return (
     <View style={styles.container}>

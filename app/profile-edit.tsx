@@ -1,4 +1,4 @@
-import React, { useState } from "react"
+import React, { useState, useRef } from "react"
 import {
     View,
     Text,
@@ -7,6 +7,8 @@ import {
     StyleSheet,
     KeyboardAvoidingView,
     Platform,
+    Image,
+    ActivityIndicator,
 } from "react-native"
 import { useRouter } from "expo-router"
 import { MaterialIcons } from "@expo/vector-icons"
@@ -15,6 +17,10 @@ import { useTheme } from "@/hooks/useTheme"
 import { useAuthStore } from "@/features/auth/stores/useAuthStore"
 import TextInput from "@/components/ui/TextInput"
 import { Button } from "@/components/ui"
+import { updateMe } from "@/features/users/api/update-me"
+import { getUserProfile } from "@/features/auth/api/get-user-profile"
+import { api } from "@/lib/api-client"
+import { storage } from "@/lib/storage"
 
 export default function ProfileEditScreen() {
     const router = useRouter()
@@ -22,14 +28,80 @@ export default function ProfileEditScreen() {
     const { user } = useAuthStore()
 
     const [displayName, setDisplayName] = useState(user?.fullName || "")
-    const [email, setEmail] = useState(user?.email || "")
+    const [phone, setPhone] = useState(user?.phone || "")
+    const [avatarUrl, setAvatarUrl] = useState(user?.imageUrl || "")
+
+    const [isSaving, setIsSaving] = useState(false)
+    const [isUploading, setIsUploading] = useState(false)
+    const [error, setError] = useState("")
+
+    const fileInputRef = useRef<HTMLInputElement>(null)
+
+    const handleFileChange = async (e: any) => {
+        if (Platform.OS !== 'web') return;
+        const file = e.target.files?.[0];
+        if (!file) return;
+        setIsUploading(true);
+        setError("");
+        try {
+            await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+            const localUrl = URL.createObjectURL(file);
+            const createPayload = {
+                fileName: file.name,
+                fileUrl: localUrl,
+                fileType: 'IMAGE',
+                mimeType: file.type || 'image/jpeg',
+                fileSize: file.size,
+                altText: file.name,
+                isPublic: true,
+            };
+            const mediaRes = await api.post<any>('/api/v1/media', createPayload);
+            setAvatarUrl(mediaRes.fileUrl || localUrl);
+        } catch (err: any) {
+            console.error("Failed to upload avatar image:", err);
+            setError("Failed to upload image. Please try entering a URL instead.");
+        } finally {
+            setIsUploading(false);
+            if (fileInputRef.current) fileInputRef.current.value = '';
+        }
+    };
 
     const handleSave = async () => {
-        await Haptics.notificationAsync(
-            Haptics.NotificationFeedbackType.Success,
-        )
-        // TODO: API call to update profile
-        router.back()
+        if (isSaving) return;
+        setIsSaving(true);
+        setError("");
+        try {
+            await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+            
+            // 1. Call API to update profile
+            await updateMe({
+                fullName: displayName,
+                phone: phone,
+                avatarUrl: avatarUrl,
+            });
+
+            // 2. Fetch fresh profile from /me
+            const freshUser = await getUserProfile();
+
+            // 3. Update secure storage and Zustand store
+            const STORAGE_KEY_USER = 'auth_user';
+            await storage.setItemAsync(STORAGE_KEY_USER, JSON.stringify(freshUser));
+            
+            useAuthStore.setState({ user: freshUser });
+
+            await Haptics.notificationAsync(
+                Haptics.NotificationFeedbackType.Success,
+            );
+            router.back();
+        } catch (err: any) {
+            console.error("Failed to save profile:", err);
+            setError(err?.message || "Failed to update profile. Please check your network and try again.");
+            await Haptics.notificationAsync(
+                Haptics.NotificationFeedbackType.Warning,
+            );
+        } finally {
+            setIsSaving(false);
+        }
     }
 
     return (
@@ -37,6 +109,16 @@ export default function ProfileEditScreen() {
             style={{ flex: 1, backgroundColor: theme.appBG }}
             behavior={Platform.OS === "ios" ? "padding" : undefined}
         >
+            {Platform.OS === 'web' && (
+                <input
+                    type="file"
+                    ref={fileInputRef}
+                    style={{ display: 'none' }}
+                    onChange={handleFileChange}
+                    accept="image/*"
+                />
+            )}
+
             {/* Header */}
             <View
                 style={[
@@ -62,12 +144,16 @@ export default function ProfileEditScreen() {
                 <Text style={[localStyles.headerTitle, { color: theme.text }]}>
                     Edit Profile
                 </Text>
-                <Pressable onPress={handleSave} style={localStyles.saveButton}>
-                    <Text
-                        style={[localStyles.saveText, { color: theme.primary }]}
-                    >
-                        Save
-                    </Text>
+                <Pressable onPress={handleSave} style={localStyles.saveButton} disabled={isSaving}>
+                    {isSaving ? (
+                        <ActivityIndicator size="small" color={theme.primary} />
+                    ) : (
+                        <Text
+                            style={[localStyles.saveText, { color: theme.primary }]}
+                        >
+                            Save
+                        </Text>
+                    )}
                 </Pressable>
             </View>
 
@@ -75,31 +161,58 @@ export default function ProfileEditScreen() {
                 contentContainerStyle={localStyles.content}
                 keyboardShouldPersistTaps="handled"
             >
+                {error ? (
+                    <View style={{ backgroundColor: theme.danger + '15', padding: 12, borderRadius: 8, borderWidth: 1, borderColor: theme.danger, marginBottom: 8 }}>
+                        <Text style={{ color: theme.danger, fontSize: 14 }}>{error}</Text>
+                    </View>
+                ) : null}
+
                 {/* Avatar */}
                 <View style={localStyles.avatarSection}>
-                    <View
+                    <Pressable 
+                        onPress={() => {
+                            if (Platform.OS === 'web') {
+                                fileInputRef.current?.click();
+                            }
+                        }}
                         style={[
                             localStyles.avatar,
                             { backgroundColor: theme.primary },
                         ]}
                     >
-                        <Text
-                            style={[
-                                localStyles.avatarText,
-                                { color: theme.textLight },
-                            ]}
-                        >
-                            {displayName?.[0] || user?.fullName?.[0] || "U"}
-                        </Text>
-                    </View>
-                    <Pressable style={localStyles.changePhotoBtn}>
+                        {avatarUrl ? (
+                            <Image
+                                source={{ uri: avatarUrl }}
+                                style={{ width: 80, height: 80, borderRadius: 40 }}
+                            />
+                        ) : (
+                            <Text
+                                style={[
+                                    localStyles.avatarText,
+                                    { color: theme.textLight },
+                                ]}
+                            >
+                                {displayName?.[0] || user?.fullName?.[0] || "U"}
+                            </Text>
+                        )}
+                    </Pressable>
+                    <Pressable 
+                        onPress={() => {
+                            if (Platform.OS === 'web') {
+                                fileInputRef.current?.click();
+                            } else {
+                                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                            }
+                        }}
+                        style={localStyles.changePhotoBtn}
+                    >
                         <Text
                             style={[
                                 localStyles.changePhotoText,
                                 { color: theme.primary },
                             ]}
                         >
-                            Change photo
+                            {isUploading ? "Uploading..." : "Change photo"}
                         </Text>
                     </Pressable>
                 </View>
@@ -111,18 +224,25 @@ export default function ProfileEditScreen() {
                 />
 
                 <TextInput
-                    label="Email"
-                    value={email}
-                    onChangeText={setEmail}
-                    keyboardType="email-address"
+                    label="Phone number"
+                    value={phone}
+                    onChangeText={setPhone}
+                    keyboardType="phone-pad"
+                />
+
+                <TextInput
+                    label="Avatar URL"
+                    value={avatarUrl}
+                    onChangeText={setAvatarUrl}
                 />
 
                 <View style={localStyles.buttonContainer}>
                     <Button
-                        text="Save Changes"
+                        text={isSaving ? "Saving..." : "Save Changes"}
                         onPress={handleSave}
                         size="large"
                         primary
+                        disabled={isSaving}
                     />
                 </View>
             </ScrollView>
@@ -151,6 +271,7 @@ const localStyles = StyleSheet.create({
         borderRadius: 40,
         justifyContent: "center",
         alignItems: "center",
+        overflow: 'hidden',
     },
     avatarText: { fontSize: 32, fontWeight: "700" },
     changePhotoBtn: { padding: 4 },

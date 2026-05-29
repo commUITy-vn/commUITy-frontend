@@ -8,6 +8,7 @@ import {
     Modal,
     TextInput,
     Platform,
+    Image,
 } from "react-native"
 import * as Haptics from "expo-haptics"
 import { useRouter } from "expo-router"
@@ -17,7 +18,9 @@ import { useAuthStore } from "@/features/auth/stores/useAuthStore"
 import MaterialIcons from "@expo/vector-icons/MaterialIcons"
 import { Colors } from "@/constants/theme"
 import { useMe } from "@/features/users/hooks/useMe"
-import { ConfirmModal } from "@/components/ui"
+import { ConfirmModal, BottomSheet, Button } from "@/components/ui"
+import { useThemeStore } from "@/stores/useThemeStore"
+import { env } from "@/config/env"
 
 export default function ProfileScreen() {
     const theme = useTheme() || Colors.light // Fallback to light theme if useTheme fails
@@ -26,9 +29,11 @@ export default function ProfileScreen() {
     const { user: authUser, isAuthenticated, logout } = useAuthStore()
     const { data: userProfile } = useMe()
     const user = userProfile || authUser
+    const { themeMode, setThemeMode } = useThemeStore()
 
     // Profile edit modal state
     const [showEditProfile, setShowEditProfile] = useState(false)
+    const [themeSheetVisible, setThemeSheetVisible] = useState(false)
     const [showSignOutConfirm, setShowSignOutConfirm] = useState(false)
     const [editDisplayName, setEditDisplayName] = useState(
         user?.fullName || "",
@@ -47,28 +52,47 @@ export default function ProfileScreen() {
     // Mock data for profile details (in real app, this would come from user object)
     const personalDetails = user
     const settingsItems = [
-        { key: "profile", title: "Profile" },
-        { key: "wallet", title: "Wallet" },
-        { key: "rules", title: "Rules" },
-        { key: "preferences", title: "Preferences" },
-        { key: "security", title: "Security" },
-        { key: "help", title: "Help" },
-        { key: "whats-new", title: "What's New" },
-        { key: "about", title: "About" },
-        { key: "troubleshoot", title: "Troubleshoot" },
-        { key: "save-the-world", title: "Save the World" },
-        { key: "transaction-history", title: "Transaction History" },
-        { key: "backup-restore", title: "Backup & Restore" },
-        { key: "sign-out", title: "Sign out" },
+        { key: "profile", title: "Profile", icon: "person" },
+        { key: "wallet", title: "Wallet", icon: "account-balance-wallet" },
+        ...(user?.role === 'ADMIN' ? [
+            { key: "admin-dashboard", title: "Admin Panel", icon: "security" },
+            { key: "collaborator-dashboard", title: "Collaborator Panel", icon: "dashboard" }
+        ] : []),
+        ...(user?.role === 'COLLABORATOR' ? [
+            { key: "collaborator-dashboard", title: "Collaborator Panel", icon: "dashboard" }
+        ] : []),
+        ...(user?.role === 'VOLUNTEER' ? [
+            { key: "volunteer-dashboard", title: "Volunteer Panel", icon: "volunteer-activism" }
+        ] : []),
+        { key: "theme", title: "Appearance: " + (themeMode === 'light' ? 'Light Mode' : themeMode === 'dark' ? 'Dark Mode' : 'System Mode'), icon: themeMode === 'light' ? 'light-mode' : themeMode === 'dark' ? 'dark-mode' : 'brightness-auto' },
+        { key: "transaction-history", title: "Transaction History", icon: "history" },
+        { key: "rules", title: "Rules", icon: "rule" },
+        { key: "security", title: "Security", icon: "lock" },
+        { key: "backup-restore", title: "Backup & Restore", icon: "backup" },
+        { key: "help", title: "Help", icon: "help" },
+        { key: "whats-new", title: "What's New", icon: "campaign" },
+        { key: "about", title: "About", icon: "info" },
+        { key: "troubleshoot", title: "Troubleshoot", icon: "build" },
+        { key: "save-the-world", title: "Save the World", icon: "public" },
+        { key: "sign-out", title: "Sign out", icon: "exit-to-app", isDanger: true },
     ]
 
     const handlePressSettingsItem = async (key: string) => {
         switch (key) {
+            case "admin-dashboard":
+                router.push("/(admin)/dashboard")
+                break
+            case "collaborator-dashboard":
+                router.push("/collaborator-dashboard")
+                break
+            case "volunteer-dashboard":
+                router.push("/volunteer-dashboard")
+                break
             case "sign-out":
                 setShowSignOutConfirm(true)
                 break
             case "transaction-history":
-                router.push("/finance-dashboard")
+                router.push("/transaction-history")
                 break
             case "backup-restore":
                 showAlert(
@@ -76,8 +100,9 @@ export default function ProfileScreen() {
                     "Backup & Restore screen coming soon!",
                 )
                 break
-            case "preferences":
-                showAlert("Preferences", "Preferences screen coming soon!")
+            case "theme":
+                await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light)
+                setThemeSheetVisible(true)
                 break
             case "help":
                 showAlert("Help", "Help screen coming soon!")
@@ -121,7 +146,6 @@ export default function ProfileScreen() {
                     paddingHorizontal: 16,
                     paddingTop: 12,
                     paddingBottom: 80,
-                    gap: 24,
                 }}
                 showsVerticalScrollIndicator={false}
             >
@@ -134,14 +158,38 @@ export default function ProfileScreen() {
                                 { backgroundColor: theme.primary },
                             ]}
                         >
-                            <Text
-                                style={[
-                                    localStyles.avatarText,
-                                    { color: theme.textLight },
-                                ]}
-                            >
-                                {personalDetails?.fullName?.[0] ?? "U"}
-                            </Text>
+                            {(() => {
+                                let resolvedAvatarUrl = user?.imageUrl;
+                                if (resolvedAvatarUrl && !resolvedAvatarUrl.startsWith('http://') && !resolvedAvatarUrl.startsWith('https://') && !resolvedAvatarUrl.startsWith('file://') && !resolvedAvatarUrl.startsWith('data:')) {
+                                    const apiBase = env.API_URL.endsWith('/api') ? env.API_URL.slice(0, -4) : env.API_URL;
+                                    const cleanPath = resolvedAvatarUrl.startsWith('/') ? resolvedAvatarUrl : '/' + resolvedAvatarUrl;
+                                    resolvedAvatarUrl = `${apiBase}${cleanPath}`;
+                                }
+
+                                const isValidImage = resolvedAvatarUrl && 
+                                    (resolvedAvatarUrl.startsWith('http://') || resolvedAvatarUrl.startsWith('https://') || resolvedAvatarUrl.startsWith('file://') || resolvedAvatarUrl.startsWith('data:')) &&
+                                    !resolvedAvatarUrl.includes('pravatar.cc');
+
+                                if (isValidImage) {
+                                    return (
+                                        <Image
+                                            source={{ uri: resolvedAvatarUrl }}
+                                            style={{ width: 80, height: 80, borderRadius: 40 }}
+                                        />
+                                    );
+                                }
+
+                                return (
+                                    <Text
+                                        style={[
+                                            localStyles.avatarText,
+                                            { color: theme.textLight },
+                                        ]}
+                                    >
+                                        {personalDetails?.fullName?.[0] ?? "U"}
+                                    </Text>
+                                );
+                            })()}
                         </View>
                     </View>
                     <View style={localStyles.profileInfo}>
@@ -205,32 +253,40 @@ export default function ProfileScreen() {
                     </View>
                 </View>
 
-                {/* Divider */}
-                <View style={[localStyles.divider, { backgroundColor: theme.border }]} />
-
                 {/* Settings Menu */}
-                <View style={localStyles.settingsSection}>
-                    {settingsItems.map((item) => (
+                <View style={[localStyles.settingsSection, { marginTop: 8 }]}>
+                    {settingsItems.map((item, index) => (
                         <Pressable
                             key={item.key}
                             onPress={() => handlePressSettingsItem(item.key)}
-                            style={[
+                            style={({ pressed }) => [
                                 localStyles.settingsItem,
                                 {
                                     borderBottomWidth: StyleSheet.hairlineWidth,
                                     borderColor: theme.border,
+                                    backgroundColor: pressed ? theme.highlightBG : 'transparent',
                                 },
+                                index === 0 && {
+                                    borderTopWidth: StyleSheet.hairlineWidth,
+                                }
                             ]}
                         >
                             <View style={localStyles.settingsItemContent}>
-                                <Text
-                                    style={[
-                                        localStyles.settingsItemText,
-                                        { color: theme.text },
-                                    ]}
-                                >
-                                    {item.title}
-                                </Text>
+                                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, flex: 1 }}>
+                                    <MaterialIcons
+                                        name={item.icon as any}
+                                        size={22}
+                                        color={item.isDanger ? theme.danger : theme.textSupporting}
+                                    />
+                                    <Text
+                                        style={[
+                                            localStyles.settingsItemText,
+                                            { color: item.isDanger ? theme.danger : theme.text },
+                                        ]}
+                                    >
+                                        {item.title}
+                                    </Text>
+                                </View>
                                 <MaterialIcons
                                     name="chevron-right"
                                     size={24}
@@ -241,21 +297,21 @@ export default function ProfileScreen() {
                     ))}
                 </View>
 
-                {/* Floating Donate Button - Expensify style */}
-                <View style={localStyles.floatingButtonContainer}>
+                {/* Donate to Community Fund Link - clean text link format */}
+                <View style={localStyles.donateLinkContainer}>
                     <Pressable
-                        onPress={() => {
-                            // TODO: Show donation modal
-                            Haptics.impactAsync(
-                                Haptics.ImpactFeedbackStyle.Medium,
-                            )
-                            showAlert("Donate", "Donation flow coming soon!")
+                        onPress={async () => {
+                            await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+                            router.push('/community-funds' as any);
                         }}
+                        style={({ pressed }) => [
+                            pressed && { opacity: 0.7 }
+                        ]}
                     >
                         <Text
                             style={[
-                                localStyles.floatingButtonText,
-                                { color: theme.textLight },
+                                localStyles.donateLinkText,
+                                { color: theme.primary }
                             ]}
                         >
                             Donate to Community Fund
@@ -380,6 +436,39 @@ export default function ProfileScreen() {
                 </View>
             </Modal>
 
+            {/* Theme Selector Bottom Sheet */}
+            <BottomSheet
+                isVisible={themeSheetVisible}
+                onClose={() => setThemeSheetVisible(false)}
+                title="Choose Theme"
+                options={[
+                    {
+                        key: 'light',
+                        label: 'Light Mode',
+                        icon: 'light-mode',
+                        onPress: async () => {
+                            await setThemeMode('light')
+                        },
+                    },
+                    {
+                        key: 'dark',
+                        label: 'Dark Mode',
+                        icon: 'dark-mode',
+                        onPress: async () => {
+                            await setThemeMode('dark')
+                        },
+                    },
+                    {
+                        key: 'system',
+                        label: 'System Mode',
+                        icon: 'brightness-auto',
+                        onPress: async () => {
+                            await setThemeMode('system')
+                        },
+                    },
+                ]}
+            />
+
             {/* Custom Confirmation Modal for Logout */}
             <ConfirmModal
                 visible={showSignOutConfirm}
@@ -415,7 +504,8 @@ const localStyles = StyleSheet.create({
         marginVertical: 16,
     },
     profileHeader: {
-        paddingVertical: 24,
+        paddingTop: 16,
+        paddingBottom: 8,
         alignItems: "center",
     },
     avatarContainer: {
@@ -447,7 +537,9 @@ const localStyles = StyleSheet.create({
     statsSection: {
         flexDirection: "row",
         justifyContent: "space-around",
-        marginVertical: 24,
+        marginVertical: 0,
+        marginTop: 4,
+        marginBottom: 12,
     },
     statsItem: {
         alignItems: "center",
@@ -517,5 +609,15 @@ const localStyles = StyleSheet.create({
         paddingHorizontal: 12,
         fontSize: 16,
         paddingVertical: 0,
+    },
+    donateLinkContainer: {
+        marginTop: 24,
+        alignItems: "center",
+        justifyContent: "center",
+    },
+    donateLinkText: {
+        fontSize: 16,
+        fontWeight: "600",
+        textDecorationLine: "underline",
     },
 })

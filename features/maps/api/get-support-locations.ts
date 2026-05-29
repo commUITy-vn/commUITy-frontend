@@ -3,6 +3,7 @@ import { api } from '@/lib/api-client';
 export interface SupportLocation {
   id: string;
   name: string;
+  description?: string;
   address: string;
   latitude: number;
   longitude: number;

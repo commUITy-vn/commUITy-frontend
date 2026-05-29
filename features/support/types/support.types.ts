@@ -99,6 +99,7 @@ export interface SupportItem {
   name: string;
   neededQuantity: number;
   receivedQuantity: number;
+  unit?: string;
 }
 
 export interface SupportItemContribution {

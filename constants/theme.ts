@@ -6,15 +6,15 @@ const tintColorDark = '#fff';
 export const Colors = {
   light: {
     // Backgrounds
-    appBG: '#FFFFFF',
+    appBG: '#F3F4F6',
     componentBG: '#FFFFFF',
-    highlightBG: '#F8FAFC',
+    highlightBG: '#F9FAFB',
     splashBG: '#F97316',
 
     // Borders
-    border: '#E2E8F0',
-    borderLighter: '#F1F5F9',
-    bordersBold: '#CBD5E1',
+    border: '#E5E7EB',
+    borderLighter: '#F3F4F6',
+    bordersBold: '#D1D5DB',
     borderFocus: '#F97316',
 
     // Text

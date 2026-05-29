@@ -33,8 +33,8 @@ export const usePostComments = (postId: string) => {
 export const useCreatePostComment = () => {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: ({ postId, content }: { postId: string; content: string }) =>
-      createPostComment(postId, { content }),
+    mutationFn: ({ postId, content, parentCommentId }: { postId: string; content: string; parentCommentId?: string }) =>
+      createPostComment(postId, { content, parentCommentId }),
     onSuccess: (data, variables) => {
       queryClient.invalidateQueries({ queryKey: ['post-comments', variables.postId] });
       queryClient.invalidateQueries({ queryKey: ['posts'] });

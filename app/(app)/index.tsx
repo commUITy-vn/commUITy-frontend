@@ -10,6 +10,7 @@ import {
     Pressable,
     Platform,
     TextInput as RNTextInput,
+    Linking,
 } from "react-native"
 import { useRouter } from "expo-router"
 import { useTheme } from "@/hooks/useTheme"
@@ -26,7 +27,8 @@ import {
 } from "react-native-reanimated"
 import Animated from "react-native-reanimated"
 import * as Haptics from "expo-haptics"
-import { BottomSheet } from "@/components/ui"
+import { BottomSheet, TextInput, Button } from "@/components/ui"
+import { Modal } from "react-native"
 import { MaterialIcons, Ionicons, FontAwesome5 } from "@expo/vector-icons"
 import { useAuthStore } from "@/features/auth/stores/useAuthStore"
 import { UserRole } from "@/features/auth/types"
@@ -47,6 +49,7 @@ interface UnifiedFeedItem {
     itemType: 'request' | 'fund' | 'location';
     title?: string;
     name?: string;
+    description?: string;
     categoryName?: string;
     status?: string;
     address?: string;
@@ -67,6 +70,8 @@ export default function HomeScreen() {
 
     // FAB / Bottom sheet state
     const [isCreateMenuVisible, setIsCreateMenuVisible] = useState(false)
+
+
 
     // Two-Tier Filters State
     const [primaryFilter, setPrimaryFilter] = useState<'All' | 'Requests' | 'Funds' | 'Locations'>('All')
@@ -114,6 +119,7 @@ export default function HomeScreen() {
                     id: f.id,
                     itemType: 'fund',
                     name: f.name,
+                    description: f.description,
                     totalBalance: typeof f.totalBalance === 'number' ? f.totalBalance : parseFloat(f.totalBalance as any || '0'),
                     isActive: f.isActive,
                     createdByName: f.createdByName,
@@ -128,6 +134,7 @@ export default function HomeScreen() {
                     id: l.id,
                     itemType: 'location',
                     name: l.name,
+                    description: l.description,
                     address: l.address,
                     latitude: l.latitude,
                     longitude: l.longitude,
@@ -197,9 +204,13 @@ export default function HomeScreen() {
     // Simulated progress tracker helper for Help Request Cards
     const getSimulatedProgress = (status?: string) => {
         switch (status) {
-            case 'FULFILLED': return 100
+            case 'FULFILLED':
+            case 'COMPLETED':
+                return 100
             case 'IN_PROGRESS': return 65
-            case 'APPROVED': return 30
+            case 'APPROVED':
+            case 'ACCEPTED':
+                return 30
             default: return 0
         }
     }
@@ -247,9 +258,9 @@ export default function HomeScreen() {
     const renderRequestCard = (item: UnifiedFeedItem) => {
         const progress = getSimulatedProgress(item.status)
         const isPending = item.status === 'PENDING'
-        const isApproved = item.status === 'APPROVED'
+        const isApproved = item.status === 'APPROVED' || item.status === 'ACCEPTED'
         const isInProgress = item.status === 'IN_PROGRESS'
-        const isFulfilled = item.status === 'FULFILLED'
+        const isFulfilled = item.status === 'FULFILLED' || item.status === 'COMPLETED'
 
         let statusText = item.status || 'PENDING'
         let statusColor = theme.textSupporting
@@ -329,10 +340,18 @@ export default function HomeScreen() {
 
     // Render Community Fund Card Component (Premium Metal Wallet style)
     const renderFundCard = (item: UnifiedFeedItem) => {
+        const isDark = theme.appBG === '#0F172A';
+        const fundColor = isDark ? '#A78BFA' : '#7C3AED';
+        const fundBg = isDark ? 'rgba(167, 139, 250, 0.15)' : 'rgba(124, 58, 237, 0.12)';
+
         return (
-            <View
+            <Pressable
                 key={item.id}
-                style={[
+                onPress={async () => {
+                    await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium)
+                    router.push({ pathname: '/community-funds/[id]', params: { id: item.id } } as any)
+                }}
+                style={({ pressed }) => [
                     cardStyles.card,
                     {
                         backgroundColor: theme.componentBG,
@@ -340,39 +359,32 @@ export default function HomeScreen() {
                         shadowColor: theme.inverse,
                         overflow: 'hidden',
                         padding: 0,
+                        opacity: pressed ? 0.95 : 1,
                     },
                 ]}
             >
-                {/* Premium Gradient bar */}
-                <View style={{ height: 4, backgroundColor: theme.primary }} />
-
                 <View style={{ padding: 16 }}>
                     <View style={cardStyles.headerRow}>
-                        <View style={[cardStyles.typeBadge, { backgroundColor: theme.success + "15" }]}>
-                            <Ionicons name="wallet-outline" size={14} color={theme.success} />
-                            <Text style={[cardStyles.typeBadgeText, { color: theme.success }]}>Community Fund</Text>
+                        <View style={[cardStyles.typeBadge, { backgroundColor: fundBg }]}>
+                            <Ionicons name="wallet-outline" size={14} color={fundColor} />
+                            <Text style={[cardStyles.typeBadgeText, { color: fundColor }]}>Community Fund</Text>
                         </View>
-                        <View style={cardStyles.tagRow}>
-                            <View
-                                style={[
-                                    cardStyles.statusIndicatorDot,
-                                    { backgroundColor: item.isActive ? theme.success : theme.danger },
-                                ]}
-                            />
-                            <Text
-                                style={[
-                                    cardStyles.statusIndicatorText,
-                                    { color: item.isActive ? theme.success : theme.danger },
-                                ]}
-                            >
-                                {item.isActive ? "Active" : "Closed"}
+                        <View style={[cardStyles.statusBadge, { backgroundColor: item.isActive ? theme.success + "20" : theme.danger + "20" }]}>
+                            <Text style={[cardStyles.statusBadgeText, { color: item.isActive ? theme.success : theme.danger }]}>
+                                {item.isActive ? "ACTIVE" : "CLOSED"}
                             </Text>
                         </View>
                     </View>
 
-                    <Text style={[cardStyles.title, { color: theme.text, marginBottom: 12 }]} numberOfLines={1}>
+                    <Text style={[cardStyles.title, { color: theme.text, marginBottom: item.description ? 4 : 12 }]} numberOfLines={1}>
                         {item.name}
                     </Text>
+
+                    {item.description ? (
+                        <Text style={{ color: theme.textSupporting, fontSize: 14, marginBottom: 12 }} numberOfLines={2}>
+                            {item.description}
+                        </Text>
+                    ) : null}
 
                     {/* Glassmorphic Balance Display */}
                     <View style={[cardStyles.fundBox, { backgroundColor: theme.highlightBG, borderColor: theme.border }]}>
@@ -389,41 +401,34 @@ export default function HomeScreen() {
                         <Text style={[cardStyles.createdByText, { color: theme.textSupporting }]} numberOfLines={1}>
                             By {item.createdByName || "Community Manager"}
                         </Text>
-
-                        <TouchableOpacity
-                            onPress={async () => {
-                                await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium)
-                                router.push('/finance-dashboard')
-                            }}
-                            style={[
-                                cardStyles.actionButton,
-                                { backgroundColor: theme.primary },
-                            ]}
-                        >
-                            <Text style={[cardStyles.actionButtonText, { color: theme.textLight }]}>Contribute</Text>
-                            <MaterialIcons name="chevron-right" size={16} color={theme.textLight} />
-                        </TouchableOpacity>
                     </View>
                 </View>
-            </View>
+            </Pressable>
         )
     }
 
-    // Render Support Location Card Component (Featuring non-scrolling iframe mini preview map)
     const renderLocationCard = (item: UnifiedFeedItem) => {
         return (
-            <View
+            <Pressable
                 key={item.id}
-                style={[
+                onPress={() => handleOpenMap(item.latitude, item.longitude, item.name || item.title)}
+                style={({ pressed }) => [
                     cardStyles.card,
-                    { backgroundColor: theme.componentBG, borderColor: theme.border, shadowColor: theme.inverse, padding: 0, overflow: 'hidden' },
+                    { 
+                        backgroundColor: theme.componentBG, 
+                        borderColor: theme.border, 
+                        shadowColor: theme.inverse, 
+                        padding: 0, 
+                        overflow: 'hidden',
+                        opacity: pressed ? 0.92 : 1,
+                    },
                 ]}
             >
                 <View style={{ padding: 16, paddingBottom: 8 }}>
                     <View style={cardStyles.headerRow}>
                         <View style={[cardStyles.typeBadge, { backgroundColor: theme.textSupporting + "15" }]}>
                             <Ionicons name="map-outline" size={14} color={theme.textSupporting} />
-                            <Text style={[cardStyles.typeBadgeText, { color: theme.textSupporting }]}>Location Hub</Text>
+                            <Text style={[cardStyles.typeBadgeText, { color: theme.textSupporting }]}>Location Help</Text>
                         </View>
                         <View style={[cardStyles.statusBadge, { backgroundColor: item.isActive ? theme.success + "20" : theme.danger + "20" }]}>
                             <Text style={[cardStyles.statusBadgeText, { color: item.isActive ? theme.success : theme.danger }]}>
@@ -432,9 +437,15 @@ export default function HomeScreen() {
                         </View>
                     </View>
 
-                    <Text style={[cardStyles.title, { color: theme.text, marginBottom: 8 }]} numberOfLines={1}>
+                    <Text style={[cardStyles.title, { color: theme.text, marginBottom: item.description ? 4 : 8 }]} numberOfLines={1}>
                         {item.name}
                     </Text>
+
+                    {item.description ? (
+                        <Text style={{ color: theme.textSupporting, fontSize: 14, marginBottom: 8 }} numberOfLines={2}>
+                            {item.description}
+                        </Text>
+                    ) : null}
 
                     <View style={cardStyles.addressRow}>
                         <Ionicons name="pin" size={16} color={theme.textSupporting} />
@@ -474,7 +485,7 @@ export default function HomeScreen() {
                         </View>
                     )}
                 </View>
-            </View>
+            </Pressable>
         )
     }
 
@@ -530,6 +541,83 @@ export default function HomeScreen() {
             router.push(href)
         }, 180)
     }, [router])
+
+    const handleOpenMap = useCallback(async (latitude?: number, longitude?: number, label?: string) => {
+        if (!latitude || !longitude) return
+        await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light)
+        
+        const latLng = `${latitude},${longitude}`
+        const name = label ? encodeURIComponent(label) : ''
+        
+        const iosUrl = `maps://0,0?q=${latLng}(${name})`
+        const androidUrl = `geo:0,0?q=${latLng}(${name})`
+        const webUrl = `https://www.google.com/maps/search/?api=1&query=${latitude},${longitude}`
+        
+        if (Platform.OS === 'ios') {
+            try {
+                const canOpen = await Linking.canOpenURL(iosUrl)
+                if (canOpen) {
+                    await Linking.openURL(iosUrl)
+                    return
+                }
+            } catch (e) {
+                console.warn("Could not open native maps scheme:", e)
+            }
+        } else if (Platform.OS === 'android') {
+            try {
+                const canOpen = await Linking.canOpenURL(androidUrl)
+                if (canOpen) {
+                    await Linking.openURL(androidUrl)
+                    return
+                }
+            } catch (e) {
+                console.warn("Could not open native maps scheme:", e)
+            }
+        }
+        
+        try {
+            await Linking.openURL(webUrl)
+        } catch (e) {
+            console.error("Could not open web maps URL:", e)
+        }
+    }, [])
+
+    const bottomSheetOptions = useMemo(() => {
+        const options = [];
+        const role = user?.role;
+
+        // 1. Admins, Collaborators, and Requesters can create support requests
+        if (role === 'ADMIN' || role === 'COLLABORATOR' || role === 'REQUESTER') {
+            options.push({
+                key: "create-request",
+                label: "Create Support Request",
+                icon: "support" as any,
+                onPress: () => navigateWithUnwind("/create-request"),
+            });
+        }
+
+        // 2. Admins & Collaborators can add locations
+        if (role === 'ADMIN' || role === 'COLLABORATOR') {
+            options.push({
+                key: "add-location",
+                label: "Add Help Location",
+                icon: "map" as any,
+                onPress: () => navigateWithUnwind("/create-location"),
+            });
+        }
+
+        // 3. Admins can create community funds
+        if (role === 'ADMIN') {
+            options.push({
+                key: "create-fund",
+                label: "Create Community Fund",
+                icon: "monetization-on" as any,
+                onPress: () => navigateWithUnwind("/community-funds/create"),
+            });
+        }
+
+        return options;
+    }, [user, navigateWithUnwind]);
 
     return (
         <View
@@ -689,79 +777,57 @@ export default function HomeScreen() {
             )}
 
             {/* Unified Floating Action Button (FAB) */}
-            <Animated.View
-                style={[
-                    localStyles.fab,
-                    fabAnimatedStyle,
-                    {
-                        borderRadius: 28,
-                        shadowColor: theme.inverse,
-                        shadowOffset: { width: 0, height: 2 },
-                        shadowOpacity: 0.25,
-                        shadowRadius: 4,
-                        elevation: 6,
-                    },
-                ]}
-            >
-                <Pressable
-                    onPress={async () => {
-                        await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium)
-                        if (isCreateMenuVisible) {
-                            closeFabMenu()
-                        } else {
-                            openFabMenu()
-                        }
-                    }}
-                    onHoverIn={() => {
-                        fabHovered.value = 1
-                    }}
-                    onHoverOut={() => {
-                        fabHovered.value = 0
-                    }}
-                    style={{
-                        width: 56,
-                        height: 56,
-                        borderRadius: 28,
-                        justifyContent: "center",
-                        alignItems: "center",
-                    }}
+            {bottomSheetOptions.length > 0 && (
+                <Animated.View
+                    style={[
+                        localStyles.fab,
+                        fabAnimatedStyle,
+                        {
+                            borderRadius: 28,
+                            shadowColor: theme.inverse,
+                            shadowOffset: { width: 0, height: 2 },
+                            shadowOpacity: 0.25,
+                            shadowRadius: 4,
+                            elevation: 6,
+                        },
+                    ]}
                 >
-                    <Ionicons name="add" size={34} color={theme.textLight} />
-                </Pressable>
-            </Animated.View>
+                    <Pressable
+                        onPress={async () => {
+                            await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium)
+                            if (isCreateMenuVisible) {
+                                closeFabMenu()
+                            } else {
+                                openFabMenu()
+                            }
+                        }}
+                        onHoverIn={() => {
+                            fabHovered.value = 1
+                        }}
+                        onHoverOut={() => {
+                            fabHovered.value = 0
+                        }}
+                        style={{
+                            width: 56,
+                            height: 56,
+                            borderRadius: 28,
+                            justifyContent: "center",
+                            alignItems: "center",
+                        }}
+                    >
+                        <Ionicons name="add" size={34} color={theme.textLight} />
+                    </Pressable>
+                </Animated.View>
+            )}
 
-            {/* FAB Options Bottom Sheet */}
             <BottomSheet
                 isVisible={isCreateMenuVisible}
                 onClose={closeFabMenu}
                 onCloseStart={unwindFab}
-                options={[
-                    {
-                        key: "create-request",
-                        label: "Create Support Request",
-                        icon: "support",
-                        onPress: () => navigateWithUnwind("/create-request"),
-                    },
-                    {
-                        key: "set-location",
-                        label: "Add / Manage Location",
-                        icon: "map",
-                        onPress: () => navigateWithUnwind("/create-location"),
-                    },
-                    {
-                        key: "donate",
-                        label: "Make a Donation",
-                        icon: "volunteer-activism",
-                        onPress: () => navigateWithUnwind("/finance-dashboard"),
-                    },
-                    {
-                        key: "volunteer",
-                        label: "Volunteer",
-                        icon: "groups",
-                        onPress: () => navigateWithUnwind("/volunteer-dashboard"),
-                    },
-                ]}
+                options={bottomSheetOptions}
             />
+
+
         </View>
     )
 }

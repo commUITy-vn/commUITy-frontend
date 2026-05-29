@@ -1,4 +1,4 @@
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { Pressable, StyleSheet, Text, View, StyleProp, ViewStyle } from 'react-native';
 import { useTheme } from '@/hooks/useTheme';
 import { SupportRequest, SupportStatus, UrgencyLevel, STATUS_LABELS, URGENCY_LABELS } from '@/features/support/types/support.types';
 import { impactAsync, ImpactFeedbackStyle } from 'expo-haptics';
@@ -6,6 +6,7 @@ import { impactAsync, ImpactFeedbackStyle } from 'expo-haptics';
 interface RequestCardProps {
   request: SupportRequest;
   onPress?: (request: SupportRequest) => void;
+  containerStyle?: StyleProp<ViewStyle>;
 }
 
 // Exact badge colors from Strike 2 specification
@@ -24,7 +25,7 @@ const STATUS_COLORS: Record<SupportStatus, { bg: string; text: string }> = {
   [SupportStatus.CANCELLED]: { bg: '#F0F0F0', text: '#666666' }, // Default neutral
 };
 
-export const RequestCard = ({ request, onPress }: RequestCardProps) => {
+export const RequestCard = ({ request, onPress, containerStyle }: RequestCardProps) => {
   const theme = useTheme();
 
   const handlePress = async () => {
@@ -34,9 +35,9 @@ export const RequestCard = ({ request, onPress }: RequestCardProps) => {
     }
   };
 
-  const descriptionPreview = request.description.length > 100
-    ? `${request.description.substring(0, 100)}...`
-    : request.description;
+  const descriptionPreview = (request.description || '').length > 100
+    ? `${(request.description || '').substring(0, 100)}...`
+    : (request.description || '');
 
   const urgencyColor = URGENCY_COLORS[request.urgency];
   const statusColor = STATUS_COLORS[request.status];
@@ -47,6 +48,7 @@ export const RequestCard = ({ request, onPress }: RequestCardProps) => {
         localStyles.card,
         { backgroundColor: theme.componentBG, borderColor: theme.border },
         pressed && { opacity: 0.9, backgroundColor: theme.hoverComponentBG },
+        containerStyle,
       ]}
       onPress={handlePress}
     >
