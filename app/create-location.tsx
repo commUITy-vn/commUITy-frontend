@@ -34,8 +34,6 @@ export default function CreateLocationScreen() {
     const [contactPhone, setContactPhone] = useState("")
     const [lat, setLat] = useState("21.028511") // Default to Hanoi coordinates
     const [lng, setLng] = useState("105.804817")
-    const [bankName, setBankName] = useState("")
-    const [bankAccountNumber, setBankAccountNumber] = useState("")
 
     // Errors
     const [errors, setErrors] = useState<Record<string, string>>({})
@@ -201,8 +199,6 @@ export default function CreateLocationScreen() {
                 contactPhone: contactPhone || undefined,
                 latitude: parseFloat(lat),
                 longitude: parseFloat(lng),
-                bankName: bankName || undefined,
-                bankAccountNumber: bankAccountNumber || undefined,
             })
 
             await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success)
@@ -357,23 +353,6 @@ export default function CreateLocationScreen() {
                         </View>
                     )}
                 </View>
-
-                <Text style={[localStyles.sectionTitle, { color: theme.text, marginTop: 16 }]}>
-                    Financial Details (Optional)
-                </Text>
-
-                <TextInput
-                    label="Bank Name"
-                    value={bankName}
-                    onChangeText={setBankName}
-                />
-
-                <TextInput
-                    label="Bank Account Number"
-                    value={bankAccountNumber}
-                    onChangeText={setBankAccountNumber}
-                    keyboardType="numeric"
-                />
 
                 {/* Submit Action */}
                 <View style={localStyles.buttonContainer}>

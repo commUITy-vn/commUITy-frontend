@@ -3,6 +3,7 @@ import { api } from '@/lib/api-client';
 export interface CommunityFundSummary {
   id: string;
   name: string;
+  description?: string;
   totalBalance: number;
   isActive: boolean;
   createdBy: string;

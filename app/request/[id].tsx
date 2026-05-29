@@ -1,7 +1,9 @@
 import { View, Text, StyleSheet, ScrollView, ActivityIndicator, Modal, TextInput as RNTextInput, Image, Platform } from 'react-native';
 import { useTheme } from '@/hooks/useTheme';
 import { useThemeStyles } from '@/hooks/useThemeStyles';
-import { ConfirmModal } from '@/components/ui';
+import { ConfirmModal, BottomSheet } from '@/components/ui';
+import { getUser } from '@/features/users/api/get-user';
+import { createPrivateConversation } from '@/features/communication/api/create-private-conversation';
 import TextInput from '@/components/ui/TextInput';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import * as Haptics from 'expo-haptics';
@@ -72,40 +74,40 @@ export default function RequestDetailScreen() {
   const getStatusBg = (status: string): string => {
     switch (status) {
       case 'PENDING':
-        return '#E2E8F0';
+        return theme.highlightBG;
       case 'APPROVED':
       case 'ACCEPTED':
       case 'FULFILLED':
       case 'COMPLETED':
-        return '#E5F6EE';
+        return theme.success + '20';
       case 'IN_PROGRESS':
-        return '#E0F2FE';
+        return theme.primary + '20';
       case 'REJECTED':
-        return '#FFE5E5';
+        return theme.danger + '20';
       case 'CANCELLED':
-        return '#F0F0F0';
+        return theme.highlightBG;
       default:
-        return theme.border;
+        return theme.highlightBG;
     }
   };
 
   const getStatusText = (status: string): string => {
     switch (status) {
       case 'PENDING':
-        return '#475569';
+        return theme.textSupporting;
       case 'APPROVED':
       case 'ACCEPTED':
       case 'FULFILLED':
       case 'COMPLETED':
-        return '#008040';
+        return theme.success;
       case 'IN_PROGRESS':
-        return '#0369A1';
+        return theme.primary;
       case 'REJECTED':
-        return '#CC0000';
+        return theme.danger;
       case 'CANCELLED':
-        return '#666666';
+        return theme.textSupporting;
       default:
-        return theme.text;
+        return theme.textSupporting;
     }
   };
 
@@ -128,6 +130,13 @@ export default function RequestDetailScreen() {
   const [selectedApplicant, setSelectedApplicant] = useState<VolunteerAssignment | null>(null);
   const [rejectionReason, setRejectionReason] = useState('');
   const [rejectionError, setRejectionError] = useState('');
+
+  // Applicant details BottomSheet state
+  const [selectedApplicantId, setSelectedApplicantId] = useState<string | null>(null);
+  const [isProfileVisible, setIsProfileVisible] = useState(false);
+  const [profileData, setProfileData] = useState<any>(null);
+  const [isProfileLoading, setIsProfileLoading] = useState(false);
+  const [chatLoading, setChatLoading] = useState(false);
 
   // Request review state
   const [isReviewing, setIsReviewing] = useState(false);
@@ -202,6 +211,65 @@ export default function RequestDetailScreen() {
       }
     } catch (err: any) {
       showAlert('Error', err?.message || 'Failed to approve volunteer.');
+    }
+  };
+
+  const handleApplicantPress = async (volunteerId: string) => {
+    setSelectedApplicantId(volunteerId);
+    setIsProfileVisible(true);
+    setIsProfileLoading(true);
+    setProfileData(null);
+
+    try {
+      const res = await getUser(volunteerId);
+      if (res) {
+        setProfileData(res);
+      } else {
+        const currentAssignment = requestAssignments.find(a => a.volunteerId === volunteerId);
+        setProfileData({
+          id: volunteerId,
+          fullName: currentAssignment?.volunteerName || 'Volunteer',
+          email: currentAssignment?.volunteerEmail,
+          phone: currentAssignment?.volunteerPhone,
+          role: 'VOLUNTEER',
+        });
+      }
+    } catch (err) {
+      console.warn('Failed to fetch user details, using mock fallback:', err);
+      const currentAssignment = requestAssignments.find(a => a.volunteerId === volunteerId);
+      setProfileData({
+        id: volunteerId,
+        fullName: currentAssignment?.volunteerName || 'Volunteer',
+        email: currentAssignment?.volunteerEmail,
+        phone: currentAssignment?.volunteerPhone,
+        role: 'VOLUNTEER',
+      });
+    } finally {
+      setIsProfileLoading(false);
+    }
+  };
+
+  const handleDirectMessage = async () => {
+    if (!selectedApplicantId) return;
+    setChatLoading(true);
+    await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    setIsProfileVisible(false);
+
+    try {
+      const res: any = await createPrivateConversation({ receiverId: selectedApplicantId });
+      const conversationId = res?.id || res?.data?.id;
+      if (conversationId) {
+        requestAnimationFrame(() => {
+          router.push({ pathname: '/messages/[id]', params: { id: conversationId } } as any);
+        });
+      } else {
+        router.push('/(app)/messages' as any);
+      }
+    } catch (err) {
+      console.error('Failed to create private conversation, navigating to mock chat:', err);
+      router.push({ pathname: '/messages/[id]', params: { id: selectedApplicantId } } as any);
+    } finally {
+      setChatLoading(false);
     }
   };
 
@@ -365,12 +433,13 @@ export default function RequestDetailScreen() {
     name: need.needName || (need as any).itemName || 'Item',
     neededQuantity: need.requiredQuantity,
     receivedQuantity: need.receivedQuantity,
+    unit: need.unit,
   }));
 
   const isOwner = user && request && request.requesterId === user.id;
   const isStaff = user && (user.role === UserRole.ADMIN || user.role === UserRole.COLLABORATOR);
   const myAssignment = myAssignments.find((a) => a.supportRequestId === id) || requestAssignments.find(a => a.volunteerId === user?.id);
-  const showApplicantsSection = (isOwner || isStaff) && requestAssignments.length > 0;
+  const showApplicantsSection = (isOwner || isStaff);
   
   // Volunteer Apply: approved or in-progress support requests
   const showApplyToVolunteerButton = user?.role === UserRole.VOLUNTEER && !myAssignment && request && (request.status === 'APPROVED' || request.status === 'IN_PROGRESS');
@@ -493,13 +562,8 @@ export default function RequestDetailScreen() {
           <Text style={[localStyles.title, { color: theme.text }]}>{request.title}</Text>
 
           <View style={localStyles.badgeContainer}>
-            <View style={[localStyles.badge, { backgroundColor: getUrgencyBg(urgencyValue) }]}>
-              <Text style={[localStyles.badgeText, { color: getUrgencyText(urgencyValue) }]}>
-                {URGENCY_LABELS[urgencyValue]} Urgency
-              </Text>
-            </View>
-            <View style={[localStyles.badge, { backgroundColor: getStatusBg(request.status) }]}>
-              <Text style={[localStyles.badgeText, { color: getStatusText(request.status) }]}>
+            <View style={[localStyles.statusBadge, { backgroundColor: getStatusBg(request.status) }]}>
+              <Text style={[localStyles.statusBadgeText, { color: getStatusText(request.status) }]}>
                 {request.status}
               </Text>
             </View>
@@ -550,7 +614,7 @@ export default function RequestDetailScreen() {
             {mappedItems.length > 0 ? (
               mappedItems.map((item) => {
                 const canInteract = showHelpButton || (isOwner && (request.status === 'PENDING' || request.status === 'APPROVED'));
-                const isCompleted = request.status === 'COMPLETED' || request.status === 'FULFILLED';
+                const isCompleted = request.status === 'COMPLETED' || request.status === 'FULFILLED' || String(request.status).toUpperCase() === 'COMPLETED' || String(request.status).toUpperCase() === 'FULFILLED';
                 if (canInteract) {
                   return (
                     <Pressable
@@ -669,8 +733,8 @@ export default function RequestDetailScreen() {
                 <Text style={{ fontSize: 15, color: theme.textSupporting, marginRight: 8 }}>
                   Status:
                 </Text>
-                <View style={[localStyles.badge, { backgroundColor: getStatusBg(myAssignment.status) }]}>
-                  <Text style={[localStyles.badgeText, { color: getStatusText(myAssignment.status) }]}>
+                <View style={[localStyles.statusBadge, { backgroundColor: getStatusBg(myAssignment.status) }]}>
+                  <Text style={[localStyles.statusBadgeText, { color: getStatusText(myAssignment.status) }]}>
                     {myAssignment.status}
                   </Text>
                 </View>
@@ -694,22 +758,26 @@ export default function RequestDetailScreen() {
             {requestAssignments.length > 0 ? (
               <View style={{ gap: 12, marginTop: 12 }}>
                 {requestAssignments.map((assignment) => (
-                  <View
+                  <Pressable
                     key={assignment.id}
-                    style={{
-                      padding: 14,
-                      borderRadius: 8,
-                      borderWidth: 1,
-                      borderColor: theme.border,
-                      backgroundColor: theme.appBG,
-                    }}
+                    onPress={() => handleApplicantPress(assignment.volunteerId)}
+                    style={({ pressed }) => [
+                      {
+                        padding: 14,
+                        borderRadius: 8,
+                        borderWidth: 1,
+                        borderColor: theme.border,
+                        backgroundColor: theme.highlightBG,
+                        opacity: pressed ? 0.9 : 1,
+                      }
+                    ]}
                   >
                     <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
                       <Text style={{ fontSize: 16, fontWeight: '600', color: theme.text }}>
                         {assignment.volunteerName}
                       </Text>
-                      <View style={[localStyles.badge, { backgroundColor: getStatusBg(assignment.status) }]}>
-                        <Text style={[localStyles.badgeText, { color: getStatusText(assignment.status) }]}>
+                      <View style={[localStyles.statusBadge, { backgroundColor: getStatusBg(assignment.status) }]}>
+                        <Text style={[localStyles.statusBadgeText, { color: getStatusText(assignment.status) }]}>
                           {assignment.status}
                         </Text>
                       </View>
@@ -748,7 +816,10 @@ export default function RequestDetailScreen() {
                               opacity: pressed ? 0.8 : 1,
                             }
                           ]}
-                          onPress={() => handleApproveVolunteer(assignment.volunteerId)}
+                          onPress={(e) => {
+                            e.stopPropagation();
+                            handleApproveVolunteer(assignment.volunteerId);
+                          }}
                         >
                           <Text style={{ fontSize: 14, fontWeight: '600', color: '#008040' }}>Approve</Text>
                         </Pressable>
@@ -766,13 +837,16 @@ export default function RequestDetailScreen() {
                               opacity: pressed ? 0.8 : 1,
                             }
                           ]}
-                          onPress={() => handleOpenRejectModal(assignment)}
+                          onPress={(e) => {
+                            e.stopPropagation();
+                            handleOpenRejectModal(assignment);
+                          }}
                         >
                           <Text style={{ fontSize: 14, fontWeight: '600', color: '#CC0000' }}>Reject</Text>
                         </Pressable>
                       </View>
                     )}
-                  </View>
+                  </Pressable>
                 ))}
               </View>
             ) : (
@@ -1178,6 +1252,104 @@ export default function RequestDetailScreen() {
         </View>
       )}
 
+      {/* Profile Details Bottom Sheet */}
+      <BottomSheet isVisible={isProfileVisible} onClose={() => setIsProfileVisible(false)}>
+        {isProfileLoading ? (
+          <View style={{ padding: 40, justifyContent: 'center', alignItems: 'center' }}>
+            <ActivityIndicator size="large" color={theme.primary} />
+          </View>
+        ) : profileData ? (
+          <View style={{ padding: 24, alignItems: 'center', gap: 16 }}>
+            {/* Avatar */}
+            <View
+              style={{
+                width: 72,
+                height: 72,
+                borderRadius: 36,
+                backgroundColor: theme.primary,
+                justifyContent: 'center',
+                alignItems: 'center',
+              }}
+            >
+              <Text style={{ color: '#FFFFFF', fontSize: 28, fontWeight: '700' }}>
+                {profileData.fullName?.charAt(0).toUpperCase() ?? '?'}
+              </Text>
+            </View>
+
+            {/* User Info */}
+            <View style={{ alignItems: 'center' }}>
+              <Text style={{ fontSize: 20, fontWeight: '700', color: theme.text }}>
+                {profileData.fullName}
+              </Text>
+              <Text style={{ fontSize: 14, color: theme.textSupporting, marginTop: 4 }}>
+                Volunteer Applicant
+              </Text>
+            </View>
+
+            {/* Details Fields */}
+            <View
+              style={{
+                width: '100%',
+                backgroundColor: theme.appBG,
+                borderRadius: 12,
+                padding: 16,
+                borderWidth: 1,
+                borderColor: theme.border,
+                gap: 12,
+                marginTop: 8,
+              }}
+            >
+              <View>
+                <Text style={{ fontSize: 11, color: theme.textSupporting, textTransform: 'uppercase', fontWeight: '600' }}>
+                  Email Address
+                </Text>
+                <Text style={{ fontSize: 14, color: theme.text, marginTop: 2, fontWeight: '500' }}>
+                  {profileData.email || 'N/A'}
+                </Text>
+              </View>
+              <View style={{ height: 1, backgroundColor: theme.border }} />
+              <View>
+                <Text style={{ fontSize: 11, color: theme.textSupporting, textTransform: 'uppercase', fontWeight: '600' }}>
+                  Phone Number
+                </Text>
+                <Text style={{ fontSize: 14, color: theme.text, marginTop: 2, fontWeight: '500' }}>
+                  {profileData.phone || 'N/A'}
+                </Text>
+              </View>
+            </View>
+
+            {/* Direct Message Action */}
+            <Pressable
+              style={({ pressed }) => [
+                {
+                  width: '100%',
+                  paddingVertical: 14,
+                  borderRadius: 24,
+                  backgroundColor: pressed ? theme.primaryPressed : theme.primary,
+                  alignItems: 'center',
+                  marginTop: 12,
+                  opacity: chatLoading ? 0.8 : 1,
+                }
+              ]}
+              onPress={handleDirectMessage}
+              disabled={chatLoading}
+            >
+              {chatLoading ? (
+                <ActivityIndicator color={theme.textLight} />
+              ) : (
+                <Text style={{ fontSize: 15, fontWeight: '700', color: theme.textLight }}>
+                  Message Chat
+                </Text>
+              )}
+            </Pressable>
+          </View>
+        ) : (
+          <View style={{ padding: 24, alignItems: 'center' }}>
+            <Text style={{ color: theme.textSupporting }}>Could not load profile details.</Text>
+          </View>
+        )}
+      </BottomSheet>
+
       <ConfirmModal
         visible={alertModal.visible}
         title={alertModal.title}
@@ -1212,14 +1384,17 @@ const localStyles = StyleSheet.create({
     gap: 8,
     flexWrap: 'wrap',
   },
-  badge: {
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 8,
+  statusBadge: {
+    paddingVertical: 4,
+    paddingHorizontal: 10,
+    borderRadius: 12,
+    alignSelf: 'flex-start',
   },
-  badgeText: {
-    fontSize: 14,
-    fontWeight: '600',
+  statusBadgeText: {
+    fontSize: 11,
+    fontWeight: '700',
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
   },
   detailRow: {
     flexDirection: 'row',

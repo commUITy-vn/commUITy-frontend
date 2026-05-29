@@ -12,6 +12,8 @@ import { getUser } from '@/features/users/api/get-user';
 import { createPrivateConversation } from '@/features/communication/api/create-private-conversation';
 import { api } from '@/lib/api-client';
 import { storage } from '@/lib/storage';
+import { env } from '@/config/env';
+import { useAuthStore } from '@/features/auth/stores/useAuthStore';
 
 interface Post {
   id: string;
@@ -27,6 +29,26 @@ interface Post {
 }
 
 const DUMMY_POSTS: Post[] = [];
+
+const getMockProfile = (authorId: string, authorName?: string) => {
+  const dummy = DUMMY_POSTS.find(p => p.authorId === authorId);
+  const name = dummy?.author || authorName || 'Người dùng';
+  const nameLower = name.toLowerCase().replace(/\s+/g, '.');
+  const email = `${nameLower}@commuity.org`;
+  const phone = '0987 654 321';
+  let role = 'VOLUNTEER';
+  if (name.includes('Nguyen Van A')) role = 'ADMIN';
+  else if (name.includes('Tran Thi B')) role = 'COLLABORATOR';
+
+  return {
+    id: authorId,
+    fullName: name,
+    email,
+    phone,
+    role,
+    avatarUrl: dummy?.avatar || 'https://i.pravatar.cc/150',
+  };
+};
 
 function getRelativeTime(dateString: string): string {
   if (!dateString) return 'Just now';
@@ -73,12 +95,21 @@ function getRelativeTime(dateString: string): string {
 const DUMMY_COMMENTS: Record<string, any[]> = {};
 
 const Avatar = ({ uri, name, size = 44, theme }: { uri?: string; name?: string; size?: number; theme: any }) => {
-  const isImageValid = uri && (uri.startsWith('http://') || uri.startsWith('https://') || uri.startsWith('file://') || uri.startsWith('data:'));
+  let resolvedUri = uri;
+  if (uri && !uri.startsWith('http://') && !uri.startsWith('https://') && !uri.startsWith('file://') && !uri.startsWith('data:')) {
+    const apiBase = env.API_URL.endsWith('/api') ? env.API_URL.slice(0, -4) : env.API_URL;
+    const cleanUri = uri.startsWith('/') ? uri : '/' + uri;
+    resolvedUri = `${apiBase}${cleanUri}`;
+  }
+
+  const isImageValid = resolvedUri && 
+    (resolvedUri.startsWith('http://') || resolvedUri.startsWith('https://') || resolvedUri.startsWith('file://') || resolvedUri.startsWith('data:')) &&
+    !resolvedUri.includes('pravatar.cc');
   
   if (isImageValid) {
     return (
       <Image
-        source={{ uri }}
+        source={{ uri: resolvedUri }}
         style={{
           width: size,
           height: size,
@@ -164,14 +195,70 @@ function ReactionPopup({
   );
 }
 
-const PostCard = ({ post, onAuthorPress }: { post: Post; onAuthorPress?: (authorId: string) => void }) => {
+const PostCard = ({ post, onAuthorPress }: { post: Post; onAuthorPress?: (authorId: string, authorName?: string) => void }) => {
   const theme = useTheme();
   const themeStyles = useThemeStyles();
   const router = useRouter();
+  const { user } = useAuthStore();
   const [isLiked, setIsLiked] = useState(post.isLiked);
   const [likeCount, setLikeCount] = useState(post.likes);
   const [showComments, setShowComments] = useState(false);
   const [commentText, setCommentText] = useState('');
+
+  // Local profile bottom sheet states inside Comments modal
+  const [selectedAuthorId, setSelectedAuthorId] = useState<string | null>(null);
+  const [isProfileVisible, setIsProfileVisible] = useState(false);
+  const [profileData, setProfileData] = useState<any>(null);
+  const [isProfileLoading, setIsProfileLoading] = useState(false);
+  const [chatLoading, setChatLoading] = useState(false);
+
+  const handleAuthorPress = async (authorId: string, customAuthorName?: string) => {
+    setSelectedAuthorId(authorId);
+    setIsProfileVisible(true);
+    setIsProfileLoading(true);
+    setProfileData(null);
+
+    try {
+      const res = await getUser(authorId);
+      if (res) {
+        setProfileData(res);
+      } else {
+        setProfileData(getMockProfile(authorId, customAuthorName));
+      }
+    } catch (err) {
+      console.warn('Failed to fetch user details, using mock fallback:', err);
+      setProfileData(getMockProfile(authorId, customAuthorName));
+    } finally {
+      setIsProfileLoading(false);
+    }
+  };
+
+  const handleDirectMessage = async () => {
+    if (!selectedAuthorId) return;
+    setChatLoading(true);
+    await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    setIsProfileVisible(false);
+    setShowComments(false);
+
+    try {
+      const res: any = await createPrivateConversation({ receiverId: selectedAuthorId });
+      const conversationId = res?.id || res?.data?.id;
+      if (conversationId) {
+        requestAnimationFrame(() => {
+          router.push({ pathname: '/messages/[id]', params: { id: conversationId } } as any);
+        });
+      } else {
+        console.error('No conversation ID returned', res);
+      }
+    } catch (err) {
+      console.error('Failed to create private conversation, navigating to mock chat:', err);
+      requestAnimationFrame(() => {
+        router.push({ pathname: '/messages/[id]', params: { id: selectedAuthorId } } as any);
+      });
+    } finally {
+      setChatLoading(false);
+    }
+  };
 
   const { data: serverComments } = usePostComments(post.id);
   const { mutateAsync: addServerComment } = useCreatePostComment();
@@ -188,10 +275,14 @@ const PostCard = ({ post, onAuthorPress }: { post: Post; onAuthorPress?: (author
   const [replyingToComment, setReplyingToComment] = useState<{ id: string; authorName: string } | null>(null);
 
   const commentsList = [
-    ...localComments,
+    ...localComments.map((c: any) => ({
+      ...c,
+      authorId: c.authorId || user?.id || 'me-id',
+    })),
     ...(serverComments && Array.isArray(serverComments)
       ? serverComments.map((c: any) => ({
           id: c.id || String(Math.random()),
+          authorId: c.authorId || c.userId || (c.user && c.user.id) || c.creatorId || c.createdBy || 'unknown',
           authorName: c.author || c.authorName || c.userName || 'User',
           avatar: c.avatar || c.authorAvatarUrl || c.userAvatarUrl || 'https://i.pravatar.cc/150',
           content: c.content,
@@ -335,6 +426,7 @@ const PostCard = ({ post, onAuthorPress }: { post: Post; onAuthorPress?: (author
           ...localComments,
           {
             id: String(Date.now()),
+            authorId: user?.id || 'me-id',
             authorName: 'Me',
             avatar: 'https://i.pravatar.cc/150?img=8',
             content,
@@ -353,6 +445,7 @@ const PostCard = ({ post, onAuthorPress }: { post: Post; onAuthorPress?: (author
             ...localComments,
             {
               id: String(Date.now()),
+              authorId: user?.id || 'me-id',
               authorName: 'Me',
               avatar: 'https://i.pravatar.cc/150?img=8',
               content,
@@ -370,6 +463,7 @@ const PostCard = ({ post, onAuthorPress }: { post: Post; onAuthorPress?: (author
         ...localComments,
         {
           id: String(Date.now()),
+          authorId: user?.id || 'me-id',
           authorName: 'Me',
           avatar: 'https://i.pravatar.cc/150?img=8',
           content,
@@ -522,10 +616,34 @@ const PostCard = ({ post, onAuthorPress }: { post: Post; onAuthorPress?: (author
                   <View key={item.id} style={{ gap: 12 }}>
                     {/* Main Root Comment */}
                     <View style={{ flexDirection: 'row', gap: 12 }}>
-                      <Avatar uri={item.avatar} name={item.authorName} size={36} theme={theme} />
+                      <Pressable
+                        onPress={async () => {
+                          if (item.authorId) {
+                            await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                            handleAuthorPress(item.authorId, item.authorName);
+                          }
+                        }}
+                        style={({ pressed }) => [
+                          pressed && { opacity: 0.7 }
+                        ]}
+                      >
+                        <Avatar uri={item.avatar} name={item.authorName} size={36} theme={theme} />
+                      </Pressable>
                       <View style={{ flex: 1, backgroundColor: theme.highlightBG, padding: 12, borderRadius: 12, borderWidth: 1, borderColor: theme.border }}>
                         <View style={{ flexDirection: 'row', alignItems: 'baseline', marginBottom: 4, gap: 8 }}>
-                          <Text style={{ fontWeight: '600', color: theme.text, fontSize: 14 }}>{item.authorName}</Text>
+                          <Pressable
+                            onPress={async () => {
+                              if (item.authorId) {
+                                await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                                handleAuthorPress(item.authorId, item.authorName);
+                              }
+                            }}
+                            style={({ pressed }) => [
+                              pressed && { opacity: 0.7 }
+                            ]}
+                          >
+                            <Text style={{ fontWeight: '600', color: theme.text, fontSize: 14 }}>{item.authorName}</Text>
+                          </Pressable>
                           <Text style={{ fontSize: 11, color: theme.textSupporting }}>{item.timestamp}</Text>
                         </View>
                         <Text style={{ fontSize: 14, color: theme.text, lineHeight: 20 }}>{item.content}</Text>
@@ -646,10 +764,34 @@ const PostCard = ({ post, onAuthorPress }: { post: Post; onAuthorPress?: (author
                           const showReplyPicker = showCommentReactionPickerId === reply.id;
                           return (
                             <View key={reply.id} style={{ flexDirection: 'row', gap: 10 }}>
-                              <Avatar uri={reply.avatar} name={reply.authorName} size={28} theme={theme} />
+                              <Pressable
+                                onPress={async () => {
+                                  if (reply.authorId) {
+                                    await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                                    handleAuthorPress(reply.authorId, reply.authorName);
+                                  }
+                                }}
+                                style={({ pressed }) => [
+                                  pressed && { opacity: 0.7 }
+                                ]}
+                              >
+                                <Avatar uri={reply.avatar} name={reply.authorName} size={28} theme={theme} />
+                              </Pressable>
                               <View style={{ flex: 1, backgroundColor: theme.appBG, padding: 10, borderRadius: 10, borderWidth: 1, borderColor: theme.border }}>
                                 <View style={{ flexDirection: 'row', alignItems: 'baseline', marginBottom: 4, gap: 8 }}>
-                                  <Text style={{ fontWeight: '600', color: theme.text, fontSize: 13 }}>{reply.authorName}</Text>
+                                  <Pressable
+                                    onPress={async () => {
+                                      if (reply.authorId) {
+                                        await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                                        handleAuthorPress(reply.authorId, reply.authorName);
+                                      }
+                                    }}
+                                    style={({ pressed }) => [
+                                      pressed && { opacity: 0.7 }
+                                    ]}
+                                  >
+                                    <Text style={{ fontWeight: '600', color: theme.text, fontSize: 13 }}>{reply.authorName}</Text>
+                                  </Pressable>
                                   <Text style={{ fontSize: 10, color: theme.textSupporting }}>{reply.timestamp}</Text>
                                 </View>
                                 <Text style={{ fontSize: 13, color: theme.text, lineHeight: 18 }}>{reply.content}</Text>
@@ -885,6 +1027,122 @@ const PostCard = ({ post, onAuthorPress }: { post: Post; onAuthorPress?: (author
               <MaterialIcons name="send" size={24} color={(commentText.trim() || selectedCommentMedia) ? theme.primary : theme.textSupporting} />
             </Pressable>
           </View>
+
+          {/* Local Profile Details Bottom Sheet inside Comments modal */}
+          <BottomSheet isVisible={isProfileVisible} onClose={() => setIsProfileVisible(false)}>
+            {isProfileLoading ? (
+              <View style={{ padding: 40, justifyContent: 'center', alignItems: 'center' }}>
+                <ActivityIndicator size="large" color={theme.primary} />
+              </View>
+            ) : profileData ? (
+              <View style={{ padding: 24, alignItems: 'center' }}>
+                {/* Avatar bubble */}
+                <View
+                  style={{
+                    width: 80,
+                    height: 80,
+                    borderRadius: 40,
+                    backgroundColor: theme.highlightBG,
+                    borderWidth: 2,
+                    borderColor: theme.border,
+                    justifyContent: 'center',
+                    alignItems: 'center',
+                    marginBottom: 16,
+                  }}
+                >
+                  <Text style={{ color: theme.text, fontSize: 32, fontWeight: '700' }}>
+                    {profileData.fullName?.charAt(0).toUpperCase() ?? '?'}
+                  </Text>
+                </View>
+
+                {/* Name */}
+                <Text
+                  style={{
+                    color: theme.text,
+                    fontSize: 22,
+                    fontWeight: '700',
+                    textAlign: 'center',
+                    marginBottom: 6,
+                  }}
+                >
+                  {profileData.fullName}
+                </Text>
+
+                {/* Role Tag */}
+                <View
+                  style={{
+                    backgroundColor: theme.highlightBG,
+                    borderColor: theme.border,
+                    borderWidth: 1,
+                    borderRadius: 12,
+                    paddingHorizontal: 12,
+                    paddingVertical: 4,
+                    marginBottom: 24,
+                  }}
+                >
+                  <Text
+                    style={{
+                      color: theme.primary,
+                      fontSize: 12,
+                      fontWeight: '600',
+                      textTransform: 'uppercase',
+                    }}
+                  >
+                    {profileData.role === 'ADMIN' ? 'Admin' : profileData.role === 'COLLABORATOR' ? 'Collaborator' : 'Volunteer'}
+                  </Text>
+                </View>
+
+                {/* Info fields */}
+                <View
+                  style={{
+                    width: '100%',
+                    backgroundColor: theme.highlightBG,
+                    borderRadius: 16,
+                    borderWidth: 1,
+                    borderColor: theme.border,
+                    padding: 16,
+                    gap: 16,
+                    marginBottom: 24,
+                  }}
+                >
+                  <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                    <MaterialIcons name="email" size={20} color={theme.textSupporting} style={{ marginRight: 12 }} />
+                    <View style={{ flex: 1 }}>
+                      <Text style={{ color: theme.textSupporting, fontSize: 12 }}>Email</Text>
+                      <Text style={{ color: theme.text, fontSize: 15, fontWeight: '500' }} numberOfLines={1}>
+                        {profileData.email || 'N/A'}
+                      </Text>
+                    </View>
+                  </View>
+
+                  <View style={{ height: StyleSheet.hairlineWidth, backgroundColor: theme.border }} />
+
+                  <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                    <MaterialIcons name="phone" size={20} color={theme.textSupporting} style={{ marginRight: 12 }} />
+                    <View style={{ flex: 1 }}>
+                      <Text style={{ color: theme.textSupporting, fontSize: 12 }}>Phone</Text>
+                      <Text style={{ color: theme.text, fontSize: 15, fontWeight: '500' }}>
+                        {profileData.phone || 'N/A'}
+                      </Text>
+                    </View>
+                  </View>
+                </View>
+
+                {/* DM Button */}
+                <Button
+                  text="Direct Message"
+                  primary
+                  onPress={handleDirectMessage}
+                  style={{ width: '100%', borderRadius: 100 }}
+                  isLoading={chatLoading}
+                />
+              </View>
+            ) : (
+              <View style={{ padding: 40, justifyContent: 'center', alignItems: 'center' }}>
+                <Text style={{ color: theme.textSupporting }}>Could not load profile details.</Text>
+              </View>
+            )}
+          </BottomSheet>
         </View>
       </Modal>
     </>
@@ -905,6 +1163,28 @@ export default function ExploreScreen() {
   const [isProfileVisible, setIsProfileVisible] = useState(false);
   const [profileData, setProfileData] = useState<any>(null);
   const [isProfileLoading, setIsProfileLoading] = useState(false);
+  const [chatLoading, setChatLoading] = useState(false);
+
+  const handleAuthorPress = async (authorId: string, customAuthorName?: string) => {
+    setSelectedAuthorId(authorId);
+    setIsProfileVisible(true);
+    setIsProfileLoading(true);
+    setProfileData(null);
+
+    try {
+      const res = await getUser(authorId);
+      if (res) {
+        setProfileData(res);
+      } else {
+        setProfileData(getMockProfile(authorId, customAuthorName));
+      }
+    } catch (err) {
+      console.warn('Failed to fetch user details, using mock fallback:', err);
+      setProfileData(getMockProfile(authorId, customAuthorName));
+    } finally {
+      setIsProfileLoading(false);
+    }
+  };
 
   // Temporary adapter if backend data is not perfectly matching Post type
   const displayPosts = posts && Array.isArray(posts) && posts.length > 0 
@@ -922,51 +1202,7 @@ export default function ExploreScreen() {
       }))
     : DUMMY_POSTS;
 
-  const getMockProfile = (authorId: string, authorName?: string) => {
-    const dummy = DUMMY_POSTS.find(p => p.authorId === authorId);
-    const name = dummy?.author || authorName || 'Người dùng';
-    const nameLower = name.toLowerCase().replace(/\s+/g, '.');
-    const email = `${nameLower}@commuity.org`;
-    const phone = '0987 654 321';
-    let role = 'VOLUNTEER';
-    if (name.includes('Nguyen Van A')) role = 'ADMIN';
-    else if (name.includes('Tran Thi B')) role = 'COLLABORATOR';
 
-    return {
-      id: authorId,
-      fullName: name,
-      email,
-      phone,
-      role,
-      avatarUrl: dummy?.avatar || 'https://i.pravatar.cc/150',
-    };
-  };
-
-  const handleAuthorPress = async (authorId: string) => {
-    setSelectedAuthorId(authorId);
-    setIsProfileVisible(true);
-    setIsProfileLoading(true);
-    setProfileData(null);
-
-    try {
-      const currentPost = displayPosts.find(p => p.authorId === authorId);
-      const authorName = currentPost?.author;
-
-      const res = await getUser(authorId);
-      if (res) {
-        setProfileData(res);
-      } else {
-        setProfileData(getMockProfile(authorId, authorName));
-      }
-    } catch (err) {
-      console.warn('Failed to fetch user details, using mock fallback:', err);
-      const currentPost = displayPosts.find(p => p.authorId === authorId);
-      const authorName = currentPost?.author;
-      setProfileData(getMockProfile(authorId, authorName));
-    } finally {
-      setIsProfileLoading(false);
-    }
-  };
 
   const handleDirectMessage = async () => {
     if (!selectedAuthorId) return;

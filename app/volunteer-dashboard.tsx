@@ -102,9 +102,13 @@ export default function VolunteerDashboardScreen() {
 
     return (
       <View style={{ marginBottom: 16 }}>
-        <RequestCard request={mappedRequest} />
+        <RequestCard
+          request={mappedRequest}
+          onPress={() => router.push(`/request/${mappedRequest.id}`)}
+          containerStyle={{ marginHorizontal: 0 }}
+        />
         {!isFinished && (
-          <View style={[styles.row, { paddingHorizontal: 16, marginTop: -4 }]}>
+          <View style={[styles.row, { paddingHorizontal: 0, marginTop: -4 }]}>
             <TouchableOpacity
               style={[
                 styles.buttonPrimary,

@@ -8,7 +8,7 @@ interface ThemeState {
 }
 
 export const useThemeStore = create<ThemeState>((set) => ({
-  themeMode: 'system',
+  themeMode: 'light',
   setThemeMode: async (mode) => {
     set({ themeMode: mode });
     await storage.setItemAsync('app_theme_mode', mode);
@@ -17,6 +17,8 @@ export const useThemeStore = create<ThemeState>((set) => ({
     const mode = await storage.getItemAsync('app_theme_mode');
     if (mode === 'light' || mode === 'dark' || mode === 'system') {
       set({ themeMode: mode });
+    } else {
+      set({ themeMode: 'light' });
     }
   },
 }));

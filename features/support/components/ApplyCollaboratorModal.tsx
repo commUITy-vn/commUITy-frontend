@@ -23,7 +23,7 @@ export default function ApplyCollaboratorModal({ isOpen, onClose, onSubmit }: Ap
   return (
     <Modal
       visible={isOpen}
-      animationType="slide"
+      animationType="fade"
       transparent={true}
       onRequestClose={onClose}
     >
@@ -33,7 +33,6 @@ export default function ApplyCollaboratorModal({ isOpen, onClose, onSubmit }: Ap
           
           <TextInput
             label="Reason for applying"
-            placeholder="Why do you want to be a collaborator?"
             multiline
             height={100}
             value={reason}

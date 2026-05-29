@@ -69,11 +69,8 @@ const ConversationRow = ({
         {
           flexDirection: 'row',
           alignItems: 'center',
-          height: 72,
-          paddingHorizontal: 12,
-          marginHorizontal: 12,
-          marginVertical: 3,
-          borderRadius: 8,
+          paddingVertical: 12,
+          paddingHorizontal: 16,
           backgroundColor: (pressed || isPressed)
             ? theme.activeComponentBG
             : (isHovered ? theme.highlightBG : 'transparent'),
@@ -84,9 +81,9 @@ const ConversationRow = ({
       <View style={{ marginRight: 12, position: 'relative' }}>
         <View
           style={{
-            width: 44,
-            height: 44,
-            borderRadius: 22,
+            width: 40,
+            height: 40,
+            borderRadius: 20,
             backgroundColor: isUnread ? (isDark ? 'rgba(249, 115, 22, 0.15)' : '#FFF4E5') : theme.border,
             justifyContent: 'center',
             alignItems: 'center',
@@ -95,7 +92,7 @@ const ConversationRow = ({
           <Text
             style={{
               color: isUnread ? theme.primary : theme.textSupporting,
-              fontSize: 16,
+              fontSize: 15,
               fontWeight: '700',
             }}
           >
@@ -106,26 +103,28 @@ const ConversationRow = ({
         <View
           style={{
             position: 'absolute',
-            bottom: 0,
-            right: 0,
+            bottom: -1,
+            right: -1,
             width: 12,
             height: 12,
             borderRadius: 6,
             backgroundColor: theme.primary,
             borderWidth: 2,
-            borderColor: isPressed ? theme.highlightBG : theme.appBG,
+            borderColor: isPressed
+              ? theme.activeComponentBG
+              : (isHovered ? theme.highlightBG : theme.appBG),
           }}
         />
       </View>
 
       {/* Content */}
       <View style={{ flex: 1, justifyContent: 'center' }}>
-        <View style={{ flexDirection: 'row', alignItems: 'baseline', marginBottom: 2 }}>
+        <View style={{ flexDirection: 'row', alignItems: 'baseline', marginBottom: 6 }}>
           <Text
             style={{
               color: theme.text,
-              fontSize: 19,
-              fontWeight: isUnread ? '700' : '500',
+              fontSize: 15,
+              fontWeight: isUnread ? '600' : '400',
               flex: 1,
             }}
             numberOfLines={1}
@@ -135,7 +134,7 @@ const ConversationRow = ({
           <Text
             style={{
               color: isUnread ? theme.primary : theme.textSupporting,
-              fontSize: 13,
+              fontSize: 11,
               fontWeight: isUnread ? '600' : '400',
               marginLeft: 8,
             }}
@@ -148,7 +147,7 @@ const ConversationRow = ({
           <Text
             style={{
               color: isUnread ? theme.text : theme.textSupporting,
-              fontSize: 16,
+              fontSize: 13,
               flex: 1,
               fontWeight: isUnread ? '600' : '400',
             }}

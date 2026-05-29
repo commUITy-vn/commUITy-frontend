@@ -1,13 +1,11 @@
 import { Tabs } from "expo-router"
 import { View, Text, PixelRatio } from "react-native"
-import { useColorScheme } from "@/hooks/use-color-scheme"
-import { Colors } from "@/constants/theme"
+import { useTheme } from "@/hooks/useTheme"
 import { HapticTab } from "@/components/haptic-tab"
 import MaterialIcons from "@expo/vector-icons/MaterialIcons"
 
 export default function AppLayout() {
-    const colorScheme = useColorScheme()
-    const theme = Colors[colorScheme ?? "light"]
+    const theme = useTheme()
 
     return (
         <Tabs

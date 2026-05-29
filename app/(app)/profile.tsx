@@ -8,6 +8,7 @@ import {
     Modal,
     TextInput,
     Platform,
+    Image,
 } from "react-native"
 import * as Haptics from "expo-haptics"
 import { useRouter } from "expo-router"
@@ -17,8 +18,9 @@ import { useAuthStore } from "@/features/auth/stores/useAuthStore"
 import MaterialIcons from "@expo/vector-icons/MaterialIcons"
 import { Colors } from "@/constants/theme"
 import { useMe } from "@/features/users/hooks/useMe"
-import { ConfirmModal } from "@/components/ui"
+import { ConfirmModal, BottomSheet, Button } from "@/components/ui"
 import { useThemeStore } from "@/stores/useThemeStore"
+import { env } from "@/config/env"
 
 export default function ProfileScreen() {
     const theme = useTheme() || Colors.light // Fallback to light theme if useTheme fails
@@ -31,6 +33,7 @@ export default function ProfileScreen() {
 
     // Profile edit modal state
     const [showEditProfile, setShowEditProfile] = useState(false)
+    const [themeSheetVisible, setThemeSheetVisible] = useState(false)
     const [showSignOutConfirm, setShowSignOutConfirm] = useState(false)
     const [editDisplayName, setEditDisplayName] = useState(
         user?.fullName || "",
@@ -89,7 +92,7 @@ export default function ProfileScreen() {
                 setShowSignOutConfirm(true)
                 break
             case "transaction-history":
-                router.push("/finance-dashboard")
+                router.push("/transaction-history")
                 break
             case "backup-restore":
                 showAlert(
@@ -99,13 +102,7 @@ export default function ProfileScreen() {
                 break
             case "theme":
                 await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light)
-                if (themeMode === 'light') {
-                    await setThemeMode('dark')
-                } else if (themeMode === 'dark') {
-                    await setThemeMode('system')
-                } else {
-                    await setThemeMode('light')
-                }
+                setThemeSheetVisible(true)
                 break
             case "help":
                 showAlert("Help", "Help screen coming soon!")
@@ -149,7 +146,6 @@ export default function ProfileScreen() {
                     paddingHorizontal: 16,
                     paddingTop: 12,
                     paddingBottom: 80,
-                    gap: 24,
                 }}
                 showsVerticalScrollIndicator={false}
             >
@@ -162,14 +158,38 @@ export default function ProfileScreen() {
                                 { backgroundColor: theme.primary },
                             ]}
                         >
-                            <Text
-                                style={[
-                                    localStyles.avatarText,
-                                    { color: theme.textLight },
-                                ]}
-                            >
-                                {personalDetails?.fullName?.[0] ?? "U"}
-                            </Text>
+                            {(() => {
+                                let resolvedAvatarUrl = user?.imageUrl;
+                                if (resolvedAvatarUrl && !resolvedAvatarUrl.startsWith('http://') && !resolvedAvatarUrl.startsWith('https://') && !resolvedAvatarUrl.startsWith('file://') && !resolvedAvatarUrl.startsWith('data:')) {
+                                    const apiBase = env.API_URL.endsWith('/api') ? env.API_URL.slice(0, -4) : env.API_URL;
+                                    const cleanPath = resolvedAvatarUrl.startsWith('/') ? resolvedAvatarUrl : '/' + resolvedAvatarUrl;
+                                    resolvedAvatarUrl = `${apiBase}${cleanPath}`;
+                                }
+
+                                const isValidImage = resolvedAvatarUrl && 
+                                    (resolvedAvatarUrl.startsWith('http://') || resolvedAvatarUrl.startsWith('https://') || resolvedAvatarUrl.startsWith('file://') || resolvedAvatarUrl.startsWith('data:')) &&
+                                    !resolvedAvatarUrl.includes('pravatar.cc');
+
+                                if (isValidImage) {
+                                    return (
+                                        <Image
+                                            source={{ uri: resolvedAvatarUrl }}
+                                            style={{ width: 80, height: 80, borderRadius: 40 }}
+                                        />
+                                    );
+                                }
+
+                                return (
+                                    <Text
+                                        style={[
+                                            localStyles.avatarText,
+                                            { color: theme.textLight },
+                                        ]}
+                                    >
+                                        {personalDetails?.fullName?.[0] ?? "U"}
+                                    </Text>
+                                );
+                            })()}
                         </View>
                     </View>
                     <View style={localStyles.profileInfo}>
@@ -233,12 +253,9 @@ export default function ProfileScreen() {
                     </View>
                 </View>
 
-                {/* Divider */}
-                <View style={[localStyles.divider, { backgroundColor: theme.border }]} />
-
                 {/* Settings Menu */}
-                <View style={localStyles.settingsSection}>
-                    {settingsItems.map((item) => (
+                <View style={[localStyles.settingsSection, { marginTop: 8 }]}>
+                    {settingsItems.map((item, index) => (
                         <Pressable
                             key={item.key}
                             onPress={() => handlePressSettingsItem(item.key)}
@@ -249,6 +266,9 @@ export default function ProfileScreen() {
                                     borderColor: theme.border,
                                     backgroundColor: pressed ? theme.highlightBG : 'transparent',
                                 },
+                                index === 0 && {
+                                    borderTopWidth: StyleSheet.hairlineWidth,
+                                }
                             ]}
                         >
                             <View style={localStyles.settingsItemContent}>
@@ -267,42 +287,31 @@ export default function ProfileScreen() {
                                         {item.title}
                                     </Text>
                                 </View>
-                                {item.key === 'theme' ? (
-                                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
-                                        <Text style={{ fontSize: 13, color: theme.textSupporting }}>Cycle</Text>
-                                        <MaterialIcons
-                                            name="sync"
-                                            size={20}
-                                            color={theme.primary}
-                                        />
-                                    </View>
-                                ) : (
-                                    <MaterialIcons
-                                        name="chevron-right"
-                                        size={24}
-                                        color={theme.icon}
-                                    />
-                                )}
+                                <MaterialIcons
+                                    name="chevron-right"
+                                    size={24}
+                                    color={theme.icon}
+                                />
                             </View>
                         </Pressable>
                     ))}
                 </View>
 
-                {/* Floating Donate Button - Expensify style */}
-                <View style={localStyles.floatingButtonContainer}>
+                {/* Donate to Community Fund Link - clean text link format */}
+                <View style={localStyles.donateLinkContainer}>
                     <Pressable
-                        onPress={() => {
-                            // TODO: Show donation modal
-                            Haptics.impactAsync(
-                                Haptics.ImpactFeedbackStyle.Medium,
-                            )
-                            showAlert("Donate", "Donation flow coming soon!")
+                        onPress={async () => {
+                            await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+                            router.push('/community-funds' as any);
                         }}
+                        style={({ pressed }) => [
+                            pressed && { opacity: 0.7 }
+                        ]}
                     >
                         <Text
                             style={[
-                                localStyles.floatingButtonText,
-                                { color: theme.textLight },
+                                localStyles.donateLinkText,
+                                { color: theme.primary }
                             ]}
                         >
                             Donate to Community Fund
@@ -427,6 +436,39 @@ export default function ProfileScreen() {
                 </View>
             </Modal>
 
+            {/* Theme Selector Bottom Sheet */}
+            <BottomSheet
+                isVisible={themeSheetVisible}
+                onClose={() => setThemeSheetVisible(false)}
+                title="Choose Theme"
+                options={[
+                    {
+                        key: 'light',
+                        label: 'Light Mode',
+                        icon: 'light-mode',
+                        onPress: async () => {
+                            await setThemeMode('light')
+                        },
+                    },
+                    {
+                        key: 'dark',
+                        label: 'Dark Mode',
+                        icon: 'dark-mode',
+                        onPress: async () => {
+                            await setThemeMode('dark')
+                        },
+                    },
+                    {
+                        key: 'system',
+                        label: 'System Mode',
+                        icon: 'brightness-auto',
+                        onPress: async () => {
+                            await setThemeMode('system')
+                        },
+                    },
+                ]}
+            />
+
             {/* Custom Confirmation Modal for Logout */}
             <ConfirmModal
                 visible={showSignOutConfirm}
@@ -462,7 +504,8 @@ const localStyles = StyleSheet.create({
         marginVertical: 16,
     },
     profileHeader: {
-        paddingVertical: 24,
+        paddingTop: 16,
+        paddingBottom: 8,
         alignItems: "center",
     },
     avatarContainer: {
@@ -494,7 +537,9 @@ const localStyles = StyleSheet.create({
     statsSection: {
         flexDirection: "row",
         justifyContent: "space-around",
-        marginVertical: 24,
+        marginVertical: 0,
+        marginTop: 4,
+        marginBottom: 12,
     },
     statsItem: {
         alignItems: "center",
@@ -564,5 +609,15 @@ const localStyles = StyleSheet.create({
         paddingHorizontal: 12,
         fontSize: 16,
         paddingVertical: 0,
+    },
+    donateLinkContainer: {
+        marginTop: 24,
+        alignItems: "center",
+        justifyContent: "center",
+    },
+    donateLinkText: {
+        fontSize: 16,
+        fontWeight: "600",
+        textDecorationLine: "underline",
     },
 })

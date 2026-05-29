@@ -1,22 +1,14 @@
 import React from 'react';
-import { View, Text, FlatList, StyleSheet, Modal, Pressable } from 'react-native';
+import { View, Text, FlatList, StyleSheet, Modal, Pressable, ActivityIndicator } from 'react-native';
 import { useTheme } from '@/hooks/useTheme';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import ReceiveItemsModal from '@/features/support/components/ReceiveItemsModal';
 import { ProgressBar } from '@/components/ui/ProgressBar';
 import * as Haptics from 'expo-haptics';
-import { MaterialIcons } from '@expo/vector-icons';
+import { MaterialIcons, Ionicons } from '@expo/vector-icons';
+import { useSupportLocation } from '@/features/maps/hooks/useSupportLocation';
 
-// Dummy location data
-const locationData = {
-  id: '1',
-  name: 'Central Hub',
-  address: '123 Main St',
-  operatingHours: '9am - 5pm',
-  contactInfo: '555-1234',
-};
-
-// Dummy inventory data
+// Dummy inventory data for coordination flow
 const inventory = [
   { id: 'a', name: 'Blankets', currentQty: 30, targetQty: 50 },
   { id: 'b', name: 'Water Bottles', currentQty: 80, targetQty: 80 },
@@ -25,10 +17,30 @@ const inventory = [
 export default function LocationDetail() {
   const theme = useTheme();
   const router = useRouter();
-  const params = useLocalSearchParams();
+  const { id } = useLocalSearchParams<{ id: string }>();
   const [modalVisible, setModalVisible] = React.useState(false);
 
-  // In real impl, fetch data based on params.id
+  const { data: location, isLoading, isError } = useSupportLocation(id);
+
+  if (isLoading) {
+    return (
+      <View style={[styles.container, { backgroundColor: theme.appBG, justifyContent: 'center', alignItems: 'center' }]}>
+        <ActivityIndicator size="large" color={theme.primary} />
+      </View>
+    );
+  }
+
+  if (isError || !location) {
+    return (
+      <View style={[styles.container, { backgroundColor: theme.appBG, justifyContent: 'center', alignItems: 'center' }]}>
+        <MaterialIcons name="error-outline" size={48} color={theme.danger} />
+        <Text style={{ color: theme.text, marginTop: 12, fontSize: 16 }}>Failed to load location details</Text>
+        <Pressable onPress={() => router.back()} style={{ marginTop: 16 }}>
+          <Text style={{ color: theme.primary, fontWeight: '600' }}>Go Back</Text>
+        </Pressable>
+      </View>
+    );
+  }
 
   return (
     <View style={[styles.container, { backgroundColor: theme.appBG }]}>
@@ -52,52 +64,70 @@ export default function LocationDetail() {
         <View style={{ width: 52 }} />
       </View>
 
-      <View style={{ padding: 16, flex: 1 }}>
-        {/* Header Info */}
-        <View style={styles.header}>
-          <Text style={[styles.title, { color: theme.text }]}>{locationData.name}</Text>
-          <Text style={[styles.sub, { color: theme.textSupporting }]}>{locationData.address}</Text>
-          <Text style={[styles.sub, { color: theme.textSupporting }]}>{`Hours: ${locationData.operatingHours}`}</Text>
-          <Text style={[styles.sub, { color: theme.textSupporting }]}>{`Contact: ${locationData.contactInfo}`}</Text>
-        </View>
-      {/* Inventory Section */}
-      <View style={styles.section}>
-        <Text style={[styles.sectionTitle, { color: theme.text }]}>Current Inventory</Text>
-        <FlatList
-          data={inventory}
-          keyExtractor={(item) => item.id}
-          renderItem={({ item }) => (
-            <View style={styles.inventoryItem}>
-              <Text style={[styles.itemName, { color: theme.text }]}>{item.name}</Text>
-              <Text style={[styles.itemQty, { color: theme.textSupporting }]}>{`${item.currentQty}/${item.targetQty}`}</Text>
-              {item.currentQty < item.targetQty && (
-                <ProgressBar
-                  progress={(item.currentQty / item.targetQty) * 100}
-                />
-              )}
+      <View style={{ padding: 16, flex: 1, gap: 16 }}>
+        {/* Header Info Card */}
+        <View style={[styles.headerCard, { backgroundColor: theme.componentBG, borderColor: theme.border }]}>
+          <Text style={[styles.title, { color: theme.text }]}>{location.name}</Text>
+          
+          {location.description ? (
+            <Text style={[styles.description, { color: theme.textSupporting }]}>
+              {location.description}
+            </Text>
+          ) : null}
+
+          <View style={styles.detailRow}>
+            <Ionicons name="pin" size={18} color={theme.primary} />
+            <Text style={[styles.detailText, { color: theme.text }]}>{location.address}</Text>
+          </View>
+
+          {location.contactPhone ? (
+            <View style={styles.detailRow}>
+              <Ionicons name="call" size={18} color={theme.primary} />
+              <Text style={[styles.detailText, { color: theme.text }]}>{location.contactPhone}</Text>
             </View>
-          )}
-        />
-      </View>
-      {/* FAB */}
-      <Pressable
-        style={[styles.fab, { backgroundColor: theme.primary }]}
-        onPress={() => setModalVisible(true)}
-        accessibilityLabel="Receive Items"
-      >
-        <Text style={[styles.fabText, { color: theme.textLight }]}>+</Text>
-      </Pressable>
-      {/* Receive Items Modal */}
-      <Modal
-        visible={modalVisible}
-        animationType="slide"
-        transparent={true}
-        onRequestClose={() => setModalVisible(false)}
-      >
-        <ReceiveItemsModal
-          onClose={() => setModalVisible(false)}
-        />
-      </Modal>
+          ) : null}
+        </View>
+
+        {/* Inventory Section */}
+        <View style={styles.section}>
+          <Text style={[styles.sectionTitle, { color: theme.text }]}>Current Inventory</Text>
+          <FlatList
+            data={inventory}
+            keyExtractor={(item) => item.id}
+            renderItem={({ item }) => (
+              <View style={styles.inventoryItem}>
+                <Text style={[styles.itemName, { color: theme.text }]}>{item.name}</Text>
+                <Text style={[styles.itemQty, { color: theme.textSupporting }]}>{`${item.currentQty}/${item.targetQty}`}</Text>
+                {item.currentQty < item.targetQty && (
+                  <ProgressBar
+                    progress={(item.currentQty / item.targetQty) * 100}
+                  />
+                )}
+              </View>
+            )}
+          />
+        </View>
+
+        {/* FAB */}
+        <Pressable
+          style={[styles.fab, { backgroundColor: theme.primary }]}
+          onPress={() => setModalVisible(true)}
+          accessibilityLabel="Receive Items"
+        >
+          <Text style={[styles.fabText, { color: theme.textLight }]}>+</Text>
+        </Pressable>
+
+        {/* Receive Items Modal */}
+        <Modal
+          visible={modalVisible}
+          animationType="slide"
+          transparent={true}
+          onRequestClose={() => setModalVisible(false)}
+        >
+          <ReceiveItemsModal
+            onClose={() => setModalVisible(false)}
+          />
+        </Modal>
       </View>
     </View>
   );
@@ -121,11 +151,28 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     textAlign: 'center',
   },
-  header: { marginBottom: 24 },
+  headerCard: {
+    borderRadius: 16,
+    borderWidth: 1,
+    padding: 16,
+    gap: 12,
+  },
   title: { fontSize: 24, fontWeight: 'bold' },
-  sub: { fontSize: 14 },
+  description: {
+    fontSize: 15,
+    lineHeight: 22,
+  },
+  detailRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  detailText: {
+    fontSize: 15,
+    flex: 1,
+  },
   section: { flex: 1 },
-  sectionTitle: { fontSize: 18, fontWeight: '600', marginBottom: 8 },
+  sectionTitle: { fontSize: 18, fontWeight: '600', marginBottom: 12 },
   inventoryItem: { marginBottom: 12 },
   itemName: { fontSize: 16 },
   itemQty: { fontSize: 12 },
