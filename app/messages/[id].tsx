@@ -8,6 +8,7 @@ import {
   TextInput as RNTextInput,
   Image,
   Platform,
+  StyleSheet,
 } from 'react-native';
 import { useTheme } from '@/hooks/useTheme';
 import { useLocalSearchParams, useRouter } from 'expo-router';
@@ -18,6 +19,211 @@ import { useConversations } from '@/features/communication/hooks/useConversation
 import { useAuthStore } from '@/features/auth/stores/useAuthStore';
 import { api } from '@/lib/api-client';
 import EmojiPickerPanel from '@/components/ui/EmojiPickerPanel';
+import { BottomSheet } from '@/components/ui';
+
+function GroupAvatar({ members, theme }: { members: any[]; theme: any }) {
+  const otherMembers = members.filter(m => m.fullName).slice(0, 2);
+  if (otherMembers.length < 2) {
+    return (
+      <View
+        style={{
+          width: 50,
+          height: 50,
+          borderRadius: 25,
+          backgroundColor: theme.highlightBG,
+          justifyContent: 'center',
+          alignItems: 'center',
+        }}
+      >
+        <MaterialIcons name="group" size={28} color={theme.primary} />
+      </View>
+    );
+  }
+  
+  const char1 = otherMembers[0].fullName.charAt(0).toUpperCase();
+  const char2 = otherMembers[1].fullName.charAt(0).toUpperCase();
+
+  return (
+    <View style={{ width: 55, height: 55, position: 'relative' }}>
+      <View
+        style={{
+          width: 34,
+          height: 34,
+          borderRadius: 17,
+          backgroundColor: theme.border,
+          justifyContent: 'center',
+          alignItems: 'center',
+          position: 'absolute',
+          top: 0,
+          left: 0,
+          borderWidth: 2,
+          borderColor: theme.appBG,
+          zIndex: 1,
+        }}
+      >
+        <Text style={{ color: theme.text, fontSize: 13, fontWeight: '700' }}>{char1}</Text>
+      </View>
+      <View
+        style={{
+          width: 34,
+          height: 34,
+          borderRadius: 17,
+          backgroundColor: theme.primary,
+          justifyContent: 'center',
+          alignItems: 'center',
+          position: 'absolute',
+          bottom: 0,
+          right: 0,
+          borderWidth: 2,
+          borderColor: theme.appBG,
+          zIndex: 2,
+        }}
+      >
+        <Text style={{ color: '#FFFFFF', fontSize: 13, fontWeight: '700' }}>{char2}</Text>
+      </View>
+    </View>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────
+// Shared Item Preview Card
+// ─────────────────────────────────────────────────────────────
+function SharedItemCard({ content, theme }: { content: string; theme: any }) {
+  const match = content.match(/^\[SHARED_ITEM:([^:]+):([^:]+):(.*)\]$/);
+  if (!match) return null;
+
+  const [_, type, itemId, title] = match;
+  const router = useRouter();
+
+  const handlePress = async () => {
+    await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    if (type === 'SUPPORT') {
+      router.push(`/request/${itemId}`);
+    }
+  };
+
+  const iconName = type === 'SUPPORT' ? 'help-outline' : 'insert-drive-file';
+  const displayType = type === 'SUPPORT' ? 'Shared Help Request' : 'Shared Item';
+
+  return (
+    <Pressable
+      onPress={handlePress}
+      style={({ pressed }) => ({
+        marginTop: 6,
+        padding: 12,
+        borderRadius: 12,
+        backgroundColor: theme.highlightBG,
+        borderWidth: 1,
+        borderColor: theme.border,
+        maxWidth: 320,
+        gap: 8,
+        opacity: pressed ? 0.9 : 1,
+      })}
+    >
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+        <View
+          style={{
+            width: 40,
+            height: 40,
+            borderRadius: 20,
+            backgroundColor: theme.border,
+            justifyContent: 'center',
+            alignItems: 'center',
+          }}
+        >
+          <MaterialIcons name={iconName} size={22} color={theme.primary} />
+        </View>
+        <View style={{ flex: 1 }}>
+          <Text style={{ fontSize: 11, fontWeight: '700', color: theme.primary, textTransform: 'uppercase', letterSpacing: 0.5 }}>
+            {displayType}
+          </Text>
+          <Text style={{ fontSize: 14, fontWeight: '600', color: theme.text, marginTop: 2 }} numberOfLines={2}>
+            {title}
+          </Text>
+        </View>
+      </View>
+      <View style={{ height: 1, backgroundColor: theme.border }} />
+      <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+        <Text style={{ fontSize: 12, color: theme.textSupporting, fontWeight: '600' }}>
+          View Details
+        </Text>
+        <MaterialIcons name="chevron-right" size={16} color={theme.textSupporting} />
+      </View>
+    </Pressable>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────
+// Message Hover Floating Action Menu
+// ─────────────────────────────────────────────────────────────
+function MessageHoverMenu({
+  theme,
+  onReact,
+  onAddReaction,
+  onHover,
+  onLeave,
+}: {
+  theme: any;
+  onReact: (emoji: string) => void;
+  onAddReaction: () => void;
+  onHover?: () => void;
+  onLeave?: () => void;
+}) {
+  const quickEmojis = ['👍', '❤️', '😂', '🎉'];
+  return (
+    <View
+      style={{
+        flexDirection: 'row',
+        alignItems: 'center',
+        backgroundColor: theme.componentBG,
+        borderWidth: 1,
+        borderColor: theme.border,
+        borderRadius: 20,
+        paddingHorizontal: 6,
+        paddingVertical: 4,
+        gap: 2,
+        shadowColor: theme.inverse,
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.1,
+        shadowRadius: 4,
+        elevation: 4,
+        zIndex: 50,
+      }}
+    >
+      {quickEmojis.map((emoji) => (
+        <Pressable
+          key={emoji}
+          onPress={() => onReact(emoji)}
+          onHoverIn={onHover}
+          onHoverOut={onLeave}
+          style={({ pressed, hovered }) => ({
+            paddingHorizontal: 6,
+            paddingVertical: 2,
+            borderRadius: 6,
+            backgroundColor: (pressed || hovered) ? theme.highlightBG : 'transparent',
+            cursor: Platform.OS === 'web' ? 'pointer' as any : undefined,
+          })}
+        >
+          <Text style={{ fontSize: 16 }}>{emoji}</Text>
+        </Pressable>
+      ))}
+      <View style={{ width: 1, height: 16, backgroundColor: theme.border, marginHorizontal: 4 }} />
+      <Pressable
+        onPress={onAddReaction}
+        onHoverIn={onHover}
+        onHoverOut={onLeave}
+        style={({ pressed, hovered }) => ({
+          padding: 4,
+          borderRadius: 6,
+          backgroundColor: (pressed || hovered) ? theme.highlightBG : 'transparent',
+          cursor: Platform.OS === 'web' ? 'pointer' as any : undefined,
+        })}
+      >
+        <MaterialIcons name="add-reaction" size={16} color={theme.textSupporting} />
+      </Pressable>
+    </View>
+  );
+}
 
 // ─────────────────────────────────────────────────────────────
 // Reaction Emoji Popup (small quick-react popover on messages)
@@ -56,11 +262,12 @@ function ReactionPopup({
         <Pressable
           key={emoji}
           onPress={() => onSelect(emoji)}
-          style={({ pressed }) => ({
+          style={({ pressed, hovered }) => ({
             paddingHorizontal: 4,
             paddingVertical: 2,
             borderRadius: 6,
-            backgroundColor: pressed ? theme.highlightBG : 'transparent',
+            backgroundColor: (pressed || hovered) ? theme.highlightBG : 'transparent',
+            cursor: Platform.OS === 'web' ? 'pointer' as any : undefined,
           })}
         >
           <Text style={{ fontSize: 20 }}>{emoji}</Text>
@@ -149,6 +356,37 @@ export default function ChatRoomScreen() {
   // Reactions state
   const [reactions, setReactions] = useState<Record<string, Record<string, string[]>>>({});
   const [showReactionPickerId, setShowReactionPickerId] = useState<string | null>(null);
+  const [hoveredMessageId, setHoveredMessageId] = useState<string | null>(null);
+  const [emojiPickerTarget, setEmojiPickerTarget] = useState<'composer' | string>('composer');
+
+  const hoverTimeoutRef = useRef<any>(null);
+
+  const handleHoverIn = (messageId: string) => {
+    if (Platform.OS !== 'web') return;
+    if (hoverTimeoutRef.current) {
+      clearTimeout(hoverTimeoutRef.current);
+      hoverTimeoutRef.current = null;
+    }
+    setHoveredMessageId(messageId);
+  };
+
+  const handleHoverOut = () => {
+    if (Platform.OS !== 'web') return;
+    if (hoverTimeoutRef.current) {
+      clearTimeout(hoverTimeoutRef.current);
+    }
+    hoverTimeoutRef.current = setTimeout(() => {
+      setHoveredMessageId(null);
+    }, 150);
+  };
+
+  useEffect(() => {
+    return () => {
+      if (hoverTimeoutRef.current) {
+        clearTimeout(hoverTimeoutRef.current);
+      }
+    };
+  }, []);
 
   const { messages, isLoading, sendMessage } = useChat(id as string);
 
@@ -419,15 +657,80 @@ export default function ChatRoomScreen() {
         <ScrollView
           ref={scrollViewRef}
           style={{ flex: 1 }}
-          contentContainerStyle={{ paddingHorizontal: 16, paddingVertical: 20, gap: 4 }}
+          contentContainerStyle={{ paddingVertical: 20, gap: 4 }}
           showsVerticalScrollIndicator={false}
           onTouchStart={() => {
             if (showEmojiPicker) setShowEmojiPicker(false);
             if (showReactionPickerId) setShowReactionPickerId(null);
           }}
         >
+          {/* Start of Conversation Onboarding Banner */}
+          <View
+            style={{
+              alignItems: 'center',
+              paddingVertical: 28,
+              paddingHorizontal: 16,
+              borderBottomWidth: StyleSheet.hairlineWidth,
+              borderBottomColor: theme.border,
+              backgroundColor: theme.appBG,
+              marginBottom: 16,
+            }}
+          >
+            {isGroup ? (
+              <GroupAvatar members={conversation?.members || []} theme={theme} />
+            ) : (
+              <View
+                style={{
+                  width: 60,
+                  height: 60,
+                  borderRadius: 30,
+                  backgroundColor: theme.border,
+                  justifyContent: 'center',
+                  alignItems: 'center',
+                  borderWidth: 1.5,
+                  borderColor: theme.primary,
+                }}
+              >
+                <Text style={{ color: theme.primary, fontSize: 24, fontWeight: '700' }}>
+                  {avatarLetter}
+                </Text>
+              </View>
+            )}
+
+            <Text
+              style={{
+                color: theme.text,
+                fontSize: 20,
+                fontWeight: '700',
+                marginTop: 12,
+                textAlign: 'center',
+              }}
+            >
+              {isGroup
+                ? (conversation?.name || 'Group Chat')
+                : (partnerId === user?.id || !partnerId ? 'Your Space' : partnerName)}
+            </Text>
+
+            <Text
+              style={{
+                color: theme.textSupporting,
+                fontSize: 13,
+                textAlign: 'center',
+                lineHeight: 18,
+                marginTop: 6,
+                maxWidth: 300,
+              }}
+            >
+              {isGroup
+                ? (conversation?.description || 'This is the beginning of your group chat. Collaborate with your group members here!')
+                : (partnerId === user?.id || !partnerId
+                  ? 'This is your personal space. You sit for notes, tasks, drafts and reminders.'
+                  : `This is the very beginning of your direct message history with ${partnerName}. Use this space to collaborate on tasks, share updates, or just say hello!`)}
+            </Text>
+          </View>
+
           {groupedMessages.length === 0 ? (
-            <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', marginTop: 60 }}>
+            <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', marginTop: 30 }}>
               <Text style={{ color: theme.textSupporting, textAlign: 'center', fontSize: 14 }}>
                 No messages yet. Send a message to start the conversation!
               </Text>
@@ -440,23 +743,33 @@ export default function ChatRoomScreen() {
               });
               const msgReactions = reactions[message.id] || {};
               const showPicker = showReactionPickerId === message.id;
+              const isHovered = hoveredMessageId === message.id;
 
               if (message.isConsecutive) {
                 return (
-                  <View
+                  <Pressable
                     key={message.id}
+                    onHoverIn={() => handleHoverIn(message.id)}
+                    onHoverOut={handleHoverOut}
                     style={{
                       flexDirection: 'row',
                       paddingLeft: 52,
-                      paddingVertical: 2,
+                      paddingVertical: 4,
+                      paddingRight: 16,
                       position: 'relative',
+                      backgroundColor: isHovered ? theme.highlightBG : 'transparent',
+                      cursor: Platform.OS === 'web' ? 'default' as any : undefined,
                     }}
                   >
                     <View style={{ flex: 1 }}>
                       {message.content ? (
-                        <Text style={{ color: theme.text, fontSize: 15, lineHeight: 22 }}>
-                          {message.content}
-                        </Text>
+                        message.content.startsWith('[SHARED_ITEM:') ? (
+                          <SharedItemCard content={message.content} theme={theme} />
+                        ) : (
+                          <Text style={{ color: theme.text, fontSize: 15, lineHeight: 22 }}>
+                            {message.content}
+                          </Text>
+                        )
                       ) : null}
                       {message.media && message.media.length > 0 && (
                         <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 4 }}>
@@ -466,7 +779,7 @@ export default function ChatRoomScreen() {
                         </View>
                       )}
                       {Object.keys(msgReactions).length > 0 && (
-                        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 4, marginTop: 4 }}>
+                        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 4, marginTop: 4, alignItems: 'center' }}>
                           {Object.entries(msgReactions).map(([emoji, users]) => (
                             <Pressable
                               key={emoji}
@@ -501,38 +814,66 @@ export default function ChatRoomScreen() {
                               </Text>
                             </Pressable>
                           ))}
+                          <Pressable
+                            onPress={() => {
+                              setEmojiPickerTarget(message.id);
+                              setShowEmojiPicker(true);
+                            }}
+                            style={{
+                              flexDirection: 'row',
+                              alignItems: 'center',
+                              backgroundColor: theme.highlightBG,
+                              borderWidth: 1,
+                              borderColor: theme.border,
+                              borderRadius: 10,
+                              paddingHorizontal: 8,
+                              paddingVertical: 2,
+                            }}
+                          >
+                            <MaterialIcons name="add-reaction" size={14} color={theme.textSupporting} />
+                          </Pressable>
                         </View>
                       )}
                     </View>
 
-                    {/* Reaction trigger */}
-                    <View style={{ position: 'absolute', right: 0, top: 0 }}>
+                    {/* Hover menu on Web */}
+                    {isHovered && Platform.OS === 'web' && (
                       <Pressable
-                        onPress={() => setShowReactionPickerId(showPicker ? null : message.id)}
-                        style={({ pressed }) => ({
-                          padding: 4,
-                          borderRadius: 6,
-                          backgroundColor: pressed || showPicker ? theme.highlightBG : 'transparent',
-                        })}
+                        onHoverIn={() => handleHoverIn(message.id)}
+                        onHoverOut={handleHoverOut}
+                        style={{ position: 'absolute', right: 16, top: -24, zIndex: 100, cursor: 'default' as any }}
                       >
-                        <MaterialIcons name="add-reaction" size={16} color={theme.textSupporting} />
-                      </Pressable>
-                      {showPicker && (
-                        <ReactionPopup
-                          onSelect={(emoji) => toggleReaction(message.id, emoji)}
+                        <MessageHoverMenu
                           theme={theme}
+                          onReact={(emoji) => toggleReaction(message.id, emoji)}
+                          onAddReaction={() => {
+                            setEmojiPickerTarget(message.id);
+                            setShowEmojiPicker(true);
+                          }}
+                          onHover={() => handleHoverIn(message.id)}
+                          onLeave={handleHoverOut}
                         />
-                      )}
-                    </View>
-                  </View>
+                      </Pressable>
+                    )}
+                  </Pressable>
                 );
               }
 
               // Non-consecutive: full row with avatar
               return (
-                <View
+                <Pressable
                   key={message.id}
-                  style={{ flexDirection: 'row', alignItems: 'flex-start', paddingVertical: 6, position: 'relative' }}
+                  onHoverIn={() => handleHoverIn(message.id)}
+                  onHoverOut={handleHoverOut}
+                  style={{
+                    flexDirection: 'row',
+                    alignItems: 'flex-start',
+                    paddingVertical: 6,
+                    paddingHorizontal: 16,
+                    position: 'relative',
+                    backgroundColor: isHovered ? theme.highlightBG : 'transparent',
+                    cursor: Platform.OS === 'web' ? 'default' as any : undefined,
+                  }}
                 >
                   <View
                     style={{
@@ -561,9 +902,13 @@ export default function ChatRoomScreen() {
                       <Text style={{ color: theme.textSupporting, fontSize: 11 }}>{formattedTime}</Text>
                     </View>
                     {message.content ? (
-                      <Text style={{ color: theme.text, fontSize: 15, lineHeight: 22 }}>
-                        {message.content}
-                      </Text>
+                      message.content.startsWith('[SHARED_ITEM:') ? (
+                        <SharedItemCard content={message.content} theme={theme} />
+                      ) : (
+                        <Text style={{ color: theme.text, fontSize: 15, lineHeight: 22 }}>
+                          {message.content}
+                        </Text>
+                      )
                     ) : null}
                     {message.media && message.media.length > 0 && (
                       <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 4 }}>
@@ -573,7 +918,7 @@ export default function ChatRoomScreen() {
                       </View>
                     )}
                     {Object.keys(msgReactions).length > 0 && (
-                      <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 4, marginTop: 4 }}>
+                      <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 4, marginTop: 4, alignItems: 'center' }}>
                         {Object.entries(msgReactions).map(([emoji, users]) => (
                           <Pressable
                             key={emoji}
@@ -608,30 +953,70 @@ export default function ChatRoomScreen() {
                             </Text>
                           </Pressable>
                         ))}
+                        <Pressable
+                          onPress={() => {
+                            setEmojiPickerTarget(message.id);
+                            setShowEmojiPicker(true);
+                          }}
+                          style={{
+                            flexDirection: 'row',
+                            alignItems: 'center',
+                            backgroundColor: theme.highlightBG,
+                            borderWidth: 1,
+                            borderColor: theme.border,
+                            borderRadius: 10,
+                            paddingHorizontal: 8,
+                            paddingVertical: 2,
+                          }}
+                        >
+                          <MaterialIcons name="add-reaction" size={14} color={theme.textSupporting} />
+                        </Pressable>
                       </View>
                     )}
                   </View>
 
-                  {/* Reaction trigger */}
-                  <View style={{ position: 'absolute', right: 0, top: 6 }}>
+                  {/* Hover menu on Web */}
+                  {isHovered && Platform.OS === 'web' && (
                     <Pressable
-                      onPress={() => setShowReactionPickerId(showPicker ? null : message.id)}
-                      style={({ pressed }) => ({
-                        padding: 4,
-                        borderRadius: 6,
-                        backgroundColor: pressed || showPicker ? theme.highlightBG : 'transparent',
-                      })}
+                      onHoverIn={() => handleHoverIn(message.id)}
+                      onHoverOut={handleHoverOut}
+                      style={{ position: 'absolute', right: 16, top: -24, zIndex: 100, cursor: 'default' as any }}
                     >
-                      <MaterialIcons name="add-reaction" size={16} color={theme.textSupporting} />
-                    </Pressable>
-                    {showPicker && (
-                      <ReactionPopup
-                        onSelect={(emoji) => toggleReaction(message.id, emoji)}
+                      <MessageHoverMenu
                         theme={theme}
+                        onReact={(emoji) => toggleReaction(message.id, emoji)}
+                        onAddReaction={() => {
+                          setEmojiPickerTarget(message.id);
+                          setShowEmojiPicker(true);
+                        }}
+                        onHover={() => handleHoverIn(message.id)}
+                        onLeave={handleHoverOut}
                       />
-                    )}
-                  </View>
-                </View>
+                    </Pressable>
+                  )}
+
+                  {/* Fallback Reaction trigger for Mobile (no hover loop risk on Web) */}
+                  {Platform.OS !== 'web' && (
+                    <View style={{ position: 'absolute', right: 16, top: 6 }}>
+                      <Pressable
+                        onPress={() => setShowReactionPickerId(showPicker ? null : message.id)}
+                        style={({ pressed }) => ({
+                          padding: 4,
+                          borderRadius: 6,
+                          backgroundColor: pressed || showPicker ? theme.highlightBG : 'transparent',
+                        })}
+                      >
+                        <MaterialIcons name="add-reaction" size={16} color={theme.textSupporting} />
+                      </Pressable>
+                      {showPicker && (
+                        <ReactionPopup
+                          onSelect={(emoji) => toggleReaction(message.id, emoji)}
+                          theme={theme}
+                        />
+                      )}
+                    </View>
+                  )}
+                </Pressable>
               );
             })
           )}
@@ -793,6 +1178,7 @@ export default function ChatRoomScreen() {
             <Pressable
               onPress={() => {
                 Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                setEmojiPickerTarget('composer');
                 setShowEmojiPicker((v) => !v);
                 if (isFocused) inputRef.current?.blur();
               }}
@@ -840,21 +1226,24 @@ export default function ChatRoomScreen() {
         </View>
       </View>
 
-      {/* ─── Emoji Picker Panel (rendered absolutely at root viewport level) ─── */}
       {showEmojiPicker && (
         <View
           style={{
             position: 'absolute',
-            bottom: 64, // sitting stable above composer
-            left: 12,
-            right: 12,
-            zIndex: 10000,
+            bottom: 68, // clean placement above the composer pill
+            right: 16,
+            zIndex: 200,
           }}
         >
           <EmojiPickerPanel
             onEmojiSelected={(emoji) => {
-              setInputText((prev) => prev + emoji);
               Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+              if (emojiPickerTarget === 'composer') {
+                setInputText((prev) => prev + emoji);
+              } else {
+                toggleReaction(emojiPickerTarget, emoji);
+              }
+              setShowEmojiPicker(false);
             }}
             onClose={() => setShowEmojiPicker(false)}
           />

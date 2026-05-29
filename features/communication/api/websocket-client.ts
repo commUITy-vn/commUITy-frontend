@@ -10,11 +10,15 @@ export class StompClient {
   private ws: WebSocket | null = null;
   private token: string | null = null;
   private connected = false;
-  private subscriptions: Map<string, (frame: StompFrame) => void> = new Map();
+  private connecting = false;
+  private subscriptions: Map<string, { destination: string; callback: (frame: StompFrame) => void }> = new Map();
   private onConnectCallback: (() => void) | null = null;
   private onDisconnectCallback: (() => void) | null = null;
   private onErrorCallback: ((err: any) => void) | null = null;
   private subCounter = 0;
+  private reconnectTimeout: any = null;
+  private reconnectDelay = 1000; // start with 1s
+  private maxReconnectDelay = 16000; // max 16s
 
   constructor() {}
 
@@ -28,10 +32,39 @@ export class StompClient {
     onError?: (err: any) => void,
     onDisconnect?: () => void
   ) {
-    this.token = token;
     if (onConnect) this.onConnectCallback = onConnect;
     if (onError) this.onErrorCallback = onError;
     if (onDisconnect) this.onDisconnectCallback = onDisconnect;
+
+    // If already connected with the same token, don't reconnect
+    if (this.connected && this.token === token) {
+      console.log('[STOMP] Already connected.');
+      if (this.onConnectCallback) this.onConnectCallback();
+      return;
+    }
+
+    // If currently connecting with the same token, don't start a duplicate connection
+    if (this.connecting && this.token === token) {
+      console.log('[STOMP] Connection already in progress.');
+      return;
+    }
+
+    this.token = token;
+    this.connecting = true;
+    
+    // Clear any existing reconnect timers
+    if (this.reconnectTimeout) {
+      clearTimeout(this.reconnectTimeout);
+      this.reconnectTimeout = null;
+    }
+
+    // Close existing socket if open
+    if (this.ws) {
+      try {
+        this.ws.close();
+      } catch (e) {}
+      this.ws = null;
+    }
 
     const wsUrl = env.API_URL.replace(/^http/, 'ws') + '/ws';
     console.log('[STOMP] Connecting to WebSocket:', wsUrl);
@@ -55,18 +88,30 @@ export class StompClient {
         console.log('[STOMP] Received frame:', frame.command);
         if (frame.command === 'CONNECTED') {
           this.connected = true;
+          this.connecting = false;
+          this.reconnectDelay = 1000; // Reset reconnect delay on successful connection
           console.log('[STOMP] Connection established!');
           if (this.onConnectCallback) {
             this.onConnectCallback();
           }
-          // Re-subscribe if we had any active subscriptions
+          // Re-subscribe all active subscriptions
           this.resubscribeAll();
         } else if (frame.command === 'MESSAGE') {
           const subscriptionId = frame.headers['subscription'];
           const destination = frame.headers['destination'];
-          const callback = this.subscriptions.get(subscriptionId) || this.subscriptions.get(destination);
-          if (callback) {
-            callback(frame);
+          
+          if (subscriptionId) {
+            const sub = this.subscriptions.get(subscriptionId);
+            if (sub) {
+              sub.callback(frame);
+            }
+          } else if (destination) {
+            // Fallback: notify all subscriptions matching destination
+            this.subscriptions.forEach((sub) => {
+              if (sub.destination === destination) {
+                sub.callback(frame);
+              }
+            });
           }
         } else if (frame.command === 'ERROR') {
           console.error('[STOMP] Protocol error frame:', frame.body);
@@ -86,22 +131,45 @@ export class StompClient {
       this.ws.onclose = (event) => {
         console.log('[STOMP] WebSocket transport closed:', event.code, event.reason);
         this.connected = false;
+        this.connecting = false;
         if (this.onDisconnectCallback) {
           this.onDisconnectCallback();
+        }
+        // Trigger automatic reconnect if we still have a token
+        if (this.token) {
+          this.scheduleReconnect();
         }
       };
     } catch (err) {
       console.error('[STOMP] Failed to establish WebSocket connection:', err);
+      this.connected = false;
+      this.connecting = false;
       if (this.onErrorCallback) {
         this.onErrorCallback(err);
+      }
+      if (this.token) {
+        this.scheduleReconnect();
       }
     }
   }
 
+  private scheduleReconnect() {
+    if (this.reconnectTimeout) return;
+    
+    console.log(`[STOMP] Scheduling reconnect in ${this.reconnectDelay}ms...`);
+    this.reconnectTimeout = setTimeout(() => {
+      this.reconnectTimeout = null;
+      if (this.token) {
+        this.connect(this.token);
+        // Exponential backoff
+        this.reconnectDelay = Math.min(this.reconnectDelay * 2, this.maxReconnectDelay);
+      }
+    }, this.reconnectDelay);
+  }
+
   public subscribe(destination: string, callback: (frame: StompFrame) => void): string {
     const subId = `sub-${this.subCounter++}`;
-    this.subscriptions.set(subId, callback);
-    this.subscriptions.set(destination, callback); // also store by destination for convenience
+    this.subscriptions.set(subId, { destination, callback });
 
     if (this.connected) {
       console.log(`[STOMP] Subscribing to ${destination} with ID ${subId}`);
@@ -138,34 +206,34 @@ export class StompClient {
 
   public disconnect() {
     console.log('[STOMP] Disconnecting...');
+    this.token = null; // stop reconnecting
+    if (this.reconnectTimeout) {
+      clearTimeout(this.reconnectTimeout);
+      this.reconnectTimeout = null;
+    }
     if (this.connected) {
-      this.sendFrame('DISCONNECT', {});
+      try {
+        this.sendFrame('DISCONNECT', {});
+      } catch (e) {}
     }
     this.connected = false;
+    this.connecting = false;
     if (this.ws) {
-      this.ws.close();
+      try {
+        this.ws.close();
+      } catch (e) {}
       this.ws = null;
     }
   }
 
   private resubscribeAll() {
-    // Collect unique destinations
-    const destinations = Array.from(this.subscriptions.entries())
-      .filter(([key]) => !key.startsWith('sub-'))
-      .map(([destination]) => destination);
-
-    destinations.forEach((dest) => {
-      const callback = this.subscriptions.get(dest);
-      if (callback) {
-        const subId = `sub-${this.subCounter++}`;
-        this.subscriptions.set(subId, callback);
-        console.log(`[STOMP] Re-subscribing to ${dest} with ID ${subId}`);
-        this.sendFrame('SUBSCRIBE', {
-          id: subId,
-          destination: dest,
-          ack: 'auto',
-        });
-      }
+    this.subscriptions.forEach((sub, subId) => {
+      console.log(`[STOMP] Re-subscribing to ${sub.destination} with ID ${subId}`);
+      this.sendFrame('SUBSCRIBE', {
+        id: subId,
+        destination: sub.destination,
+        ack: 'auto',
+      });
     });
   }
 

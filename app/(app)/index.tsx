@@ -12,7 +12,7 @@ import {
     TextInput as RNTextInput,
     Linking,
 } from "react-native"
-import { useRouter } from "expo-router"
+import { useRouter, useFocusEffect } from "expo-router"
 import { useTheme } from "@/hooks/useTheme"
 import { useThemeStyles } from "@/hooks/useThemeStyles"
 import { useSupportRequests } from "@/features/support/hooks/useSupportRequests"
@@ -81,9 +81,17 @@ export default function HomeScreen() {
     const isStaff = user?.role === UserRole.ADMIN || user?.role === UserRole.COLLABORATOR
 
     // Query all three datasets
-    const { data: requests, isLoading: isRequestsLoading, isError: isRequestsError } = useSupportRequests()
-    const { data: funds, isLoading: isFundsLoading, isError: isFundsError } = useCommunityFunds()
-    const { data: locations, isLoading: isLocationsLoading, isError: isLocationsError } = useSupportLocations()
+    const { data: requests, isLoading: isRequestsLoading, isError: isRequestsError, refetch: refetchRequests } = useSupportRequests()
+    const { data: funds, isLoading: isFundsLoading, isError: isFundsError, refetch: refetchFunds } = useCommunityFunds()
+    const { data: locations, isLoading: isLocationsLoading, isError: isLocationsError, refetch: refetchLocations } = useSupportLocations()
+
+    useFocusEffect(
+        useCallback(() => {
+            refetchRequests()
+            refetchFunds()
+            refetchLocations()
+        }, [refetchRequests, refetchFunds, refetchLocations])
+    )
 
     const isLoading = isRequestsLoading || isFundsLoading || isLocationsLoading
     const isError = isRequestsError || isFundsError || isLocationsError
