@@ -658,16 +658,16 @@ const styles = StyleSheet.create({
   quickGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    gap: 8,
+    justifyContent: 'space-between',
   },
   quickPill: {
-    flex: 1,
-    minWidth: '45%',
+    width: '48%',
     paddingVertical: 12,
     borderRadius: 8,
     borderWidth: 2,
     alignItems: 'center',
     justifyContent: 'center',
+    marginBottom: 8,
   },
   paymentCard: {
     flexDirection: 'row',
