@@ -99,11 +99,26 @@ function SharedItemCard({ content, theme }: { content: string; theme: any }) {
     await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     if (type === 'SUPPORT') {
       router.push(`/request/${itemId}`);
+    } else if (type === 'LOCATION') {
+      router.push(`/location/${itemId}`);
+    } else if (type === 'FUND') {
+      router.push(`/community-funds/${itemId}`);
     }
   };
 
-  const iconName = type === 'SUPPORT' ? 'help-outline' : 'insert-drive-file';
-  const displayType = type === 'SUPPORT' ? 'Shared Help Request' : 'Shared Item';
+  let iconName = 'insert-drive-file';
+  let displayType = 'Shared Item';
+
+  if (type === 'SUPPORT') {
+    iconName = 'help-outline';
+    displayType = 'Shared Help Request';
+  } else if (type === 'LOCATION') {
+    iconName = 'pin-drop';
+    displayType = 'Shared Location Hub';
+  } else if (type === 'FUND') {
+    iconName = 'monetization-on';
+    displayType = 'Shared Community Fund';
+  }
 
   return (
     <Pressable
@@ -131,7 +146,7 @@ function SharedItemCard({ content, theme }: { content: string; theme: any }) {
             alignItems: 'center',
           }}
         >
-          <MaterialIcons name={iconName} size={22} color={theme.primary} />
+          <MaterialIcons name={iconName as any} size={22} color={theme.primary} />
         </View>
         <View style={{ flex: 1 }}>
           <Text style={{ fontSize: 11, fontWeight: '700', color: theme.primary, textTransform: 'uppercase', letterSpacing: 0.5 }}>
@@ -745,6 +760,51 @@ export default function ChatRoomScreen() {
               const showPicker = showReactionPickerId === message.id;
               const isHovered = hoveredMessageId === message.id;
 
+              const isSystemMessage = message.content && message.content.startsWith('[SYSTEM:');
+              if (isSystemMessage) {
+                const systemMatch = message.content.match(/^\[SYSTEM:[^\]]*\]\s*(.*)$/);
+                const systemText = systemMatch ? systemMatch[1] : message.content;
+                return (
+                  <View
+                    key={message.id}
+                    style={{
+                      flexDirection: 'row',
+                      justifyContent: 'center',
+                      alignItems: 'center',
+                      paddingVertical: 8,
+                      paddingHorizontal: 16,
+                      marginVertical: 4,
+                    }}
+                  >
+                    <View
+                      style={{
+                        backgroundColor: theme.highlightBG,
+                        borderWidth: 1,
+                        borderColor: theme.border,
+                        borderRadius: 16,
+                        paddingHorizontal: 12,
+                        paddingVertical: 6,
+                        maxWidth: '85%',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                      }}
+                    >
+                      <Text
+                        style={{
+                          color: theme.textSupporting,
+                          fontSize: 12,
+                          fontWeight: '600',
+                          textAlign: 'center',
+                          lineHeight: 16,
+                        }}
+                      >
+                        {systemText}
+                      </Text>
+                    </View>
+                  </View>
+                );
+              }
+
               if (message.isConsecutive) {
                 return (
                   <Pressable
@@ -753,7 +813,7 @@ export default function ChatRoomScreen() {
                     onHoverOut={handleHoverOut}
                     style={{
                       flexDirection: 'row',
-                      paddingLeft: 52,
+                      paddingLeft: 64,
                       paddingVertical: 4,
                       paddingRight: 16,
                       position: 'relative',

@@ -165,6 +165,20 @@ export default function RootLayout() {
                                 }}
                             />
                             <Stack.Screen
+                                name="location/[id]"
+                                options={{
+                                    headerShown: false,
+                                    animation: Platform.select({
+                                        ios: "slide_from_right",
+                                        android: "slide_from_right",
+                                        default: "slide_from_right",
+                                    }),
+                                    contentStyle: {
+                                        backgroundColor: theme.appBG,
+                                    },
+                                }}
+                            />
+                            <Stack.Screen
                                 name="messages/[id]"
                                 options={{
                                     headerShown: false,

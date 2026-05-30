@@ -419,7 +419,7 @@ export default function HomeScreen() {
         return (
             <Pressable
                 key={item.id}
-                onPress={() => handleOpenMap(item.latitude, item.longitude, item.name || item.title)}
+                onPress={() => router.push(`/location/${item.id}`)}
                 style={({ pressed }) => [
                     cardStyles.card,
                     { 
@@ -473,7 +473,13 @@ export default function HomeScreen() {
                 </View>
 
                 {/* Interactive Leaflet static mini preview map with scrollWheelZoom strictly FALSE */}
-                <View style={[cardStyles.miniMapContainer, { borderTopWidth: 1, borderTopColor: theme.border, backgroundColor: theme.highlightBG }]}>
+                <Pressable
+                    onPress={async (e) => {
+                        e.stopPropagation();
+                        await handleOpenMap(item.latitude, item.longitude, item.name || item.title);
+                    }}
+                    style={[cardStyles.miniMapContainer, { borderTopWidth: 1, borderTopColor: theme.border, backgroundColor: theme.highlightBG }]}
+                >
                     {Platform.OS === 'web' ? (
                         <iframe
                             srcDoc={getMiniMapHtml(item.latitude, item.longitude)}
@@ -492,7 +498,7 @@ export default function HomeScreen() {
                             <Text style={{ color: theme.textSupporting, fontSize: 12 }}>Map preview unavailable</Text>
                         </View>
                     )}
-                </View>
+                </Pressable>
             </Pressable>
         )
     }

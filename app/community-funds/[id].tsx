@@ -1,5 +1,5 @@
-import React, { useState, useMemo, useCallback } from 'react';
-import { View, Text, ScrollView, Pressable, StyleSheet, ActivityIndicator, Modal, FlatList, Platform } from 'react-native';
+import React, { useState, useMemo, useEffect } from 'react';
+import { View, Text, ScrollView, Pressable, StyleSheet, ActivityIndicator, Modal, FlatList, Platform, Alert } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { MaterialIcons, Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
@@ -8,6 +8,8 @@ import { useThemeStyles } from '@/hooks/useThemeStyles';
 import { useAuthStore } from '@/features/auth/stores/useAuthStore';
 import TextInput from '@/components/ui/TextInput';
 import Button from '@/components/ui/Button';
+import { BottomSheet } from '@/components/ui';
+import { api } from '@/lib/api-client';
 import {
   useCommunityFund,
   useFundExpenses,
@@ -46,6 +48,10 @@ export default function FundDetailScreen() {
   // Modals state
   const [donateModalVisible, setDonateModalVisible] = useState(false);
   const [expenseModalVisible, setExpenseModalVisible] = useState(false);
+  const [isOptionsVisible, setIsOptionsVisible] = useState(false);
+  const [isShareSheetVisible, setIsShareSheetVisible] = useState(false);
+  const [conversations, setConversations] = useState<any[]>([]);
+  const [isConversationsLoading, setIsConversationsLoading] = useState(false);
 
   // Donation Form state
   const [selectedAmount, setSelectedAmount] = useState<number | null>(null);
@@ -59,6 +65,37 @@ export default function FundDetailScreen() {
   const [expenseAmount, setExpenseAmount] = useState('');
   const [expenseDescription, setExpenseDescription] = useState('');
   const [expenseError, setExpenseError] = useState('');
+
+  // Load conversations when sharing bottom sheet is open
+  useEffect(() => {
+    if (isShareSheetVisible) {
+      setIsConversationsLoading(true);
+      api.get<any>('/api/v1/conversations/me')
+        .then((res) => {
+          setConversations(res || []);
+        })
+        .catch((err) => {
+          console.error('Failed to load conversations for sharing:', err);
+        })
+        .finally(() => {
+          setIsConversationsLoading(false);
+        });
+    }
+  }, [isShareSheetVisible]);
+
+  const handleShareFund = async (conversationId: string) => {
+    await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    try {
+      const payload = {
+        content: `[SHARED_ITEM:FUND:${id}:${fund?.name || 'Community Fund'}]`,
+      };
+      await api.post(`/api/v1/conversations/${conversationId}/messages`, payload);
+      Alert.alert('Success', 'Community fund shared successfully!');
+      setIsShareSheetVisible(false);
+    } catch (err: any) {
+      Alert.alert('Error', err?.message || 'Failed to share fund.');
+    }
+  };
 
   // Combine and sort recent transactions
   const combinedTransactions = useMemo(() => {
@@ -200,9 +237,32 @@ export default function FundDetailScreen() {
 
   const isStaff = user?.role === 'ADMIN' || user?.role === 'COLLABORATOR';
 
+  const options = [
+    {
+      key: 'share',
+      label: 'Share Community Fund',
+      icon: 'share' as any,
+      onPress: () => {
+        setIsOptionsVisible(false);
+        requestAnimationFrame(() => {
+          setIsShareSheetVisible(true);
+        });
+      },
+    },
+  ];
+
   return (
-    <View style={[stylesGlobal.container, { backgroundColor: theme.appBG }]}>
-      {/* Header back button + title */}
+    <View
+      style={[
+        stylesGlobal.container,
+        {
+          backgroundColor: theme.appBG,
+          height: (Platform.OS === 'web' ? '100vh' : '100%') as any,
+          maxHeight: (Platform.OS === 'web' ? '100vh' : undefined) as any,
+        },
+      ]}
+    >
+      {/* Header back button + title + kebab menu */}
       <View
         style={{
           flexDirection: 'row',
@@ -237,7 +297,18 @@ export default function FundDetailScreen() {
         >
           Fund Overview
         </Text>
-        <View style={{ width: 40 }} />
+        <Pressable
+          onPress={async () => {
+            await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+            setIsOptionsVisible(true);
+          }}
+          style={({ pressed }) => [
+            { padding: 8, borderRadius: 8 },
+            pressed && { backgroundColor: theme.highlightBG },
+          ]}
+        >
+          <MaterialIcons name="more-vert" size={24} color={theme.text} />
+        </Pressable>
       </View>
 
       <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
@@ -508,6 +579,73 @@ export default function FundDetailScreen() {
           </View>
         </View>
       </Modal>
+
+      {/* Options BottomSheet */}
+      <BottomSheet
+        isVisible={isOptionsVisible}
+        onClose={() => setIsOptionsVisible(false)}
+        title="Fund Options"
+        options={options}
+      />
+
+      {/* Share Target BottomSheet */}
+      <BottomSheet
+        isVisible={isShareSheetVisible}
+        onClose={() => setIsShareSheetVisible(false)}
+        title="Share Community Fund"
+      >
+        <View style={{ paddingBottom: 24, maxHeight: 400, width: '100%' }}>
+          {isConversationsLoading ? (
+            <ActivityIndicator size="large" color={theme.primary} style={{ marginVertical: 20 }} />
+          ) : conversations.length === 0 ? (
+            <View style={{ padding: 20, alignItems: 'center' }}>
+              <Text style={{ color: theme.textSupporting, textAlign: 'center' }}>No active chats found</Text>
+            </View>
+          ) : (
+            <ScrollView style={{ width: '100%' }} showsVerticalScrollIndicator={false}>
+              {conversations.map((c: any) => {
+                const otherMember = c.members?.find((m: any) => m.userId !== user?.id);
+                const chatName = otherMember?.fullName || 'User';
+                return (
+                  <Pressable
+                    key={c.id}
+                    onPress={() => handleShareFund(c.id)}
+                    style={({ pressed }) => ({
+                      flexDirection: 'row',
+                      alignItems: 'center',
+                      paddingVertical: 14,
+                      paddingHorizontal: 20,
+                      borderBottomWidth: StyleSheet.hairlineWidth,
+                      borderBottomColor: theme.border,
+                      backgroundColor: pressed ? theme.activeComponentBG : 'transparent',
+                    })}
+                  >
+                    <View
+                      style={{
+                        width: 36,
+                        height: 36,
+                        borderRadius: 18,
+                        backgroundColor: theme.border,
+                        justifyContent: 'center',
+                        alignItems: 'center',
+                        marginRight: 12,
+                      }}
+                    >
+                      <Text style={{ color: theme.textSupporting, fontSize: 14, fontWeight: '700' }}>
+                        {chatName.charAt(0).toUpperCase()}
+                      </Text>
+                    </View>
+                    <Text style={{ flex: 1, color: theme.text, fontSize: 16, fontWeight: '500' }}>
+                      {chatName}
+                    </Text>
+                    <MaterialIcons name="send" size={18} color={theme.primary} />
+                  </Pressable>
+                );
+              })}
+            </ScrollView>
+          )}
+        </View>
+      </BottomSheet>
     </View>
   );
 }

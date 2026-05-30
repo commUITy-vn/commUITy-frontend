@@ -236,6 +236,27 @@ export default function RequestDetailScreen() {
     try {
       await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       const res = await approveVolunteer(id, volunteerId);
+      
+      if (res.conversationId) {
+        try {
+          const existingMsgs = await api.get<any[]>(`/api/v1/conversations/${res.conversationId}/messages`);
+          const assignment = requestAssignments.find(a => a.volunteerId === volunteerId);
+          const volunteerName = assignment?.volunteerName || 'A volunteer';
+          
+          if (!existingMsgs || existingMsgs.length === 0) {
+            await api.post(`/api/v1/conversations/${res.conversationId}/messages`, {
+              content: `[SYSTEM:START] This is the coordination chat for the support request: "${request?.title || 'Help Request'}".`,
+            });
+          } else {
+            await api.post(`/api/v1/conversations/${res.conversationId}/messages`, {
+              content: `[SYSTEM:JOIN] ${volunteerName} has joined the chat to help with this support request.`,
+            });
+          }
+        } catch (msgErr) {
+          console.error('Failed to post system messages on volunteer approval:', msgErr);
+        }
+      }
+
       showAlert('Success', 'Volunteer approved successfully!');
       
       if (isOwner && res.conversationId) {

@@ -51,15 +51,28 @@ export default function MessageSearchScreen() {
   const displayConversations = conversations && Array.isArray(conversations) && conversations.length > 0
     ? conversations.map((c: any) => {
         const otherMember = c.members?.find((m: any) => m.userId !== user?.id);
-        const name = otherMember?.fullName || 'Người dùng';
+        const name = otherMember?.fullName || 'User';
+
+        let lastMessage = c.lastMessageContent || 'No messages yet';
+        if (c.lastMessageContent) {
+          if (c.lastMessageContent.startsWith('[SHARED_ITEM:SUPPORT:')) {
+            lastMessage = 'Shared a support request';
+          } else if (c.lastMessageContent.startsWith('[SHARED_ITEM:LOCATION:')) {
+            lastMessage = 'Shared a location hub';
+          } else if (c.lastMessageContent.startsWith('[SHARED_ITEM:FUND:')) {
+            lastMessage = 'Shared a community fund';
+          } else if (c.lastMessageContent.startsWith('[SYSTEM:')) {
+            const systemMatch = c.lastMessageContent.match(/^\[SYSTEM:[^\]]*\]\s*(.*)$/);
+            lastMessage = systemMatch ? systemMatch[1] : c.lastMessageContent;
+          }
+        }
+
         return {
           id: c.id || String(Math.random()),
           name,
           avatarLetter: name.charAt(0).toUpperCase(),
-          lastMessage: c.lastMessageContent?.startsWith('[SHARED_ITEM:SUPPORT:')
-            ? 'Đã chia sẻ một yêu cầu hỗ trợ'
-            : (c.lastMessageContent || 'Chưa có tin nhắn'),
-          timestamp: formatRelativeTime(c.lastMessageCreatedAt) || formatRelativeTime(c.createdAt) || 'Vừa xong',
+          lastMessage,
+          timestamp: formatRelativeTime(c.lastMessageCreatedAt) || formatRelativeTime(c.createdAt) || 'Just now',
           unreadCount: c.unreadCount || 0,
         };
       })
