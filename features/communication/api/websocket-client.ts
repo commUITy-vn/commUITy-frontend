@@ -1,6 +1,30 @@
-import { env } from '@/config/env';
-import { Client, type IMessage, type StompSubscription } from '@stomp/stompjs';
-import * as encoding from 'text-encoding';
+import { env } from "@/config/env";
+
+declare module "@stomp/stompjs" {
+  export class Client {
+    constructor(config: any);
+    activate(): void;
+    deactivate(): void;
+    publish(options: {
+      destination: string;
+      headers?: Record<string, string>;
+      body: string;
+    }): void;
+    subscribe(
+      destination: string,
+      callback: (message: any) => void,
+      headers?: any,
+    ): { unsubscribe: () => void };
+  }
+  export interface IMessage {
+    headers: Record<string, string>;
+    body: string;
+  }
+  export type StompSubscription = { unsubscribe: () => void };
+}
+
+import { Client, type IMessage, type StompSubscription } from "@stomp/stompjs";
+import * as encoding from "text-encoding";
 
 const { TextEncoder, TextDecoder } = encoding as any;
 if (!globalThis.TextEncoder && TextEncoder) {
@@ -41,7 +65,7 @@ export class StompClient {
     token: string,
     onConnect?: () => void,
     onError?: (err: any) => void,
-    onDisconnect?: () => void
+    onDisconnect?: () => void,
   ) {
     if (this.connected && this.token === token) {
       onConnect?.();
@@ -66,7 +90,10 @@ export class StompClient {
     this.client?.activate();
   }
 
-  public subscribe(destination: string, callback: (frame: StompFrame) => void): string {
+  public subscribe(
+    destination: string,
+    callback: (frame: StompFrame) => void,
+  ): string {
     const subId = `sub-${this.subCounter++}`;
     const stored: StoredSubscription = { destination, callback };
     this.subscriptions.set(subId, stored);
@@ -84,13 +111,17 @@ export class StompClient {
       try {
         sub.stompSubscription.unsubscribe();
       } catch (e) {
-        console.error('[STOMP] Failed to unsubscribe:', e);
+        console.error("[STOMP] Failed to unsubscribe:", e);
       }
     }
     this.subscriptions.delete(subId);
   }
 
-  public send(destination: string, body: string, headers: Record<string, string> = {}) {
+  public send(
+    destination: string,
+    body: string,
+    headers: Record<string, string> = {},
+  ) {
     if (!this.connected || !this.client) {
       return;
     }
@@ -152,7 +183,7 @@ export class StompClient {
           try {
             cb();
           } catch (e) {
-            console.error('[STOMP] Callback error in onConnect:', e);
+            console.error("[STOMP] Callback error in onConnect:", e);
           }
         });
       },
@@ -164,11 +195,11 @@ export class StompClient {
         });
       },
       onStompError: (frame) => {
-        console.error('[STOMP] Protocol error frame:', frame.body);
-        this.emitError(new Error(frame.body || 'STOMP protocol error'));
+        console.error("[STOMP] Protocol error frame:", frame.body);
+        this.emitError(new Error(frame.body || "STOMP protocol error"));
       },
       onWebSocketError: (event) => {
-        console.error('[STOMP] WebSocket transport error:', event);
+        console.error("[STOMP] WebSocket transport error:", event);
         this.emitError(event);
       },
       onWebSocketClose: (event) => {
@@ -195,15 +226,15 @@ export class StompClient {
       sub.destination,
       (message: IMessage) => {
         sub.callback({
-          command: 'MESSAGE',
+          command: "MESSAGE",
           headers: message.headers as Record<string, string>,
           body: message.body,
         });
       },
       {
         id: subId,
-        ack: 'auto',
-      }
+        ack: "auto",
+      },
     );
   }
 
@@ -211,7 +242,9 @@ export class StompClient {
     this.subscriptions.forEach((sub) => {
       sub.stompSubscription = undefined;
     });
-    this.subscriptions.forEach((sub, subId) => this.activateSubscription(subId, sub));
+    this.subscriptions.forEach((sub, subId) =>
+      this.activateSubscription(subId, sub),
+    );
   }
 
   private emitError(error: any) {
@@ -227,10 +260,10 @@ export class StompClient {
   private buildWsUrl(): string {
     try {
       const parsed = new URL(env.API_URL);
-      const protocol = parsed.protocol === 'https:' ? 'wss:' : 'ws:';
+      const protocol = parsed.protocol === "https:" ? "wss:" : "ws:";
       return `${protocol}//${parsed.host}/ws`;
     } catch {
-      return env.API_URL.replace(/^http/, 'ws').replace(/\/api$/, '') + '/ws';
+      return env.API_URL.replace(/^http/, "ws").replace(/\/api$/, "") + "/ws";
     }
   }
 }

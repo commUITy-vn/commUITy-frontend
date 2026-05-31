@@ -1,36 +1,101 @@
-<!DOCTYPE html>
+<!doctype html>
 <html>
   <head>
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
-    <link rel="stylesheet" type="text/css" href="https://js.api.here.com/v3/3.2/mapsjs-ui.css" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no"
+    />
+    <link
+      rel="stylesheet"
+      type="text/css"
+      href="https://js.api.here.com/v3/3.2/mapsjs-ui.css"
+    />
     <script src="https://js.api.here.com/v3/3.2/mapsjs-core.js"></script>
     <script src="https://js.api.here.com/v3/3.2/mapsjs-service.js"></script>
     <script src="https://js.api.here.com/v3/3.2/mapsjs-mapevents.js"></script>
     <script src="https://js.api.here.com/v3/3.2/mapsjs-ui.js"></script>
     <style>
-      body { margin: 0; padding: 0; overflow: hidden; background-color: #0F172A; }
-      #map { width: 100%; height: 100vh; }
+      body {
+        margin: 0;
+        padding: 0;
+        overflow: hidden;
+        background-color: #0f172a;
+      }
+      #map {
+        width: 100%;
+        height: 100vh;
+      }
+      /* Tâm điểm (crosshair) cố định giữa màn hình để người dùng dễ căn chỉnh */
+      .center-marker {
+        position: absolute;
+        top: 50%;
+        left: 50%;
+        transform: translate(-50%, -100%);
+        z-index: 999;
+        pointer-events: none;
+      }
     </style>
   </head>
   <body>
     <div id="map"></div>
     <script>
-      // 1. Grab the API key from the URL (e.g., ?apikey=XYZ)
       const urlParams = new URLSearchParams(window.location.search);
-      const apiKey = urlParams.get('apikey');
+      const apiKey = urlParams.get("apikey");
+      const lat = parseFloat(urlParams.get("lat")) || 10.8231;
+      const lng = parseFloat(urlParams.get("lng")) || 106.6297;
+      const zoom = parseInt(urlParams.get("zoom")) || 15;
+      const isPicker = urlParams.get("mode") === "picker"; // Chế độ chọn địa điểm
 
       if (apiKey) {
-        // 2. Initialize Map safely
         const platform = new H.service.Platform({ apikey: apiKey });
         const defaultLayers = platform.createDefaultLayers();
         const map = new H.Map(
-          document.getElementById('map'),
-          defaultLayers.raster.normal.map, // Using raster to prevent WebGL crashes
-          { center: { lat: 10.8231, lng: 106.6297 }, zoom: 12 }
+          document.getElementById("map"),
+          defaultLayers.raster.normal.map,
+          {
+            center: { lat, lng },
+            zoom: zoom,
+            pixelRatio: window.devicePixelRatio || 1,
+          },
         );
+
         const mapEvents = new H.mapevents.MapEvents(map);
         new H.mapevents.Behavior(mapEvents);
         H.ui.UI.createDefault(map, defaultLayers);
+
+        // Marker chỉ định vị trí
+        let marker = new H.map.Marker({ lat, lng });
+        map.addObject(marker);
+
+        // GỬI TỌA ĐỘ VỀ REACT NATIVE KHI DI CHUYỂN
+        map.addEventListener("mapviewchangeend", () => {
+          const center = map.getCenter();
+          marker.setGeometry(center); // Cho marker "hút" vào tâm
+
+          const message = JSON.stringify({
+            type: "MAP_MOVED",
+            lat: center.lat,
+            lng: center.lng,
+          });
+
+          if (window.ReactNativeWebView) {
+            window.ReactNativeWebView.postMessage(message);
+          }
+        });
+
+        // NHẬN TÍN HIỆU TỪ APP (khi chọn từ gợi ý)
+        const handleMessage = (event) => {
+          try {
+            const data = JSON.parse(event.data);
+            if (data.type === "SET_LOCATION") {
+              map.setCenter({ lat: data.lat, lng: data.lng });
+              marker.setGeometry({ lat: data.lat, lng: data.lng });
+              map.setZoom(16);
+            }
+          } catch (e) {}
+        };
+        window.addEventListener("message", handleMessage);
+        document.addEventListener("message", handleMessage);
       }
     </script>
   </body>
