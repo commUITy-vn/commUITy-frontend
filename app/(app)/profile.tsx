@@ -66,6 +66,7 @@ export default function ProfileScreen() {
         ] : []),
         { key: "theme", title: "Appearance: " + (themeMode === 'light' ? 'Light Mode' : themeMode === 'dark' ? 'Dark Mode' : 'System Mode'), icon: themeMode === 'light' ? 'light-mode' : themeMode === 'dark' ? 'dark-mode' : 'brightness-auto' },
         { key: "transaction-history", title: "Transaction History", icon: "history" },
+        { key: "my-reports", title: "My Reports", icon: "flag" },
         { key: "rules", title: "Rules", icon: "rule" },
         { key: "security", title: "Security", icon: "lock" },
         { key: "backup-restore", title: "Backup & Restore", icon: "backup" },
@@ -93,6 +94,9 @@ export default function ProfileScreen() {
                 break
             case "transaction-history":
                 router.push("/transaction-history")
+                break
+            case "my-reports":
+                router.push("/my-reports")
                 break
             case "backup-restore":
                 showAlert(

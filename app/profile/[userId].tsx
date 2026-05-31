@@ -13,6 +13,9 @@ import * as Haptics from 'expo-haptics';
 import { MaterialIcons } from '@expo/vector-icons';
 import { api } from '@/lib/api-client';
 import { createPrivateConversation } from '@/features/communication/api/create-private-conversation';
+import { useAuthStore } from '@/features/auth/stores/useAuthStore';
+import { ReportModal, ReportTargetType } from '@/features/reports';
+import { BottomSheet, ConfirmModal } from '@/components/ui';
 
 export default function UserProfileScreen() {
   const { userId } = useLocalSearchParams();
@@ -22,6 +25,14 @@ export default function UserProfileScreen() {
   const [loading, setLoading] = useState(true);
   const [profileUser, setProfileUser] = useState<any>(null);
   const [chatLoading, setChatLoading] = useState(false);
+  const { user: currentUser } = useAuthStore();
+  const [isMenuSheetVisible, setIsMenuSheetVisible] = useState(false);
+  const [isReportModalVisible, setIsReportModalVisible] = useState(false);
+  const [alertModal, setAlertModal] = useState<{ visible: boolean; title: string; message: string }>({
+    visible: false,
+    title: '',
+    message: '',
+  });
 
   useEffect(() => {
     let active = true;
@@ -107,7 +118,22 @@ export default function UserProfileScreen() {
         >
           <MaterialIcons name="arrow-back" size={20} color={theme.text} />
         </Pressable>
-        <Text style={{ color: theme.text, fontSize: 16, fontWeight: '700' }}>Details</Text>
+        <Text style={{ color: theme.text, fontSize: 16, fontWeight: '700', flex: 1 }}>Details</Text>
+        {userId !== currentUser?.id && (
+          <Pressable
+            onPress={async () => {
+              await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+              setIsMenuSheetVisible(true);
+            }}
+            style={({ pressed }) => ({
+              padding: 8,
+              borderRadius: 8,
+              backgroundColor: pressed ? theme.highlightBG : 'transparent',
+            })}
+          >
+            <MaterialIcons name="more-vert" size={20} color={theme.text} />
+          </Pressable>
+        )}
       </View>
 
       <ScrollView
@@ -269,6 +295,52 @@ export default function UserProfileScreen() {
           )}
         </View>
       </ScrollView>
+
+      {/* Options Menu BottomSheet */}
+      <BottomSheet
+        isVisible={isMenuSheetVisible}
+        onClose={() => setIsMenuSheetVisible(false)}
+        title="Options"
+        options={[
+          {
+            key: 'report',
+            label: 'Report Profile',
+            icon: 'flag' as any,
+            onPress: () => {
+              setIsMenuSheetVisible(false);
+              // Defer opening of the next sheet to prevent React Native modal conflict
+              setTimeout(() => {
+                setIsReportModalVisible(true);
+              }, 400);
+            },
+          },
+        ]}
+      />
+
+      <ReportModal
+        visible={isReportModalVisible}
+        onClose={() => setIsReportModalVisible(false)}
+        targetType={ReportTargetType.USER}
+        targetId={userId as string}
+        targetName={fullName}
+        onSuccessSubmit={() => {
+          setAlertModal({
+            visible: true,
+            title: 'Report Submitted',
+            message: 'Your report has been submitted to administrators for review.',
+          });
+        }}
+      />
+
+      <ConfirmModal
+        visible={alertModal.visible}
+        title={alertModal.title}
+        message={alertModal.message}
+        confirmText="OK"
+        cancelText=""
+        onConfirm={() => setAlertModal(prev => ({ ...prev, visible: false }))}
+        onCancel={() => setAlertModal(prev => ({ ...prev, visible: false }))}
+      />
     </View>
   );
 }

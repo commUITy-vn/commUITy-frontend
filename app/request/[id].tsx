@@ -37,6 +37,7 @@ import { rejectSupportRequest } from '@/features/support/api/reject-support-requ
 import { createSupportNeed } from '@/features/support/api/create-support-need';
 import { updateSupportNeed } from '@/features/support/api/update-support-need';
 import { deleteSupportNeed } from '@/features/support/api/delete-support-need';
+import { ReportModal, ReportTargetType } from '@/features/reports';
 
 export default function RequestDetailScreen() {
   const theme = useTheme();
@@ -141,6 +142,7 @@ export default function RequestDetailScreen() {
   // Sharing states
   const [isMenuSheetVisible, setIsMenuSheetVisible] = useState(false);
   const [isShareSheetVisible, setIsShareSheetVisible] = useState(false);
+  const [isReportModalVisible, setIsReportModalVisible] = useState(false);
   const [conversations, setConversations] = useState<any[]>([]);
   const [isConversationsLoading, setIsConversationsLoading] = useState(false);
 
@@ -1446,7 +1448,29 @@ export default function RequestDetailScreen() {
               }, 400);
             },
           },
+          ...(!isOwner ? [{
+            key: 'report',
+            label: 'Report Request',
+            icon: 'flag' as any,
+            onPress: () => {
+              setIsMenuSheetVisible(false);
+              setTimeout(() => {
+                setIsReportModalVisible(true);
+              }, 400);
+            },
+          }] : []),
         ]}
+      />
+
+      <ReportModal
+        visible={isReportModalVisible}
+        onClose={() => setIsReportModalVisible(false)}
+        targetType={ReportTargetType.SUPPORT_REQUEST}
+        targetId={id}
+        targetName={request?.title || 'Help Request'}
+        onSuccessSubmit={() => {
+          showAlert('Report Submitted', 'Your report has been submitted to administrators for review.');
+        }}
       />
 
       {/* Share Target BottomSheet */}
