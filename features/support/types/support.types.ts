@@ -80,10 +80,10 @@ export const ITEM_CATEGORY_LABELS: Record<ItemCategory, string> = {
 };
 
 export enum UnitOptions {
-  PIECE = "PIECE",
-  KG = "KG",
-  LITER = "LITER",
-  OTHER = "OTHER",
+  PIECE = "Piece",
+  KG = "Kg",
+  LITER = "Liter",
+  OTHER = "Other",
 }
 
 export const UNIT_LABELS: Record<UnitOptions, string> = {
