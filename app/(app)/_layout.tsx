@@ -97,7 +97,6 @@ export default function AppLayout() {
                 }}
             />
             {/* All other routes set href: null to prevent tab bar appearance */}
-            <Tabs.Screen name="notifications" options={{ href: null }} />
             <Tabs.Screen name="location/[id]" options={{ href: null }} />
             <Tabs.Screen name="category-picker" options={{ href: null }} />
         </Tabs>

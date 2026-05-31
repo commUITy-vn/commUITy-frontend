@@ -53,7 +53,6 @@ export default function DonationHistory() {
       ]}
       onPress={async () => {
         await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-        console.log('Selected donation:', item.id);
       }}
     >
       <View style={localStyles.donationHeader}>

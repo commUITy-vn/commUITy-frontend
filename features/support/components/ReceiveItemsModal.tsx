@@ -22,8 +22,6 @@ export default function ReceiveItemsModal({ onClose }: Props) {
   const [notes, setNotes] = useState('');
 
   const handleConfirm = () => {
-    // In a real implementation, submit the receipt data to backend
-    console.log('Received', { itemType, quantity, notes });
     onClose();
   };
 

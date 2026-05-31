@@ -9,6 +9,7 @@ import {
   Image,
   Platform,
   StyleSheet,
+  InteractionManager,
 } from 'react-native';
 import { useTheme } from '@/hooks/useTheme';
 import { useLocalSearchParams, useRouter } from 'expo-router';
@@ -18,8 +19,8 @@ import { useChat } from '@/features/communication/hooks/useChat';
 import { useConversations } from '@/features/communication/hooks/useConversations';
 import { useAuthStore } from '@/features/auth/stores/useAuthStore';
 import { api } from '@/lib/api-client';
-import EmojiPickerPanel from '@/components/ui/EmojiPickerPanel';
-import { BottomSheet } from '@/components/ui';
+
+const EmojiPickerPanel = React.lazy(() => import('@/components/ui/EmojiPickerPanel'));
 
 function GroupAvatar({ members, theme }: { members: any[]; theme: any }) {
   const otherMembers = members.filter(m => m.fullName).slice(0, 2);
@@ -89,11 +90,11 @@ function GroupAvatar({ members, theme }: { members: any[]; theme: any }) {
 // Shared Item Preview Card
 // ─────────────────────────────────────────────────────────────
 function SharedItemCard({ content, theme }: { content: string; theme: any }) {
+  const router = useRouter();
   const match = content.match(/^\[SHARED_ITEM:([^:]+):([^:]+):(.*)\]$/);
   if (!match) return null;
 
-  const [_, type, itemId, title] = match;
-  const router = useRouter();
+  const [, type, itemId, title] = match;
 
   const handlePress = async () => {
     await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
@@ -367,6 +368,7 @@ export default function ChatRoomScreen() {
     fileSize: number;
   } | null>(null);
   const [isUploading, setIsUploading] = useState(false);
+  const [isTransitionReady, setIsTransitionReady] = useState(false);
 
   // Reactions state
   const [reactions, setReactions] = useState<Record<string, Record<string, string[]>>>({});
@@ -403,7 +405,22 @@ export default function ChatRoomScreen() {
     };
   }, []);
 
-  const { messages, isLoading, sendMessage } = useChat(id as string);
+  const { messages, isLoading, sendMessage } = useChat(id as string, user?.id);
+
+  useEffect(() => {
+    setIsTransitionReady(false);
+
+    if (Platform.OS === 'web') {
+      const timer = setTimeout(() => setIsTransitionReady(true), 260);
+      return () => clearTimeout(timer);
+    }
+
+    const task = InteractionManager.runAfterInteractions(() => {
+      setIsTransitionReady(true);
+    });
+
+    return () => task.cancel?.();
+  }, [id]);
 
   // Get current conversation details
   const conversation = React.useMemo(() => {
@@ -440,10 +457,12 @@ export default function ChatRoomScreen() {
   }, [conversation, user?.id, messages]);
 
   useEffect(() => {
+    if (!isTransitionReady) return;
+
     setTimeout(() => {
       scrollViewRef.current?.scrollToEnd({ animated: true });
     }, 100);
-  }, [messages]);
+  }, [messages, isTransitionReady]);
 
   const handleBack = async () => {
     await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
@@ -664,7 +683,7 @@ export default function ChatRoomScreen() {
       </View>
 
       {/* ─── Messages Thread ─── */}
-      {isLoading ? (
+      {isLoading || !isTransitionReady ? (
         <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
           <ActivityIndicator size="large" color={theme.primary} />
         </View>
@@ -1295,18 +1314,37 @@ export default function ChatRoomScreen() {
             zIndex: 200,
           }}
         >
-          <EmojiPickerPanel
-            onEmojiSelected={(emoji) => {
-              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-              if (emojiPickerTarget === 'composer') {
-                setInputText((prev) => prev + emoji);
-              } else {
-                toggleReaction(emojiPickerTarget, emoji);
-              }
-              setShowEmojiPicker(false);
-            }}
-            onClose={() => setShowEmojiPicker(false)}
-          />
+          <React.Suspense
+            fallback={
+              <View
+                style={{
+                  backgroundColor: theme.componentBG,
+                  borderRadius: 16,
+                  borderWidth: 1,
+                  borderColor: theme.border,
+                  width: 340,
+                  height: 380,
+                  justifyContent: 'center',
+                  alignItems: 'center',
+                }}
+              >
+                <ActivityIndicator size="small" color={theme.primary} />
+              </View>
+            }
+          >
+            <EmojiPickerPanel
+              onEmojiSelected={(emoji) => {
+                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                if (emojiPickerTarget === 'composer') {
+                  setInputText((prev) => prev + emoji);
+                } else {
+                  toggleReaction(emojiPickerTarget, emoji);
+                }
+                setShowEmojiPicker(false);
+              }}
+              onClose={() => setShowEmojiPicker(false)}
+            />
+          </React.Suspense>
         </View>
       )}
     </View>

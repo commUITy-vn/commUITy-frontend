@@ -8,9 +8,10 @@ export interface CategorySummaryResponse {
   iconUrl?: string;
 }
 
-export const getCategories = (): Promise<CategorySummaryResponse[]> => {
+export const getCategories = (activeOnly?: boolean): Promise<CategorySummaryResponse[]> => {
   // The backend controller is mapped to /api/categories
-  // Note: the backend api-client has a baseUrl. Let's make sure it hits the right path.
-  // api-client prepends the baseUrl. Let's verify if api.get receives the full path.
-  return api.get<CategorySummaryResponse[]>('/api/categories');
+  return api.get<CategorySummaryResponse[]>('/api/categories', {
+    params: activeOnly !== undefined ? { activeOnly } : undefined,
+  });
 };
+

@@ -1,12 +1,12 @@
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { getMessages } from '../api/get-messages';
 import { sendMessage as apiSendMessage } from '../api/send-message';
-import { stompClient } from '../api/websocket-client';
-import { getAccessToken } from '@/lib/api-client';
+import { markMessageRead } from '../api/mark-message-read';
 
-export const useChat = (conversationId: string) => {
+export const useChat = (conversationId: string, currentUserId?: string) => {
   const queryClient = useQueryClient();
+  const lastMarkedReadMessageRef = useRef<string | null>(null);
 
   const queryKey = ['messages', conversationId];
 
@@ -32,60 +32,33 @@ export const useChat = (conversationId: string) => {
     },
   });
 
-  // Connect & subscribe to WS
+  // Mutate message read status
+  const readMutation = useMutation({
+    mutationFn: (messageId: string) => markMessageRead(conversationId, messageId),
+    onSuccess: () => {
+      queryClient.setQueryData(['conversations'], (old: any) => {
+        if (!Array.isArray(old)) return old;
+        return old.map((conversation: any) => (
+          String(conversation.id) === String(conversationId)
+            ? { ...conversation, unreadCount: 0 }
+            : conversation
+        ));
+      });
+      queryClient.invalidateQueries({ queryKey: ['conversations'] });
+    },
+  });
+
+  // Automatically mark last message as read if it is from another user
   useEffect(() => {
-    if (!conversationId) return;
+    if (!historyMessages || historyMessages.length === 0 || !currentUserId) return;
 
-    let subId: string | null = null;
+    const lastMsg = historyMessages[historyMessages.length - 1];
+    if (lastMsg.senderId !== currentUserId && lastMarkedReadMessageRef.current !== lastMsg.id) {
+      lastMarkedReadMessageRef.current = lastMsg.id;
+      readMutation.mutate(lastMsg.id);
+    }
+  }, [historyMessages, currentUserId, readMutation]);
 
-    const setupWS = async () => {
-      const token = await getAccessToken();
-      if (!token) return;
-
-      const handleMessage = (frame: any) => {
-        try {
-          const payload = JSON.parse(frame.body);
-          if (payload.eventType === 'MESSAGE_CREATED' && payload.message) {
-            const message = payload.message;
-            if (String(message.conversationId) === String(conversationId)) {
-              queryClient.setQueryData(queryKey, (old: any) => {
-                const list = old || [];
-                if (list.some((msg: any) => msg.id === message.id)) return list;
-                return [...list, message];
-              });
-              queryClient.invalidateQueries({ queryKey: ['conversations'] });
-            }
-          }
-        } catch (e) {
-          console.error('[WS] Failed to parse realtime message frame body:', e);
-        }
-      };
-
-      if (!stompClient.isConnected()) {
-        stompClient.connect(
-          token,
-          () => {
-            console.log('[WS] Connected successfully, subscribing to /user/queue/messages');
-            subId = stompClient.subscribe('/user/queue/messages', handleMessage);
-          },
-          (err) => {
-            console.error('[WS] STOMP Client connection error:', err);
-          }
-        );
-      } else {
-        console.log('[WS] Already connected, subscribing to /user/queue/messages');
-        subId = stompClient.subscribe('/user/queue/messages', handleMessage);
-      }
-    };
-
-    setupWS();
-
-    return () => {
-      if (subId) {
-        stompClient.unsubscribe(subId);
-      }
-    };
-  }, [conversationId, queryClient]);
 
   const sendMessage = async (content: string, mediaIds?: string[]) => {
     await sendMutation.mutateAsync({ content, mediaIds });

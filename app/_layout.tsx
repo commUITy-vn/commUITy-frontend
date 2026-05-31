@@ -9,7 +9,13 @@ import { StatusBar } from "expo-status-bar"
 import { View, ActivityIndicator, Platform } from "react-native"
 import { SafeAreaProvider, SafeAreaView } from "react-native-safe-area-context"
 import "react-native-reanimated"
+import Animated, { FadeInUp, FadeOutUp } from "react-native-reanimated"
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
+import { Pressable, Text } from "react-native"
+import { MaterialIcons } from "@expo/vector-icons"
+import * as Haptics from "expo-haptics"
+import { useGlobalWebSockets } from "@/features/communication/hooks/useGlobalWebSockets"
+import { useToastStore } from "@/stores/useToastStore"
 
 import { useColorScheme } from "@/hooks/use-color-scheme"
 import { useAuthStore } from "@/features/auth/stores/useAuthStore"
@@ -114,219 +120,370 @@ export default function RootLayout() {
                                 : undefined
                         }
                     >
-                        <Stack
-                            screenOptions={{
-                                headerShown: false,
-                                animation: Platform.select({
-                                    ios: "slide_from_right",
-                                    android: "slide_from_right",
-                                    default: "slide_from_right",
-                                }),
-                                contentStyle: {
-                                    backgroundColor: theme.appBG,
-                                },
-                            } as any}
-                        >
-                            <Stack.Screen
-                                name="(auth)"
-                                options={{ headerShown: false }}
-                            />
-                            <Stack.Screen
-                                name="(app)"
-                                options={{ headerShown: false }}
-                            />
-                            <Stack.Screen
-                                name="create-request"
-                                options={{
-                                    headerShown: false,
-                                    animation: Platform.select({
-                                        ios: "slide_from_right",
-                                        android: "slide_from_right",
-                                        default: "slide_from_right",
-                                    }),
-                                    animationTypeForReplace: "pop",
-                                    contentStyle: {
-                                        backgroundColor: theme.appBG,
-                                    },
-                                }}
-                            />
-                            <Stack.Screen
-                                name="request/[id]"
-                                options={{
-                                    headerShown: false,
-                                    animation: Platform.select({
-                                        ios: "slide_from_right",
-                                        android: "slide_from_right",
-                                        default: "slide_from_right",
-                                    }),
-                                    contentStyle: {
-                                        backgroundColor: theme.appBG,
-                                    },
-                                }}
-                            />
-                            <Stack.Screen
-                                name="location/[id]"
-                                options={{
-                                    headerShown: false,
-                                    animation: Platform.select({
-                                        ios: "slide_from_right",
-                                        android: "slide_from_right",
-                                        default: "slide_from_right",
-                                    }),
-                                    contentStyle: {
-                                        backgroundColor: theme.appBG,
-                                    },
-                                }}
-                            />
-                            <Stack.Screen
-                                name="messages/[id]"
-                                options={{
-                                    headerShown: false,
-                                    animation: Platform.select({
-                                        ios: "slide_from_right",
-                                        android: "slide_from_right",
-                                        default: "slide_from_right",
-                                    }),
-                                    contentStyle: {
-                                        backgroundColor: theme.appBG,
-                                    },
-                                }}
-                            />
-                            <Stack.Screen
-                                name="volunteer-dashboard"
-                                options={{
-                                    headerShown: false,
-                                    animation: Platform.select({
-                                        ios: "slide_from_right",
-                                        android: "slide_from_right",
-                                        default: "slide_from_right",
-                                    }),
-                                    contentStyle: {
-                                        backgroundColor: theme.appBG,
-                                    },
-                                }}
-                            />
-                            <Stack.Screen
-                                name="community-funds"
-                                options={{
-                                    headerShown: false,
-                                    animation: Platform.select({
-                                        ios: "slide_from_right",
-                                        android: "slide_from_right",
-                                        default: "slide_from_right",
-                                    }),
-                                    contentStyle: {
-                                        backgroundColor: theme.appBG,
-                                    },
-                                }}
-                            />
-                            <Stack.Screen
-                                name="community-funds/[id]"
-                                options={{
-                                    headerShown: false,
-                                    animation: Platform.select({
-                                        ios: "slide_from_right",
-                                        android: "slide_from_right",
-                                        default: "slide_from_right",
-                                    }),
-                                    contentStyle: {
-                                        backgroundColor: theme.appBG,
-                                    },
-                                }}
-                            />
-                            <Stack.Screen
-                                name="community-funds/create"
-                                options={{
-                                    headerShown: false,
-                                    animation: Platform.select({
-                                        ios: "slide_from_right",
-                                        android: "slide_from_right",
-                                        default: "slide_from_right",
-                                    }),
-                                    contentStyle: {
-                                        backgroundColor: theme.appBG,
-                                    },
-                                }}
-                            />
-                            <Stack.Screen
-                                name="wallet"
-                                options={{
-                                    headerShown: false,
-                                    animation: Platform.select({
-                                        ios: "slide_from_right",
-                                        android: "slide_from_right",
-                                        default: "slide_from_right",
-                                    }),
-                                    contentStyle: {
-                                        backgroundColor: theme.appBG,
-                                    },
-                                }}
-                            />
-                            <Stack.Screen
-                                name="profile-edit"
-                                options={{
-                                    headerShown: false,
-                                    animation: Platform.select({
-                                        ios: "slide_from_right",
-                                        android: "slide_from_right",
-                                        default: "slide_from_right",
-                                    }),
-                                    contentStyle: {
-                                        backgroundColor: theme.appBG,
-                                    },
-                                }}
-                            />
-                            <Stack.Screen
-                                name="my-reports"
-                                options={{
-                                    headerShown: false,
-                                    animation: Platform.select({
-                                        ios: "slide_from_right",
-                                        android: "slide_from_right",
-                                        default: "slide_from_right",
-                                    }),
-                                    contentStyle: {
-                                        backgroundColor: theme.appBG,
-                                    },
-                                }}
-                            />
-                            <Stack.Screen
-                                name="collaborator-dashboard"
-                                options={{
-                                    headerShown: false,
-                                    animation: Platform.select({
-                                        ios: "slide_from_right",
-                                        android: "slide_from_right",
-                                        default: "slide_from_right",
-                                    }),
-                                    contentStyle: {
-                                        backgroundColor: theme.appBG,
-                                    },
-                                }}
-                            />
-                            <Stack.Screen
-                                name="create-location"
-                                options={{
-                                    headerShown: false,
-                                    animation: Platform.select({
-                                        ios: "slide_from_right",
-                                        android: "slide_from_right",
-                                        default: "slide_from_right",
-                                    }),
-                                    contentStyle: {
-                                        backgroundColor: theme.appBG,
-                                    },
-                                }}
-                            />
-                            <Stack.Screen
-                                name="modal"
-                                options={{ presentation: "modal", title: "Modal" }}
-                            />
-                        </Stack>
+                        <AppContent theme={theme} />
                         <StatusBar style="auto" />
                     </SafeAreaView>
                 </ThemeProvider>
             </QueryClientProvider>
         </SafeAreaProvider>
     )
+}
+
+function AppContent({ theme }: { theme: any }) {
+    const { isAuthenticated, user } = useAuthStore()
+
+    useGlobalWebSockets({
+        isAuthenticated,
+        userId: user?.id,
+    });
+
+    return (
+        <View style={{ flex: 1, backgroundColor: theme.appBG }}>
+            <Stack
+                screenOptions={{
+                    headerShown: false,
+                    animation: Platform.select({
+                        ios: "slide_from_right",
+                        android: "slide_from_right",
+                        default: "slide_from_right",
+                    }),
+                    contentStyle: {
+                        backgroundColor: theme.appBG,
+                    },
+                } as any}
+            >
+                <Stack.Screen
+                    name="(auth)"
+                    options={{ headerShown: false }}
+                />
+                <Stack.Screen
+                    name="(app)"
+                    options={{ headerShown: false }}
+                />
+                <Stack.Screen
+                    name="create-request"
+                    options={{
+                        headerShown: false,
+                        animation: Platform.select({
+                            ios: "slide_from_right",
+                            android: "slide_from_right",
+                            default: "slide_from_right",
+                        }),
+                        animationTypeForReplace: "pop",
+                        contentStyle: {
+                            backgroundColor: theme.appBG,
+                        },
+                    }}
+                />
+                <Stack.Screen
+                    name="request/[id]"
+                    options={{
+                        headerShown: false,
+                        animation: Platform.select({
+                            ios: "slide_from_right",
+                            android: "slide_from_right",
+                            default: "slide_from_right",
+                        }),
+                        contentStyle: {
+                            backgroundColor: theme.appBG,
+                        },
+                    }}
+                />
+                <Stack.Screen
+                    name="location/[id]"
+                    options={{
+                        headerShown: false,
+                        animation: Platform.select({
+                            ios: "slide_from_right",
+                            android: "slide_from_right",
+                            default: "slide_from_right",
+                        }),
+                        contentStyle: {
+                            backgroundColor: theme.appBG,
+                        },
+                    }}
+                />
+                <Stack.Screen
+                    name="messages/[id]"
+                    options={{
+                        headerShown: false,
+                        animation: Platform.select({
+                            ios: "slide_from_right",
+                            android: "slide_from_right",
+                            default: "slide_from_right",
+                        }),
+                        contentStyle: {
+                            backgroundColor: theme.appBG,
+                        },
+                    }}
+                />
+                <Stack.Screen
+                    name="volunteer-dashboard"
+                    options={{
+                        headerShown: false,
+                        animation: Platform.select({
+                            ios: "slide_from_right",
+                            android: "slide_from_right",
+                            default: "slide_from_right",
+                        }),
+                        contentStyle: {
+                            backgroundColor: theme.appBG,
+                        },
+                    }}
+                />
+                <Stack.Screen
+                    name="community-funds"
+                    options={{
+                        headerShown: false,
+                        animation: Platform.select({
+                            ios: "slide_from_right",
+                            android: "slide_from_right",
+                            default: "slide_from_right",
+                        }),
+                        contentStyle: {
+                            backgroundColor: theme.appBG,
+                        },
+                    }}
+                />
+                <Stack.Screen
+                    name="community-funds/[id]"
+                    options={{
+                        headerShown: false,
+                        animation: Platform.select({
+                            ios: "slide_from_right",
+                            android: "slide_from_right",
+                            default: "slide_from_right",
+                        }),
+                        contentStyle: {
+                            backgroundColor: theme.appBG,
+                        },
+                    }}
+                />
+                <Stack.Screen
+                    name="community-funds/create"
+                    options={{
+                        headerShown: false,
+                        animation: Platform.select({
+                            ios: "slide_from_right",
+                            android: "slide_from_right",
+                            default: "slide_from_right",
+                        }),
+                        contentStyle: {
+                            backgroundColor: theme.appBG,
+                        },
+                    }}
+                />
+                <Stack.Screen
+                    name="wallet"
+                    options={{
+                        headerShown: false,
+                        animation: Platform.select({
+                            ios: "slide_from_right",
+                            android: "slide_from_right",
+                            default: "slide_from_right",
+                        }),
+                        contentStyle: {
+                            backgroundColor: theme.appBG,
+                        },
+                    }}
+                />
+                <Stack.Screen
+                    name="profile-edit"
+                    options={{
+                        headerShown: false,
+                        animation: Platform.select({
+                            ios: "slide_from_right",
+                            android: "slide_from_right",
+                            default: "slide_from_right",
+                        }),
+                        contentStyle: {
+                            backgroundColor: theme.appBG,
+                        },
+                    }}
+                />
+                <Stack.Screen
+                    name="my-reports"
+                    options={{
+                        headerShown: false,
+                        animation: Platform.select({
+                            ios: "slide_from_right",
+                            android: "slide_from_right",
+                            default: "slide_from_right",
+                        }),
+                        contentStyle: {
+                            backgroundColor: theme.appBG,
+                        },
+                    }}
+                />
+                <Stack.Screen
+                    name="collaborator-dashboard"
+                    options={{
+                        headerShown: false,
+                        animation: Platform.select({
+                            ios: "slide_from_right",
+                            android: "slide_from_right",
+                            default: "slide_from_right",
+                        }),
+                        contentStyle: {
+                            backgroundColor: theme.appBG,
+                        },
+                    }}
+                />
+                <Stack.Screen
+                    name="create-location"
+                    options={{
+                        headerShown: false,
+                        animation: Platform.select({
+                            ios: "slide_from_right",
+                            android: "slide_from_right",
+                            default: "slide_from_right",
+                        }),
+                        contentStyle: {
+                            backgroundColor: theme.appBG,
+                        },
+                    }}
+                />
+                <Stack.Screen
+                    name="notifications"
+                    options={{
+                        headerShown: false,
+                        animation: Platform.select({
+                            ios: "slide_from_right",
+                            android: "slide_from_right",
+                            default: "slide_from_right",
+                        }),
+                        contentStyle: {
+                            backgroundColor: theme.appBG,
+                        },
+                    }}
+                />
+                <Stack.Screen
+                    name="modal"
+                    options={{ presentation: "modal", title: "Modal" }}
+                />
+            </Stack>
+
+            {/* Premium Global In-App Toast Notification Banner */}
+            <ToastAlertOverlay theme={theme} />
+        </View>
+    );
+}
+
+function ToastAlertOverlay({ theme }: { theme: any }) {
+    const { toast, hideToast } = useToastStore();
+    const router = useRouter();
+
+    useEffect(() => {
+        if (!toast) return;
+        const timer = setTimeout(() => {
+            hideToast();
+        }, toast.duration || 4000);
+        return () => clearTimeout(timer);
+    }, [toast, hideToast]);
+
+    if (!toast) return null;
+
+    const handlePress = async () => {
+        await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+        const url = toast.actionUrl;
+        hideToast();
+        if (url) {
+            router.push(url as any);
+        }
+    };
+
+    const handleClose = async (e: any) => {
+        e.stopPropagation();
+        await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+        hideToast();
+    };
+
+    const iconName = toast.type === "message" ? "chat" : "notifications";
+
+    return (
+        <Animated.View
+            entering={FadeInUp.springify().duration(400)}
+            exiting={FadeOutUp.duration(300)}
+            style={{
+                position: "absolute",
+                top: Platform.OS === "ios" ? 60 : 24,
+                left: 16,
+                right: 16,
+                zIndex: 9999,
+            }}
+        >
+            <Pressable
+                onPress={handlePress}
+                style={({ pressed }) => ({
+                    flexDirection: "row",
+                    alignItems: "center",
+                    backgroundColor: theme.componentBG,
+                    borderWidth: 1.5,
+                    borderColor: theme.border,
+                    borderRadius: 16,
+                    padding: 12,
+                    gap: 12,
+                    opacity: pressed ? 0.92 : 1,
+                    ...Platform.select({
+                        web: {
+                            shadowColor: theme.inverse,
+                            shadowOffset: { width: 0, height: 4 },
+                            shadowOpacity: 0.1,
+                            shadowRadius: 12,
+                            elevation: 5,
+                            cursor: "pointer",
+                        } as any,
+                        default: {},
+                    }),
+                })}
+            >
+                <View
+                    style={{
+                        width: 38,
+                        height: 38,
+                        borderRadius: 19,
+                        backgroundColor: theme.primary + "15",
+                        justifyContent: "center",
+                        alignItems: "center",
+                    }}
+                >
+                    <MaterialIcons name={iconName} size={20} color={theme.primary} />
+                </View>
+
+                <View style={{ flex: 1, gap: 2 }}>
+                    <Text
+                        style={{
+                            color: theme.text,
+                            fontSize: 14,
+                            fontWeight: "700",
+                        }}
+                        numberOfLines={1}
+                    >
+                        {toast.title}
+                    </Text>
+                    <Text
+                        style={{
+                            color: theme.textSupporting,
+                            fontSize: 12,
+                            fontWeight: "500",
+                        }}
+                        numberOfLines={2}
+                    >
+                        {toast.description}
+                    </Text>
+                </View>
+
+                <Pressable
+                    onPress={handleClose}
+                    style={({ pressed }) => ({
+                        padding: 6,
+                        borderRadius: 14,
+                        backgroundColor: pressed ? theme.highlightBG : "transparent",
+                    })}
+                >
+                    <MaterialIcons name="close" size={18} color={theme.textSupporting} />
+                </Pressable>
+            </Pressable>
+        </Animated.View>
+    );
 }

@@ -180,7 +180,7 @@ export default function UsersScreen() {
   return (
     <View style={[styles.container, { backgroundColor: theme.appBG }]}>
       {/* Header */}
-      <View style={[styles.header, { borderBottomColor: theme.border, backgroundColor: theme.componentBG }]}>
+      <View style={[styles.header, { borderBottomColor: theme.border }]}>
         <Pressable onPress={handleBack} style={styles.backButton}>
           <MaterialIcons name="chevron-left" size={28} color={theme.primary} />
         </Pressable>

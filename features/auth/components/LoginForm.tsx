@@ -56,9 +56,8 @@ export const LoginForm: React.FC<LoginFormProps> = ({ onNavigateToRegister }) =>
         }
     };
 
-    const handleSocialLogin = (provider: string) => {
+    const handleSocialLogin = (_provider: string) => {
         // TODO: Implement OAuth flow
-        console.log(`Login with ${provider}`);
     };
 
     return (
@@ -148,7 +147,7 @@ export const LoginForm: React.FC<LoginFormProps> = ({ onNavigateToRegister }) =>
                     {/* Register Link */}
                     <View style={[styles.mt5, styles.alignItemsCenter]}>
                         <Text style={{ color: theme.textSupporting }}>
-                            Don't have an account?{' '}
+                            {"Don't have an account? "}
                             <Text
                                 style={{ color: isLinkPressed ? theme.linkHover : theme.link, textDecorationLine: 'underline' }}
                                 onPress={onNavigateToRegister}

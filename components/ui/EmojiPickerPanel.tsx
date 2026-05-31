@@ -1,18 +1,3 @@
-/**
- * EmojiPickerPanel — ported from Expensify's EmojiPicker system.
- *
- * Structure mirrors Expensify's EmojiPickerMenu + CategoryShortcutBar:
- *   - Search input at the top
- *   - Category shortcut icon bar
- *   - FlashList grid (8 columns, sticky category headers, 700+ emojis)
- *   - Skin tone row at the bottom (future)
- *
- * Differences from Expensify:
- *   - No Onyx (we use useState)
- *   - No PopoverWithMeasuredContent (caller positions us absolutely)
- *   - Category icons = emoji chars instead of SVGs (visually identical)
- */
-
 import React, { useState, useRef, useCallback, useMemo } from 'react';
 import {
   View,
@@ -185,11 +170,16 @@ export default function EmojiPickerPanel({ onEmojiSelected, onClose }: EmojiPick
         maxWidth: 340,
         alignSelf: 'center',
         // shadow
-        shadowColor: theme.inverse,
-        shadowOffset: { width: 0, height: -4 },
-        shadowOpacity: 0.15,
-        shadowRadius: 16,
-        elevation: 12,
+        ...Platform.select({
+          web: {
+            shadowColor: theme.inverse,
+            shadowOffset: { width: 0, height: -4 },
+            shadowOpacity: 0.15,
+            shadowRadius: 16,
+            elevation: 12,
+          },
+          default: {},
+        }),
       }}
     >
       {/* ── Header: title + close ── */}
