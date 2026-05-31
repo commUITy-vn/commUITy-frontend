@@ -36,7 +36,14 @@ export default function AdminDashboard() {
       route: '/(admin)/statistics',
       icon: 'bar-chart',
     },
+    {
+      title: 'Category Management',
+      subtitle: 'Create, update, and manage support request categories',
+      route: '/(admin)/categories',
+      icon: 'category',
+    },
   ];
+
 
   const handleBack = async () => {
     await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
@@ -51,7 +58,8 @@ export default function AdminDashboard() {
   return (
     <View style={[styles.container, { backgroundColor: theme.appBG }]}>
       {/* Sleek Header (Back chevron + title) */}
-      <View style={[styles.header, { borderBottomColor: theme.border, backgroundColor: theme.componentBG }]}>
+      <View style={[styles.header, { borderBottomColor: theme.border }]}>
+
         <Pressable onPress={handleBack} style={styles.backButton}>
           <MaterialIcons name="chevron-left" size={28} color={theme.primary} />
         </Pressable>

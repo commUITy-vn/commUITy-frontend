@@ -10,3 +10,6 @@ export * from './delete-support-need';
 export * from './add-contribution';
 export * from './apply-volunteer';
 export * from './volunteer-assignments';
+export * from './create-category';
+export * from './update-category';
+export * from './update-category-status';

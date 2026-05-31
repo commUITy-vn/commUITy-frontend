@@ -519,7 +519,8 @@ export default function ModerationScreen() {
   return (
     <View style={[localStyles.container, { backgroundColor: theme.appBG }]}>
       {/* Header */}
-      <View style={[localStyles.headerBlock, { borderBottomColor: theme.border, backgroundColor: theme.componentBG }]}>
+      <View style={[localStyles.headerBlock, { borderBottomColor: theme.border }]}>
+
         <Pressable onPress={handleBack} style={localStyles.backButton}>
           <MaterialIcons name="chevron-left" size={28} color={theme.primary} />
         </Pressable>
@@ -595,7 +596,7 @@ export default function ModerationScreen() {
             <View style={[localStyles.modalContent, { backgroundColor: theme.componentBG, borderColor: theme.border }]}>
               <Text style={[localStyles.modalTitle, { color: theme.text }]}>Reject Support Request</Text>
               <Text style={{ fontSize: 14, color: theme.textSupporting, marginBottom: 16 }}>
-                Provide a reason for rejecting the request: "{supportRequestModal.requestTitle}"
+                Provide a reason for rejecting the request: {"\""}{supportRequestModal.requestTitle}{"\""}
               </Text>
               
               <TextInput

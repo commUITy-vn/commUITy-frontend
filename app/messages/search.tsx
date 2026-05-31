@@ -6,6 +6,8 @@ import { MaterialIcons } from '@expo/vector-icons';
 import { useTheme } from '@/hooks/useTheme';
 import { useConversations } from '@/features/communication/hooks/useConversations';
 import { useAuthStore } from '@/features/auth/stores/useAuthStore';
+import { useQueryClient } from '@tanstack/react-query';
+import { getMessages } from '@/features/communication/api/get-messages';
 
 const formatRelativeTime = (dateStr?: string) => {
   if (!dateStr) return '';
@@ -23,7 +25,7 @@ const formatRelativeTime = (dateStr?: string) => {
     if (diffHours < 24) return `${diffHours}h ago`;
     if (diffDays === 1) return 'Yesterday';
     return `${diffDays}d ago`;
-  } catch (e) {
+  } catch {
     return '';
   }
 };
@@ -31,6 +33,7 @@ const formatRelativeTime = (dateStr?: string) => {
 export default function MessageSearchScreen() {
   const theme = useTheme();
   const router = useRouter();
+  const queryClient = useQueryClient();
   const { user } = useAuthStore();
   const { data: conversations, isLoading } = useConversations();
   const [searchQuery, setSearchQuery] = useState('');
@@ -45,6 +48,10 @@ export default function MessageSearchScreen() {
   }, []);
 
   const handleConversationPress = (id: string) => {
+    queryClient.prefetchQuery({
+      queryKey: ['messages', id],
+      queryFn: () => getMessages(id),
+    });
     router.push({ pathname: '/messages/[id]', params: { id } } as any);
   };
 

@@ -46,9 +46,7 @@ export default function DonationForm() {
 
   const handleConfirmDonation = useCallback(async () => {
     await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-    const amount = isCustomAmount ? Number(customAmount) : selectedAmount;
-    console.log('Donation confirmed:', { amount, paymentMethod: selectedPaymentMethod });
-  }, [isCustomAmount, customAmount, selectedAmount, selectedPaymentMethod]);
+  }, []);
 
   const getDisplayAmount = () => {
     if (isCustomAmount && customAmount) return `${Number(customAmount).toLocaleString('vi-VN')}đ`;

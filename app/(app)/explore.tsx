@@ -1,4 +1,4 @@
-import { View, Text, FlatList, Image, Pressable, StyleSheet, Modal, ActivityIndicator, Platform, ScrollView } from 'react-native';
+import { View, Text, FlatList, Image, Pressable, StyleSheet, Modal, ActivityIndicator, Platform, ScrollView, Linking } from 'react-native';
 import { useState, useRef, useEffect } from 'react';
 import { useTheme } from '@/hooks/useTheme';
 import { useThemeStyles } from '@/hooks/useThemeStyles';
@@ -192,6 +192,103 @@ function ReactionPopup({
           <Text style={{ fontSize: 20 }}>{emoji}</Text>
         </Pressable>
       ))}
+    </View>
+  );
+}
+
+import { usePostMedia } from '@/features/media/hooks/useMedia';
+
+function PostMediaContainer({ postId }: { postId: string }) {
+  const { data: mediaItems, isLoading } = usePostMedia(postId);
+  const theme = useTheme();
+
+  if (isLoading) {
+    return (
+      <View style={{ padding: 12, alignItems: 'center' }}>
+        <ActivityIndicator size="small" color={theme.primary} />
+      </View>
+    );
+  }
+
+  if (!mediaItems || mediaItems.length === 0) return null;
+
+  const images = mediaItems.filter(item => item.fileType === 'IMAGE');
+  const documents = mediaItems.filter(item => item.fileType !== 'IMAGE');
+
+  return (
+    <View style={{ marginTop: 12, gap: 12 }}>
+      {/* Render Images */}
+      {images.length > 0 && (
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={{ gap: 8 }}
+        >
+          {images.map((img, idx) => {
+            let resolvedUrl = img.fileUrl;
+            if (img.fileUrl && !img.fileUrl.startsWith('http://') && !img.fileUrl.startsWith('https://') && !img.fileUrl.startsWith('file://') && !img.fileUrl.startsWith('data:')) {
+              const apiBase = env.API_URL.endsWith('/api') ? env.API_URL.slice(0, -4) : env.API_URL;
+              const cleanUri = img.fileUrl.startsWith('/') ? img.fileUrl : '/' + img.fileUrl;
+              resolvedUrl = `${apiBase}${cleanUri}`;
+            }
+
+            return (
+              <View key={img.mediaId || idx} style={{ borderRadius: 8, borderWidth: 1, borderColor: theme.border, overflow: 'hidden' }}>
+                <Image
+                  source={{ uri: resolvedUrl }}
+                  style={{ width: images.length === 1 ? 300 : 220, height: 160 }}
+                  resizeMode="cover"
+                />
+              </View>
+            );
+          })}
+        </ScrollView>
+      )}
+
+      {/* Render Documents / Other Files */}
+      {documents.length > 0 && (
+        <View style={{ gap: 6 }}>
+          {documents.map((doc, idx) => (
+            <Pressable
+              key={doc.mediaId || idx}
+              onPress={async () => {
+                await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                if (doc.fileUrl) {
+                  Linking.openURL(doc.fileUrl).catch(err => console.error("Couldn't open media URL:", err));
+                }
+              }}
+              style={({ pressed }) => [
+                {
+                  flexDirection: 'row',
+                  alignItems: 'center',
+                  gap: 12,
+                  padding: 10,
+                  backgroundColor: theme.highlightBG,
+                  borderRadius: 8,
+                  borderWidth: 1,
+                  borderColor: theme.border,
+                },
+                pressed && { backgroundColor: theme.border }
+              ]}
+            >
+              <MaterialIcons
+                name={doc.fileType === 'VIDEO' ? 'movie' : doc.fileType === 'AUDIO' ? 'music-note' : 'insert-drive-file'}
+                size={22}
+                color={theme.primary}
+              />
+              <View style={{ flex: 1 }}>
+                <Text style={{ fontSize: 13, color: theme.text, fontWeight: '600' }} numberOfLines={1}>
+                  {doc.fileName}
+                </Text>
+                <Text style={{ fontSize: 11, color: theme.textSupporting }}>
+                  {doc.fileType.toLowerCase()} • {(doc.fileSize / 1024).toFixed(1)} KB
+                </Text>
+              </View>
+              <MaterialIcons name="open-in-new" size={16} color={theme.textSupporting} />
+            </Pressable>
+          ))}
+        </View>
+      )}
     </View>
   );
 }
@@ -555,6 +652,8 @@ const PostCard = ({ post, onAuthorPress }: { post: Post; onAuthorPress?: (author
         </View>
 
         <Text style={[styles.content, { color: theme.text }]}>{post.content}</Text>
+
+        <PostMediaContainer postId={post.id} />
 
         {post.tags.length > 0 && (
           <View style={styles.tagsContainer}>
@@ -1257,6 +1356,40 @@ export default function ExploreScreen() {
   
   const [showCreatePost, setShowCreatePost] = useState(false);
   const [newPostContent, setNewPostContent] = useState('');
+  const [selectedPostMedia, setSelectedPostMedia] = useState<any[]>([]);
+  const [isPostUploading, setIsPostUploading] = useState(false);
+  const postFileInputRef = useRef<HTMLInputElement>(null);
+
+  const handlePostFileChange = async (e: any) => {
+    if (Platform.OS !== 'web') return;
+    const files = e.target.files;
+    if (!files || files.length === 0) return;
+    
+    await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    const newItems: any[] = [];
+    
+    for (let i = 0; i < files.length; i++) {
+      const file = files[i];
+      const localUrl = URL.createObjectURL(file);
+      
+      let fileType = 'DOCUMENT';
+      if (file.type.startsWith('image/')) fileType = 'IMAGE';
+      else if (file.type.startsWith('video/')) fileType = 'VIDEO';
+      else if (file.type.startsWith('audio/')) fileType = 'AUDIO';
+      
+      newItems.push({
+        fileName: file.name,
+        fileUrl: localUrl,
+        fileType,
+        mimeType: file.type || 'application/octet-stream',
+        fileSize: file.size,
+        file,
+      });
+    }
+    
+    setSelectedPostMedia(prev => [...prev, ...newItems].slice(0, 3));
+    if (postFileInputRef.current) postFileInputRef.current.value = '';
+  };
 
   // Profile bottom sheet states
   const [selectedAuthorId, setSelectedAuthorId] = useState<string | null>(null);
@@ -1338,18 +1471,47 @@ export default function ExploreScreen() {
   };
 
   const handleCreatePost = async () => {
-    if (!newPostContent.trim()) return;
+    if (!newPostContent.trim() && selectedPostMedia.length === 0) return;
     await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    setIsPostUploading(true);
     try {
-      await createPost({
+      const postRes: any = await createPost({
         content: newPostContent,
         visibility: 'PUBLIC',
       });
+      const createdPostId = postRes?.id || postRes?.data?.id;
+      if (!createdPostId) {
+        throw new Error("Created post does not have a valid ID");
+      }
+
+      if (selectedPostMedia.length > 0) {
+        for (const item of selectedPostMedia) {
+          const mediaRes = await api.post<any>('/api/v1/media', {
+            fileName: item.fileName,
+            fileUrl: item.fileUrl,
+            fileType: item.fileType,
+            mimeType: item.mimeType,
+            fileSize: item.fileSize,
+            altText: item.fileName,
+            isPublic: true,
+          });
+          const mediaId = mediaRes?.id || mediaRes?.data?.id;
+          if (mediaId) {
+            await api.post<any>(`/api/v1/posts/${createdPostId}/media`, {
+              mediaId,
+            });
+          }
+        }
+      }
+
       setNewPostContent('');
+      setSelectedPostMedia([]);
       setShowCreatePost(false);
       await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     } catch (err) {
-      console.error('Failed to create post:', err);
+      console.error('Failed to create post with media:', err);
+    } finally {
+      setIsPostUploading(false);
     }
   };
 
@@ -1580,10 +1742,10 @@ export default function ExploreScreen() {
             </Text>
             <Pressable
               onPress={handleCreatePost}
-              disabled={isCreating || !newPostContent.trim()}
+              disabled={isCreating || isPostUploading || !newPostContent.trim()}
               style={({ pressed }) => [
                 {
-                  opacity: (isCreating || !newPostContent.trim()) ? 0.5 : 1,
+                  opacity: (isCreating || isPostUploading || !newPostContent.trim()) ? 0.5 : 1,
                 },
                 pressed && { opacity: 0.7 },
               ]}
@@ -1612,6 +1774,72 @@ export default function ExploreScreen() {
                 color: theme.text,
               }}
             />
+
+            {/* Post Media Attachment Previews */}
+            {selectedPostMedia.length > 0 && (
+              <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 12, marginTop: 12 }}>
+                {selectedPostMedia.map((media, idx) => (
+                  <View key={idx} style={{ position: 'relative', width: 80, height: 80, borderRadius: 8, borderWidth: 1, borderColor: theme.border, overflow: 'hidden' }}>
+                    {media.fileType === 'IMAGE' ? (
+                      <Image source={{ uri: media.fileUrl }} style={{ width: '100%', height: '100%' }} />
+                    ) : (
+                      <View style={{ flex: 1, backgroundColor: theme.highlightBG, justifyContent: 'center', alignItems: 'center', padding: 8 }}>
+                        <MaterialIcons name={media.fileType === 'VIDEO' ? 'movie' : media.fileType === 'AUDIO' ? 'music-note' : 'insert-drive-file'} size={32} color={theme.primary} />
+                        <Text style={{ fontSize: 9, color: theme.text, textAlign: 'center', marginTop: 4 }} numberOfLines={1}>{media.fileName}</Text>
+                      </View>
+                    )}
+                    <Pressable
+                      onPress={() => setSelectedPostMedia(prev => prev.filter((_, i) => i !== idx))}
+                      style={{ position: 'absolute', top: 4, right: 4, backgroundColor: 'rgba(0,0,0,0.6)', borderRadius: 12, width: 20, height: 20, justifyContent: 'center', alignItems: 'center' }}
+                    >
+                      <MaterialIcons name="close" size={14} color="#FFF" />
+                    </Pressable>
+                  </View>
+                ))}
+              </View>
+            )}
+
+            {/* Hidden file input (web only) */}
+            {Platform.OS === 'web' && (
+              <input
+                type="file"
+                ref={postFileInputRef}
+                style={{ display: 'none' }}
+                onChange={handlePostFileChange}
+                multiple
+              />
+            )}
+
+            {/* Attachment Action Bar */}
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, borderTopWidth: 1, borderTopColor: theme.border, paddingTop: 16, marginTop: 12 }}>
+              <Pressable
+                onPress={() => {
+                  Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                  if (Platform.OS === 'web') postFileInputRef.current?.click();
+                }}
+                disabled={isPostUploading || selectedPostMedia.length >= 3}
+                style={({ pressed }) => [
+                  {
+                    flexDirection: 'row',
+                    alignItems: 'center',
+                    gap: 8,
+                    paddingVertical: 8,
+                    paddingHorizontal: 16,
+                    borderRadius: 20,
+                    backgroundColor: theme.highlightBG,
+                    borderWidth: 1,
+                    borderColor: theme.border,
+                    opacity: selectedPostMedia.length >= 3 ? 0.5 : 1,
+                  },
+                  pressed && { backgroundColor: theme.border }
+                ]}
+              >
+                <MaterialIcons name="attach-file" size={20} color={theme.primary} />
+                <Text style={{ color: theme.text, fontWeight: '600', fontSize: 14 }}>
+                  Attach Media ({selectedPostMedia.length}/3)
+                </Text>
+              </Pressable>
+            </View>
           </View>
         </View>
       </Modal>

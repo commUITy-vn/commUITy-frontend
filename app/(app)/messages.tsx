@@ -1,11 +1,13 @@
 import { useState } from 'react';
-import { View, Text, FlatList, Pressable, StyleSheet, TextInput, Platform, ActivityIndicator } from 'react-native';
+import { View, Text, FlatList, Pressable, StyleSheet, ActivityIndicator } from 'react-native';
 import * as Haptics from 'expo-haptics';
 import { useTheme } from '@/hooks/useTheme';
 import { useRouter } from 'expo-router';
 import { MaterialIcons } from '@expo/vector-icons';
 import { useConversations } from '@/features/communication/hooks/useConversations';
 import { useAuthStore } from '@/features/auth/stores/useAuthStore';
+import { useQueryClient } from '@tanstack/react-query';
+import { getMessages } from '@/features/communication/api/get-messages';
 
 type Conversation = {
   id: string;
@@ -32,7 +34,7 @@ const formatRelativeTime = (dateStr?: string) => {
     if (diffHours < 24) return `${diffHours}h ago`;
     if (diffDays === 1) return 'Yesterday';
     return `${diffDays}d ago`;
-  } catch (e) {
+  } catch {
     return '';
   }
 };
@@ -188,10 +190,15 @@ const ConversationRow = ({
 export default function MessagesScreen() {
   const theme = useTheme();
   const router = useRouter();
+  const queryClient = useQueryClient();
   const { user } = useAuthStore();
   const { data: conversations, isLoading } = useConversations();
 
   const handleConversationPress = (id: string) => {
+    queryClient.prefetchQuery({
+      queryKey: ['messages', id],
+      queryFn: () => getMessages(id),
+    });
     router.push({ pathname: '/messages/[id]', params: { id } } as any);
   };
 

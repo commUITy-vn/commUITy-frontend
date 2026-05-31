@@ -5,3 +5,5 @@ export * from './get-messages';
 export * from './send-message';
 export * from './get-notifications';
 export * from './read-notification';
+export * from './read-all-notifications';
+export * from './mark-message-read';

@@ -95,9 +95,8 @@ export const RegisterForm: React.FC<RegisterFormProps> = ({ onNavigateToLogin })
         }
     };
 
-    const handleSocialLogin = (provider: string) => {
+    const handleSocialLogin = (_provider: string) => {
         // TODO: Implement OAuth flow
-        console.log(`Register with ${provider}`);
     };
 
     return (

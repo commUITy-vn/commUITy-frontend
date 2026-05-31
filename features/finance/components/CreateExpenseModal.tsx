@@ -50,8 +50,6 @@ export const CreateExpenseModal: React.FC<Props> = ({ visible, onClose }) => {
   });
 
   const submitExpense = () => {
-    // Dummy submit - in real app would call API
-    console.log('Submitting expense', { amount, category, description });
     onClose();
   };
 
