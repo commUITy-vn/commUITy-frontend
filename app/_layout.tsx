@@ -28,27 +28,42 @@ export default function RootLayout() {
     const systemScheme = useColorScheme() ?? "light"
     const router = useRouter()
     const segments = useSegments()
-    const { isAuthenticated, isLoading, restoreSession } = useAuthStore()
+    const { isAuthenticated, restoreSession } = useAuthStore()
     const { themeMode, loadThemeMode } = useThemeStore()
 
     const activeScheme = themeMode === 'system' ? systemScheme : themeMode
     const theme = Colors[activeScheme ?? "light"]
     const [hasCompletedOnboarding, setHasCompletedOnboarding] = useState<boolean | null>(null)
+    const [isInitialLoading, setIsInitialLoading] = useState(true)
 
-    // Restore session and onboarding completed state on mount
+    // Restore session and theme on mount
     useEffect(() => {
-        restoreSession()
-        loadThemeMode()
-        const checkOnboarding = async () => {
+        const init = async () => {
+            await restoreSession()
+            await loadThemeMode()
             const val = await storage.getItemAsync("has_completed_onboarding")
             setHasCompletedOnboarding(val === "true")
+            setIsInitialLoading(false)
+        }
+        init()
+    }, [loadThemeMode])
+
+    // Load onboarding completed state dynamically whenever segments change (user navigates)
+    useEffect(() => {
+        if (isInitialLoading) return
+        const checkOnboarding = async () => {
+            const val = await storage.getItemAsync("has_completed_onboarding")
+            const completed = val === "true"
+            if (completed !== hasCompletedOnboarding) {
+                setHasCompletedOnboarding(completed)
+            }
         }
         checkOnboarding()
-    }, [loadThemeMode])
+    }, [segments, isInitialLoading, hasCompletedOnboarding])
 
     // Handle auth guard
     useEffect(() => {
-        if (isLoading || hasCompletedOnboarding === null) return
+        if (isInitialLoading || hasCompletedOnboarding === null) return
 
         const inAuthGroup = segments[0] === "(auth)"
         const inProtectedGroup = segments[0] === "(app)"
@@ -65,9 +80,9 @@ export default function RootLayout() {
         } else if (isAuthenticated && inAuthGroup) {
             router.replace("/(app)" as any)
         }
-    }, [isAuthenticated, isLoading, hasCompletedOnboarding, segments])
+    }, [isAuthenticated, isInitialLoading, hasCompletedOnboarding, segments])
 
-    if (isLoading || hasCompletedOnboarding === null) {
+    if (isInitialLoading || hasCompletedOnboarding === null) {
         return (
             <View
                 style={{
@@ -137,6 +152,20 @@ export default function RootLayout() {
                             />
                             <Stack.Screen
                                 name="request/[id]"
+                                options={{
+                                    headerShown: false,
+                                    animation: Platform.select({
+                                        ios: "slide_from_right",
+                                        android: "slide_from_right",
+                                        default: "slide_from_right",
+                                    }),
+                                    contentStyle: {
+                                        backgroundColor: theme.appBG,
+                                    },
+                                }}
+                            />
+                            <Stack.Screen
+                                name="location/[id]"
                                 options={{
                                     headerShown: false,
                                     animation: Platform.select({
@@ -235,6 +264,20 @@ export default function RootLayout() {
                             />
                             <Stack.Screen
                                 name="profile-edit"
+                                options={{
+                                    headerShown: false,
+                                    animation: Platform.select({
+                                        ios: "slide_from_right",
+                                        android: "slide_from_right",
+                                        default: "slide_from_right",
+                                    }),
+                                    contentStyle: {
+                                        backgroundColor: theme.appBG,
+                                    },
+                                }}
+                            />
+                            <Stack.Screen
+                                name="my-reports"
                                 options={{
                                     headerShown: false,
                                     animation: Platform.select({

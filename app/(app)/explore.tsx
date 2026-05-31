@@ -7,7 +7,8 @@ import MaterialIcons from '@expo/vector-icons/MaterialIcons';
 import * as Haptics from 'expo-haptics';
 import { BorderRadius, Spacing } from '@/constants/theme';
 import { usePosts, useCreatePost, usePostComments, useCreatePostComment } from '@/features/community/hooks/usePosts';
-import { TextInput as TextInputUI, BottomSheet, Button } from '@/components/ui';
+import { TextInput as TextInputUI, BottomSheet, Button, ConfirmModal } from '@/components/ui';
+import { ReportModal, ReportTargetType } from '@/features/reports';
 import { getUser } from '@/features/users/api/get-user';
 import { createPrivateConversation } from '@/features/communication/api/create-private-conversation';
 import { api } from '@/lib/api-client';
@@ -204,6 +205,14 @@ const PostCard = ({ post, onAuthorPress }: { post: Post; onAuthorPress?: (author
   const [likeCount, setLikeCount] = useState(post.likes);
   const [showComments, setShowComments] = useState(false);
   const [commentText, setCommentText] = useState('');
+  const [isMenuSheetVisible, setIsMenuSheetVisible] = useState(false);
+  const [isReportModalVisible, setIsReportModalVisible] = useState(false);
+  const [alertModal, setAlertModal] = useState<{ visible: boolean; title: string; message: string }>({
+    visible: false,
+    title: '',
+    message: '',
+  });
+  const [isReportUserModalVisible, setIsReportUserModalVisible] = useState(false);
 
   // Local profile bottom sheet states inside Comments modal
   const [selectedAuthorId, setSelectedAuthorId] = useState<string | null>(null);
@@ -529,6 +538,20 @@ const PostCard = ({ post, onAuthorPress }: { post: Post; onAuthorPress?: (author
               <Text style={[styles.timestamp, { color: theme.textSupporting }]}>{post.timestamp}</Text>
             </View>
           </Pressable>
+          {post.authorId !== user?.id && (
+            <Pressable
+              onPress={async () => {
+                await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                setIsMenuSheetVisible(true);
+              }}
+              style={({ pressed }) => [
+                { padding: 8, borderRadius: 8 },
+                pressed && { backgroundColor: theme.highlightBG }
+              ]}
+            >
+              <MaterialIcons name="more-vert" size={22} color={theme.textSupporting} />
+            </Pressable>
+          )}
         </View>
 
         <Text style={[styles.content, { color: theme.text }]}>{post.content}</Text>
@@ -571,6 +594,67 @@ const PostCard = ({ post, onAuthorPress }: { post: Post; onAuthorPress?: (author
           </Pressable>
         </View>
       </View>
+
+      {/* Options Menu BottomSheet */}
+      <BottomSheet
+        isVisible={isMenuSheetVisible}
+        onClose={() => setIsMenuSheetVisible(false)}
+        title="Options"
+        options={[
+          ...(!post.authorId || post.authorId !== user?.id ? [{
+            key: 'report',
+            label: 'Report Post',
+            icon: 'flag' as any,
+            onPress: () => {
+              setIsMenuSheetVisible(false);
+              // Defer opening of the next sheet to prevent React Native modal conflict
+              setTimeout(() => {
+                setIsReportModalVisible(true);
+              }, 400);
+            },
+          }] : []),
+        ]}
+      />
+
+      <ReportModal
+        visible={isReportModalVisible}
+        onClose={() => setIsReportModalVisible(false)}
+        targetType={ReportTargetType.POST}
+        targetId={post.id}
+        targetName={post.content}
+        onSuccessSubmit={() => {
+          setAlertModal({
+            visible: true,
+            title: 'Report Submitted',
+            message: 'Your report has been submitted to administrators for review.',
+          });
+        }}
+      />
+
+      <ConfirmModal
+        visible={alertModal.visible}
+        title={alertModal.title}
+        message={alertModal.message}
+        confirmText="OK"
+        cancelText=""
+        onConfirm={() => setAlertModal(prev => ({ ...prev, visible: false }))}
+        onCancel={() => setAlertModal(prev => ({ ...prev, visible: false }))}
+      />
+
+      <ReportModal
+        visible={isReportUserModalVisible}
+        onClose={() => setIsReportUserModalVisible(false)}
+        targetType={ReportTargetType.USER}
+        targetId={selectedAuthorId || ''}
+        targetName={profileData?.fullName || 'User'}
+        onSuccessSubmit={() => {
+          setAlertModal({
+            visible: true,
+            title: 'Report Submitted',
+            message: 'Your report has been submitted to administrators for review.',
+          });
+        }}
+      />
 
       {/* Comments Modal - Expensify style */}
       <Modal
@@ -1136,6 +1220,22 @@ const PostCard = ({ post, onAuthorPress }: { post: Post; onAuthorPress?: (author
                   style={{ width: '100%', borderRadius: 100 }}
                   isLoading={chatLoading}
                 />
+
+                {/* Report Profile Button */}
+                {selectedAuthorId !== user?.id && (
+                  <Button
+                    onPress={async () => {
+                      await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                      setIsProfileVisible(false);
+                      setTimeout(() => {
+                        setIsReportUserModalVisible(true);
+                      }, 400);
+                    }}
+                    style={{ width: '100%', borderRadius: 100, marginTop: 12, backgroundColor: theme.danger + '15' }}
+                  >
+                    <Text style={{ color: theme.danger, fontWeight: 'bold', fontSize: 16 }}>Report Profile</Text>
+                  </Button>
+                )}
               </View>
             ) : (
               <View style={{ padding: 40, justifyContent: 'center', alignItems: 'center' }}>
@@ -1164,6 +1264,13 @@ export default function ExploreScreen() {
   const [profileData, setProfileData] = useState<any>(null);
   const [isProfileLoading, setIsProfileLoading] = useState(false);
   const [chatLoading, setChatLoading] = useState(false);
+  const { user } = useAuthStore();
+  const [isReportUserModalVisible, setIsReportUserModalVisible] = useState(false);
+  const [alertModal, setAlertModal] = useState<{ visible: boolean; title: string; message: string }>({
+    visible: false,
+    title: '',
+    message: '',
+  });
 
   const handleAuthorPress = async (authorId: string, customAuthorName?: string) => {
     setSelectedAuthorId(authorId);
@@ -1416,6 +1523,22 @@ export default function ExploreScreen() {
               onPress={handleDirectMessage}
               style={{ width: '100%', borderRadius: 100 }}
             />
+
+            {/* Report Profile Button */}
+            {selectedAuthorId !== user?.id && (
+              <Button
+                onPress={async () => {
+                  await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                  setIsProfileVisible(false);
+                  setTimeout(() => {
+                    setIsReportUserModalVisible(true);
+                  }, 400);
+                }}
+                style={{ width: '100%', borderRadius: 100, marginTop: 12, backgroundColor: theme.danger + '15' }}
+              >
+                <Text style={{ color: theme.danger, fontWeight: 'bold', fontSize: 16 }}>Report Profile</Text>
+              </Button>
+            )}
           </View>
         ) : (
           <View style={{ padding: 40, justifyContent: 'center', alignItems: 'center' }}>
@@ -1492,6 +1615,31 @@ export default function ExploreScreen() {
           </View>
         </View>
       </Modal>
+
+      <ReportModal
+        visible={isReportUserModalVisible}
+        onClose={() => setIsReportUserModalVisible(false)}
+        targetType={ReportTargetType.USER}
+        targetId={selectedAuthorId || ''}
+        targetName={profileData?.fullName || 'User'}
+        onSuccessSubmit={() => {
+          setAlertModal({
+            visible: true,
+            title: 'Report Submitted',
+            message: 'Your report has been submitted to administrators for review.',
+          });
+        }}
+      />
+
+      <ConfirmModal
+        visible={alertModal.visible}
+        title={alertModal.title}
+        message={alertModal.message}
+        confirmText="OK"
+        cancelText=""
+        onConfirm={() => setAlertModal(prev => ({ ...prev, visible: false }))}
+        onCancel={() => setAlertModal(prev => ({ ...prev, visible: false }))}
+      />
     </View>
   );
 }

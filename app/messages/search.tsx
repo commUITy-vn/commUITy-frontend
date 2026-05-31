@@ -1,0 +1,223 @@
+import React, { useState, useRef, useEffect } from 'react';
+import { View, Text, FlatList, Pressable, StyleSheet, TextInput, Platform, ActivityIndicator } from 'react-native';
+import { useRouter } from 'expo-router';
+import * as Haptics from 'expo-haptics';
+import { MaterialIcons } from '@expo/vector-icons';
+import { useTheme } from '@/hooks/useTheme';
+import { useConversations } from '@/features/communication/hooks/useConversations';
+import { useAuthStore } from '@/features/auth/stores/useAuthStore';
+
+const formatRelativeTime = (dateStr?: string) => {
+  if (!dateStr) return '';
+  try {
+    const date = new Date(dateStr);
+    const now = new Date();
+    const diffMs = now.getTime() - date.getTime();
+    const diffSecs = Math.floor(diffMs / 1000);
+    const diffMins = Math.floor(diffSecs / 60);
+    const diffHours = Math.floor(diffMins / 60);
+    const diffDays = Math.floor(diffHours / 24);
+
+    if (diffSecs < 60) return 'Just now';
+    if (diffMins < 60) return `${diffMins}m ago`;
+    if (diffHours < 24) return `${diffHours}h ago`;
+    if (diffDays === 1) return 'Yesterday';
+    return `${diffDays}d ago`;
+  } catch (e) {
+    return '';
+  }
+};
+
+export default function MessageSearchScreen() {
+  const theme = useTheme();
+  const router = useRouter();
+  const { user } = useAuthStore();
+  const { data: conversations, isLoading } = useConversations();
+  const [searchQuery, setSearchQuery] = useState('');
+  const inputRef = useRef<TextInput>(null);
+
+  // Delayed autofocus to prevent transition lag/killing on Web (as mandated in CLAUDE.md)
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      inputRef.current?.focus();
+    }, 300);
+    return () => clearTimeout(timer);
+  }, []);
+
+  const handleConversationPress = (id: string) => {
+    router.push({ pathname: '/messages/[id]', params: { id } } as any);
+  };
+
+  const displayConversations = conversations && Array.isArray(conversations) && conversations.length > 0
+    ? conversations.map((c: any) => {
+        const otherMember = c.members?.find((m: any) => m.userId !== user?.id);
+        const name = otherMember?.fullName || 'User';
+
+        let lastMessage = c.lastMessageContent || 'No messages yet';
+        if (c.lastMessageContent) {
+          if (c.lastMessageContent.startsWith('[SHARED_ITEM:SUPPORT:')) {
+            lastMessage = 'Shared a support request';
+          } else if (c.lastMessageContent.startsWith('[SHARED_ITEM:LOCATION:')) {
+            lastMessage = 'Shared a location hub';
+          } else if (c.lastMessageContent.startsWith('[SHARED_ITEM:FUND:')) {
+            lastMessage = 'Shared a community fund';
+          } else if (c.lastMessageContent.startsWith('[SYSTEM:')) {
+            const systemMatch = c.lastMessageContent.match(/^\[SYSTEM:[^\]]*\]\s*(.*)$/);
+            lastMessage = systemMatch ? systemMatch[1] : c.lastMessageContent;
+          }
+        }
+
+        return {
+          id: c.id || String(Math.random()),
+          name,
+          avatarLetter: name.charAt(0).toUpperCase(),
+          lastMessage,
+          timestamp: formatRelativeTime(c.lastMessageCreatedAt) || formatRelativeTime(c.createdAt) || 'Just now',
+          unreadCount: c.unreadCount || 0,
+        };
+      })
+    : [];
+
+  const filteredConversations = displayConversations.filter(c => 
+    c.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+    c.lastMessage.toLowerCase().includes(searchQuery.toLowerCase())
+  );
+
+  return (
+    <View style={{ flex: 1, backgroundColor: theme.appBG }}>
+      {/* Sleek Search Header */}
+      <View
+        style={{
+          flexDirection: 'row',
+          alignItems: 'center',
+          paddingHorizontal: 12,
+          paddingVertical: 10,
+          borderBottomWidth: StyleSheet.hairlineWidth,
+          borderBottomColor: theme.border,
+          backgroundColor: theme.appBG,
+          gap: 8,
+        }}
+      >
+        <Pressable
+          onPress={async () => {
+            await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+            router.back();
+          }}
+          style={({ pressed }) => ({
+            padding: 8,
+            borderRadius: 8,
+            backgroundColor: pressed ? theme.highlightBG : 'transparent',
+          })}
+        >
+          <MaterialIcons name="arrow-back" size={24} color={theme.text} />
+        </Pressable>
+
+        <View
+          style={{
+            flex: 1,
+            flexDirection: 'row',
+            alignItems: 'center',
+            backgroundColor: theme.highlightBG,
+            borderRadius: 8,
+            paddingHorizontal: 10,
+            height: 40,
+            borderWidth: 1,
+            borderColor: theme.border,
+          }}
+        >
+          <MaterialIcons name="search" size={20} color={theme.textSupporting} style={{ marginRight: 6 }} />
+          <TextInput
+            ref={inputRef}
+            placeholder="Search conversations or messages..."
+            placeholderTextColor={theme.placeholderText || theme.textSupporting}
+            value={searchQuery}
+            onChangeText={setSearchQuery}
+            style={{
+              flex: 1,
+              color: theme.text,
+              fontSize: 15,
+              padding: 0,
+              ...(Platform.OS === 'web' ? { outlineStyle: 'none' } : {}),
+            } as any}
+          />
+          {searchQuery.length > 0 && (
+            <Pressable onPress={() => setSearchQuery('')}>
+              <MaterialIcons name="close" size={18} color={theme.textSupporting} />
+            </Pressable>
+          )}
+        </View>
+      </View>
+
+      {/* Results List */}
+      {isLoading ? (
+        <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
+          <ActivityIndicator size="large" color={theme.primary} />
+        </View>
+      ) : (
+        <FlatList
+          data={searchQuery.trim() ? filteredConversations : []}
+          keyExtractor={(item) => item.id}
+          renderItem={({ item }) => {
+            return (
+              <Pressable
+                onPress={async () => {
+                  await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                  handleConversationPress(item.id);
+                }}
+                style={({ pressed }) => ({
+                  flexDirection: 'row',
+                  alignItems: 'center',
+                  paddingVertical: 12,
+                  paddingHorizontal: 16,
+                  backgroundColor: pressed ? theme.activeComponentBG : 'transparent',
+                })}
+              >
+                {/* Avatar */}
+                <View style={{ marginRight: 12 }}>
+                  <View
+                    style={{
+                      width: 40,
+                      height: 40,
+                      borderRadius: 20,
+                      backgroundColor: theme.border,
+                      justifyContent: 'center',
+                      alignItems: 'center',
+                    }}
+                  >
+                    <Text style={{ color: theme.textSupporting, fontSize: 15, fontWeight: '700' }}>
+                      {item.avatarLetter}
+                    </Text>
+                  </View>
+                </View>
+
+                {/* Content */}
+                <View style={{ flex: 1, justifyContent: 'center' }}>
+                  <View style={{ flexDirection: 'row', alignItems: 'baseline', marginBottom: 4 }}>
+                    <Text style={{ color: theme.text, fontSize: 15, fontWeight: '600', flex: 1 }} numberOfLines={1}>
+                      {item.name}
+                    </Text>
+                    <Text style={{ color: theme.textSupporting, fontSize: 11, marginLeft: 8 }}>
+                      {item.timestamp}
+                    </Text>
+                  </View>
+                  <Text style={{ color: theme.textSupporting, fontSize: 13 }} numberOfLines={1}>
+                    {item.lastMessage}
+                  </Text>
+                </View>
+              </Pressable>
+            );
+          }}
+          contentContainerStyle={{ paddingBottom: 16 }}
+          showsVerticalScrollIndicator={false}
+          ListEmptyComponent={() => (
+            <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', marginTop: 80, paddingHorizontal: 20 }}>
+              <Text style={{ color: theme.textSupporting, textAlign: 'center', fontSize: 14 }}>
+                {searchQuery.trim() ? "No matching conversations found" : "Type above to search your direct messages and groups"}
+              </Text>
+            </View>
+          )}
+        />
+      )}
+    </View>
+  );
+}

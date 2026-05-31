@@ -12,7 +12,7 @@ import {
     TextInput as RNTextInput,
     Linking,
 } from "react-native"
-import { useRouter } from "expo-router"
+import { useRouter, useFocusEffect } from "expo-router"
 import { useTheme } from "@/hooks/useTheme"
 import { useThemeStyles } from "@/hooks/useThemeStyles"
 import { useSupportRequests } from "@/features/support/hooks/useSupportRequests"
@@ -81,9 +81,17 @@ export default function HomeScreen() {
     const isStaff = user?.role === UserRole.ADMIN || user?.role === UserRole.COLLABORATOR
 
     // Query all three datasets
-    const { data: requests, isLoading: isRequestsLoading, isError: isRequestsError } = useSupportRequests()
-    const { data: funds, isLoading: isFundsLoading, isError: isFundsError } = useCommunityFunds()
-    const { data: locations, isLoading: isLocationsLoading, isError: isLocationsError } = useSupportLocations()
+    const { data: requests, isLoading: isRequestsLoading, isError: isRequestsError, refetch: refetchRequests } = useSupportRequests()
+    const { data: funds, isLoading: isFundsLoading, isError: isFundsError, refetch: refetchFunds } = useCommunityFunds()
+    const { data: locations, isLoading: isLocationsLoading, isError: isLocationsError, refetch: refetchLocations } = useSupportLocations()
+
+    useFocusEffect(
+        useCallback(() => {
+            refetchRequests()
+            refetchFunds()
+            refetchLocations()
+        }, [refetchRequests, refetchFunds, refetchLocations])
+    )
 
     const isLoading = isRequestsLoading || isFundsLoading || isLocationsLoading
     const isError = isRequestsError || isFundsError || isLocationsError
@@ -411,7 +419,7 @@ export default function HomeScreen() {
         return (
             <Pressable
                 key={item.id}
-                onPress={() => handleOpenMap(item.latitude, item.longitude, item.name || item.title)}
+                onPress={() => router.push(`/location/${item.id}`)}
                 style={({ pressed }) => [
                     cardStyles.card,
                     { 
@@ -465,7 +473,13 @@ export default function HomeScreen() {
                 </View>
 
                 {/* Interactive Leaflet static mini preview map with scrollWheelZoom strictly FALSE */}
-                <View style={[cardStyles.miniMapContainer, { borderTopWidth: 1, borderTopColor: theme.border, backgroundColor: theme.highlightBG }]}>
+                <Pressable
+                    onPress={async (e) => {
+                        e.stopPropagation();
+                        await handleOpenMap(item.latitude, item.longitude, item.name || item.title);
+                    }}
+                    style={[cardStyles.miniMapContainer, { borderTopWidth: 1, borderTopColor: theme.border, backgroundColor: theme.highlightBG }]}
+                >
                     {Platform.OS === 'web' ? (
                         <iframe
                             srcDoc={getMiniMapHtml(item.latitude, item.longitude)}
@@ -484,7 +498,7 @@ export default function HomeScreen() {
                             <Text style={{ color: theme.textSupporting, fontSize: 12 }}>Map preview unavailable</Text>
                         </View>
                     )}
-                </View>
+                </Pressable>
             </Pressable>
         )
     }

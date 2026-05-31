@@ -190,7 +190,6 @@ export default function MessagesScreen() {
   const router = useRouter();
   const { user } = useAuthStore();
   const { data: conversations, isLoading } = useConversations();
-  const [searchQuery, setSearchQuery] = useState('');
 
   const handleConversationPress = (id: string) => {
     router.push({ pathname: '/messages/[id]', params: { id } } as any);
@@ -199,22 +198,32 @@ export default function MessagesScreen() {
   const displayConversations = conversations && Array.isArray(conversations) && conversations.length > 0
     ? conversations.map((c: any) => {
         const otherMember = c.members?.find((m: any) => m.userId !== user?.id);
-        const name = otherMember?.fullName || 'Người dùng';
+        const name = otherMember?.fullName || 'User';
+
+        let lastMessage = c.lastMessageContent || 'No messages yet';
+        if (c.lastMessageContent) {
+          if (c.lastMessageContent.startsWith('[SHARED_ITEM:SUPPORT:')) {
+            lastMessage = 'Shared a support request';
+          } else if (c.lastMessageContent.startsWith('[SHARED_ITEM:LOCATION:')) {
+            lastMessage = 'Shared a location hub';
+          } else if (c.lastMessageContent.startsWith('[SHARED_ITEM:FUND:')) {
+            lastMessage = 'Shared a community fund';
+          } else if (c.lastMessageContent.startsWith('[SYSTEM:')) {
+            const systemMatch = c.lastMessageContent.match(/^\[SYSTEM:[^\]]*\]\s*(.*)$/);
+            lastMessage = systemMatch ? systemMatch[1] : c.lastMessageContent;
+          }
+        }
+
         return {
           id: c.id || String(Math.random()),
           name,
           avatarLetter: name.charAt(0).toUpperCase(),
-          lastMessage: c.lastMessageContent || 'Chưa có tin nhắn',
-          timestamp: formatRelativeTime(c.lastMessageCreatedAt) || formatRelativeTime(c.createdAt) || 'Vừa xong',
+          lastMessage,
+          timestamp: formatRelativeTime(c.lastMessageCreatedAt) || formatRelativeTime(c.createdAt) || 'Just now',
           unreadCount: c.unreadCount || 0,
         };
       })
     : CONVERSATIONS;
-
-  const filteredConversations = displayConversations.filter(c => 
-    c.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    c.lastMessage.toLowerCase().includes(searchQuery.toLowerCase())
-  );
 
   return (
     <View style={{ flex: 1, backgroundColor: theme.appBG }}>
@@ -235,49 +244,19 @@ export default function MessagesScreen() {
         <Text style={{ color: theme.text, fontSize: 28, fontWeight: '700' }}>
           Inbox
         </Text>
-      </View>
-
-      {/* Search Bar */}
-      <View
-        style={{
-          paddingHorizontal: 16,
-          paddingBottom: 12,
-          paddingTop: 4,
-          backgroundColor: theme.appBG,
-        }}
-      >
-        <View
-          style={{
-            flexDirection: 'row',
-            alignItems: 'center',
-            backgroundColor: theme.highlightBG,
-            borderRadius: 8,
-            paddingHorizontal: 10,
-            height: 40,
-            borderWidth: 1,
-            borderColor: theme.border,
+        <Pressable
+          onPress={async () => {
+            await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+            router.push('/messages/search');
           }}
+          style={({ pressed }) => ({
+            padding: 8,
+            borderRadius: 8,
+            backgroundColor: pressed ? theme.highlightBG : 'transparent',
+          })}
         >
-          <MaterialIcons name="search" size={20} color={theme.textSupporting} style={{ marginRight: 6 }} />
-          <TextInput
-            placeholder="Search conversations..."
-            placeholderTextColor={theme.placeholderText || theme.textSupporting}
-            value={searchQuery}
-            onChangeText={setSearchQuery}
-            style={{
-              flex: 1,
-              color: theme.text,
-              fontSize: 15,
-              padding: 0,
-              ...(Platform.OS === 'web' ? { outlineStyle: 'none' } : {}),
-            } as any}
-          />
-          {searchQuery.length > 0 && (
-            <Pressable onPress={() => setSearchQuery('')}>
-              <MaterialIcons name="close" size={18} color={theme.textSupporting} />
-            </Pressable>
-          )}
-        </View>
+          <MaterialIcons name="search" size={24} color={theme.text} />
+        </Pressable>
       </View>
 
       {/* Conversation List */}
@@ -287,7 +266,7 @@ export default function MessagesScreen() {
         </View>
       ) : (
         <FlatList
-          data={filteredConversations}
+          data={displayConversations}
           keyExtractor={(item) => item.id}
           renderItem={({ item }) => (
             <ConversationRow
@@ -300,7 +279,7 @@ export default function MessagesScreen() {
           ListEmptyComponent={() => (
             <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', marginTop: 40, paddingHorizontal: 20 }}>
               <Text style={{ color: theme.textSupporting, textAlign: 'center' }}>
-                {searchQuery ? "No matching conversations found" : "No conversations yet"}
+                No conversations yet
               </Text>
             </View>
           )}

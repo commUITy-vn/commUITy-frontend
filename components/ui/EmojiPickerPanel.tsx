@@ -138,14 +138,15 @@ export default function EmojiPickerPanel({ onEmojiSelected, onClose }: EmojiPick
                 onEmojiSelected(emoji.code);
                 onClose();
               }}
-              style={({ pressed }) => [
+              style={({ pressed, hovered }) => [
                 {
                   width: EMOJI_CELL_SIZE,
                   height: EMOJI_CELL_SIZE,
                   justifyContent: 'center',
                   alignItems: 'center',
                   borderRadius: 6,
-                  backgroundColor: pressed ? theme.highlightBG : 'transparent',
+                  backgroundColor: (pressed || hovered) ? theme.highlightBG : 'transparent',
+                  cursor: Platform.OS === 'web' ? 'pointer' as any : undefined,
                 },
               ]}
             >
@@ -180,6 +181,9 @@ export default function EmojiPickerPanel({ onEmojiSelected, onClose }: EmojiPick
         borderWidth: 1,
         borderColor: theme.border,
         overflow: 'hidden',
+        width: '100%',
+        maxWidth: 340,
+        alignSelf: 'center',
         // shadow
         shadowColor: theme.inverse,
         shadowOffset: { width: 0, height: -4 },
@@ -202,10 +206,11 @@ export default function EmojiPickerPanel({ onEmojiSelected, onClose }: EmojiPick
         <Text style={{ color: theme.text, fontSize: 14, fontWeight: '700' }}>Emoji</Text>
         <Pressable
           onPress={onClose}
-          style={({ pressed }) => ({
+          style={({ pressed, hovered }) => ({
             padding: 4,
             borderRadius: 6,
-            backgroundColor: pressed ? theme.highlightBG : 'transparent',
+            backgroundColor: (pressed || hovered) ? theme.highlightBG : 'transparent',
+            cursor: Platform.OS === 'web' ? 'pointer' as any : undefined,
           })}
         >
           <MaterialIcons name="close" size={18} color={theme.textSupporting} />
@@ -269,7 +274,7 @@ export default function EmojiPickerPanel({ onEmojiSelected, onClose }: EmojiPick
               <Pressable
                 key={cat.code}
                 onPress={() => scrollToCategory(cat.code)}
-                style={({ pressed }) => ({
+                style={({ pressed, hovered }) => ({
                   width: 32,
                   height: 32,
                   borderRadius: 6,
@@ -278,9 +283,10 @@ export default function EmojiPickerPanel({ onEmojiSelected, onClose }: EmojiPick
                   backgroundColor:
                     isActive
                       ? theme.activeComponentBG
-                      : pressed
+                      : (pressed || hovered)
                       ? theme.highlightBG
                       : 'transparent',
+                  cursor: Platform.OS === 'web' ? 'pointer' as any : undefined,
                 })}
               >
                 <Text style={{ fontSize: 18, opacity: isActive ? 1 : 0.6 }}>{cat.icon}</Text>

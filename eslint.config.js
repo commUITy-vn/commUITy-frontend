@@ -54,6 +54,11 @@ module.exports = defineConfig([
               from: './features',
               except: ['./support'],
             },
+            {
+              target: './features/reports',
+              from: './features',
+              except: ['./reports'],
+            },
             // Enforce unidirectional codebase: app/ can import from features/, but features/ CANNOT import from app/
             {
               target: './features',

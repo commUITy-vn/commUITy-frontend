@@ -3,6 +3,7 @@ import TextInput from "@/components/ui/TextInput";
 import { useAuthStore } from "@/features/auth/stores/useAuthStore";
 import { UserRole } from "@/features/auth/types";
 import { createPrivateConversation } from "@/features/communication/api/create-private-conversation";
+import { ReportModal, ReportTargetType } from "@/features/reports";
 import { approveSupportRequest } from "@/features/support/api/approve-support-request";
 import { createSupportNeed } from "@/features/support/api/create-support-need";
 import { deleteSupportNeed } from "@/features/support/api/delete-support-need";
@@ -20,28 +21,7 @@ import { ContributeItemModal } from "@/features/support/components/ContributeIte
 import { SupportItemProgress } from "@/features/support/components/SupportItemProgress";
 import { useSupportNeeds } from "@/features/support/hooks/useSupportNeeds";
 import { useSupportRequestById } from "@/features/support/hooks/useSupportRequestById";
-import {
-  ItemCategory,
-  SupportItem,
-  UrgencyLevel
-} from "@/features/support/types/support.types";
-import { getUser } from "@/features/users/api/get-user";
-import { useTheme } from "@/hooks/useTheme";
-import { useThemeStyles } from "@/hooks/useThemeStyles";
-import { MaterialIcons } from "@expo/vector-icons";
-import { useQueryClient } from "@tanstack/react-query";
-import * as Haptics from "expo-haptics";
-import { useLocalSearchParams, useRouter } from "expo-router";
-import { useEffect, useState } from "react";
-import {
-  ActivityIndicator,
-  Modal,
-  Pressable,
-  ScrollView,
-  StyleSheet,
-  Text,
-  View
-} from "react-native";
+import { ItemCategory } from "@/features/support/types/support.types";
 
 export default function RequestDetailScreen() {
   const theme = useTheme();
@@ -157,6 +137,47 @@ export default function RequestDetailScreen() {
   const [isProfileLoading, setIsProfileLoading] = useState(false);
   const [chatLoading, setChatLoading] = useState(false);
 
+  // Sharing states
+  const [isMenuSheetVisible, setIsMenuSheetVisible] = useState(false);
+  const [isShareSheetVisible, setIsShareSheetVisible] = useState(false);
+  const [isReportModalVisible, setIsReportModalVisible] = useState(false);
+  const [conversations, setConversations] = useState<any[]>([]);
+  const [isConversationsLoading, setIsConversationsLoading] = useState(false);
+
+  useEffect(() => {
+    if (isShareSheetVisible) {
+      setIsConversationsLoading(true);
+      api
+        .get<any>("/api/v1/conversations/me")
+        .then((res) => {
+          setConversations(res || []);
+        })
+        .catch((err) => {
+          console.error("Failed to load conversations for sharing:", err);
+        })
+        .finally(() => {
+          setIsConversationsLoading(false);
+        });
+    }
+  }, [isShareSheetVisible]);
+
+  const handleShareRequest = async (conversationId: string) => {
+    await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    try {
+      const payload = {
+        content: `[SHARED_ITEM:SUPPORT:${id}:${request?.title || "Help Request"}]`,
+      };
+      await api.post(
+        `/api/v1/conversations/${conversationId}/messages`,
+        payload,
+      );
+      showAlert("Success", "Request shared successfully!");
+      setIsShareSheetVisible(false);
+    } catch (err: any) {
+      showAlert("Error", err?.message || "Failed to share request.");
+    }
+  };
+
   // Request review state
   const [isReviewing, setIsReviewing] = useState(false);
   const [requestRejectionModalVisible, setRequestRejectionModalVisible] =
@@ -226,6 +247,40 @@ export default function RequestDetailScreen() {
     try {
       await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       const res = await approveVolunteer(id, volunteerId);
+
+      if (res.conversationId) {
+        try {
+          const existingMsgs = await api.get<any[]>(
+            `/api/v1/conversations/${res.conversationId}/messages`,
+          );
+          const assignment = requestAssignments.find(
+            (a) => a.volunteerId === volunteerId,
+          );
+          const volunteerName = assignment?.volunteerName || "A volunteer";
+
+          if (!existingMsgs || existingMsgs.length === 0) {
+            await api.post(
+              `/api/v1/conversations/${res.conversationId}/messages`,
+              {
+                content: `[SYSTEM:START] This is the coordination chat for the support request: "${request?.title || "Help Request"}".`,
+              },
+            );
+          } else {
+            await api.post(
+              `/api/v1/conversations/${res.conversationId}/messages`,
+              {
+                content: `[SYSTEM:JOIN] ${volunteerName} has joined the chat to help with this support request.`,
+              },
+            );
+          }
+        } catch (msgErr) {
+          console.error(
+            "Failed to post system messages on volunteer approval:",
+            msgErr,
+          );
+        }
+      }
+
       showAlert("Success", "Volunteer approved successfully!");
 
       if (isOwner && res.conversationId) {
@@ -358,6 +413,7 @@ export default function RequestDetailScreen() {
         "Request Approved",
         "The support request has been successfully approved.",
       );
+      queryClient.invalidateQueries({ queryKey: ["supportRequests"] });
       queryClient.invalidateQueries({ queryKey: ["supportRequest", id] });
     } catch (err: any) {
       showAlert("Error", err?.message || "Failed to approve support request.");
@@ -383,6 +439,7 @@ export default function RequestDetailScreen() {
       await rejectSupportRequest(id, requestRejectionReason.trim());
       setRequestRejectionModalVisible(false);
       showAlert("Request Rejected", "The support request has been rejected.");
+      queryClient.invalidateQueries({ queryKey: ["supportRequests"] });
       queryClient.invalidateQueries({ queryKey: ["supportRequest", id] });
     } catch (err: any) {
       setRequestRejectionError(
@@ -448,6 +505,7 @@ export default function RequestDetailScreen() {
       setNeedModalVisible(false);
       queryClient.invalidateQueries({ queryKey: ["supportNeeds", id] });
       queryClient.invalidateQueries({ queryKey: ["supportRequest", id] });
+      queryClient.invalidateQueries({ queryKey: ["supportRequests"] });
     } catch (err: any) {
       setNeedError(err?.message || "Failed to save needed item.");
     } finally {
@@ -462,6 +520,7 @@ export default function RequestDetailScreen() {
       showAlert("Success", "Item deleted successfully.");
       queryClient.invalidateQueries({ queryKey: ["supportNeeds", id] });
       queryClient.invalidateQueries({ queryKey: ["supportRequest", id] });
+      queryClient.invalidateQueries({ queryKey: ["supportRequests"] });
     } catch (err: any) {
       showAlert("Error", err?.message || "Failed to delete needed item.");
     }
@@ -560,6 +619,9 @@ export default function RequestDetailScreen() {
         "Thank You",
         "Your contribution has been recorded successfully!",
       );
+      queryClient.invalidateQueries({ queryKey: ["supportNeeds", id] });
+      queryClient.invalidateQueries({ queryKey: ["supportRequest", id] });
+      queryClient.invalidateQueries({ queryKey: ["supportRequests"] });
     } catch (err: any) {
       showAlert("Error", err?.message || "Failed to submit contribution.");
     }
@@ -624,7 +686,16 @@ export default function RequestDetailScreen() {
         : UrgencyLevel.MEDIUM;
 
   return (
-    <View style={[styles.container, { backgroundColor: theme.appBG }]}>
+    <View
+      style={[
+        styles.container,
+        {
+          backgroundColor: theme.appBG,
+          flex: 1,
+          height: (Platform.OS === "web" ? "100vh" : "100%") as any,
+        },
+      ]}
+    >
       {/* Header back button + title */}
       <View
         style={{
@@ -663,10 +734,27 @@ export default function RequestDetailScreen() {
         >
           {request?.title ?? "Request Details"}
         </Text>
-        <View style={{ width: 40 }} />
+        <Pressable
+          onPress={async () => {
+            await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+            setIsMenuSheetVisible(true);
+          }}
+          style={({ pressed }) => [
+            {
+              padding: 8,
+              borderRadius: 8,
+            },
+            pressed && { backgroundColor: theme.highlightBG },
+          ]}
+        >
+          <MaterialIcons name="more-vert" size={24} color={theme.text} />
+        </Pressable>
       </View>
 
-      <ScrollView contentContainerStyle={localStyles.scrollContent}>
+      <ScrollView
+        style={{ flex: 1 }}
+        contentContainerStyle={localStyles.scrollContent}
+      >
         <View
           style={[
             localStyles.card,
@@ -1890,6 +1978,147 @@ export default function RequestDetailScreen() {
             </Text>
           </View>
         )}
+      </BottomSheet>
+
+      {/* Options Menu BottomSheet */}
+      <BottomSheet
+        isVisible={isMenuSheetVisible}
+        onClose={() => setIsMenuSheetVisible(false)}
+        title="Options"
+        options={[
+          {
+            key: "share",
+            label: "Share Request",
+            icon: "share",
+            onPress: () => {
+              setIsMenuSheetVisible(false);
+              // Defer opening of the next sheet to prevent React Native modal conflict
+              setTimeout(() => {
+                setIsShareSheetVisible(true);
+              }, 400);
+            },
+          },
+          ...(!isOwner
+            ? [
+                {
+                  key: "report",
+                  label: "Report Request",
+                  icon: "flag" as any,
+                  onPress: () => {
+                    setIsMenuSheetVisible(false);
+                    setTimeout(() => {
+                      setIsReportModalVisible(true);
+                    }, 400);
+                  },
+                },
+              ]
+            : []),
+        ]}
+      />
+
+      <ReportModal
+        visible={isReportModalVisible}
+        onClose={() => setIsReportModalVisible(false)}
+        targetType={ReportTargetType.SUPPORT_REQUEST}
+        targetId={id}
+        targetName={request?.title || "Help Request"}
+        onSuccessSubmit={() => {
+          showAlert(
+            "Report Submitted",
+            "Your report has been submitted to administrators for review.",
+          );
+        }}
+      />
+
+      {/* Share Target BottomSheet */}
+      <BottomSheet
+        isVisible={isShareSheetVisible}
+        onClose={() => setIsShareSheetVisible(false)}
+        title="Share Request"
+      >
+        <View style={{ paddingBottom: 24, maxHeight: 400, width: "100%" }}>
+          {isConversationsLoading ? (
+            <ActivityIndicator
+              size="large"
+              color={theme.primary}
+              style={{ marginVertical: 20 }}
+            />
+          ) : conversations.length === 0 ? (
+            <View style={{ padding: 20, alignItems: "center" }}>
+              <Text
+                style={{ color: theme.textSupporting, textAlign: "center" }}
+              >
+                No active chats found
+              </Text>
+            </View>
+          ) : (
+            <ScrollView
+              style={{ width: "100%" }}
+              showsVerticalScrollIndicator={false}
+            >
+              {conversations.map((c: any) => {
+                const otherMember = c.members?.find(
+                  (m: any) => m.userId !== user?.id,
+                );
+                const chatName = otherMember?.fullName || "Người dùng";
+                return (
+                  <Pressable
+                    key={c.id}
+                    onPress={() => handleShareRequest(c.id)}
+                    style={({ pressed }) => ({
+                      flexDirection: "row",
+                      alignItems: "center",
+                      paddingVertical: 14,
+                      paddingHorizontal: 20,
+                      borderBottomWidth: StyleSheet.hairlineWidth,
+                      borderBottomColor: theme.border,
+                      backgroundColor: pressed
+                        ? theme.activeComponentBG
+                        : "transparent",
+                    })}
+                  >
+                    <View
+                      style={{
+                        width: 36,
+                        height: 36,
+                        borderRadius: 18,
+                        backgroundColor: theme.border,
+                        justifyContent: "center",
+                        alignItems: "center",
+                        marginRight: 12,
+                      }}
+                    >
+                      <Text
+                        style={{
+                          color: theme.textSupporting,
+                          fontSize: 14,
+                          fontWeight: "700",
+                        }}
+                      >
+                        {chatName.charAt(0).toUpperCase()}
+                      </Text>
+                    </View>
+                    <Text
+                      style={{
+                        flex: 1,
+                        color: theme.text,
+                        fontSize: 16,
+                        fontWeight: "500",
+                      }}
+                    >
+                      {chatName}
+                    </Text>
+                    <MaterialIcons
+                      name="send"
+                      size={18}
+                      color={theme.primary}
+                    />
+                  </Pressable>
+                );
+              })}
+            </ScrollView>
+          )}
+        </View>
       </BottomSheet>
 
       <ConfirmModal

@@ -56,7 +56,7 @@ export const CreateExpenseModal: React.FC<Props> = ({ visible, onClose }) => {
   };
 
   return (
-    <Modal visible={visible} animationType="slide" transparent>
+    <Modal visible={visible} animationType="fade" transparent>
       <View style={localStyles.modalOverlay}>
         <AnimatedView style={[
                 localStyles.modalContent,
