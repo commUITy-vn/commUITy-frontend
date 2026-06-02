@@ -2,7 +2,7 @@ export enum SupportStatus {
   PENDING = "PENDING",
   APPROVED = "APPROVED",
   IN_PROGRESS = "IN_PROGRESS",
-  FULFILLED = "FULFILLED",
+  COMPLETED = "COMPLETED",
   REJECTED = "REJECTED",
   CANCELLED = "CANCELLED",
 }
@@ -47,7 +47,7 @@ export const STATUS_LABELS: Record<SupportStatus, string> = {
   [SupportStatus.PENDING]: "Pending",
   [SupportStatus.APPROVED]: "Approved",
   [SupportStatus.IN_PROGRESS]: "In Progress",
-  [SupportStatus.FULFILLED]: "Fulfilled",
+  [SupportStatus.COMPLETED]: "Completed",
   [SupportStatus.REJECTED]: "Rejected",
   [SupportStatus.CANCELLED]: "Cancelled",
 };
@@ -80,16 +80,26 @@ export const ITEM_CATEGORY_LABELS: Record<ItemCategory, string> = {
 };
 
 export enum UnitOptions {
-  PIECE = "Piece",
-  KG = "Kg",
-  LITER = "Liter",
-  OTHER = "Other",
+  VND = "VND",
+  KG = "KG",
+  PIECE = "PIECE",
+  BOX = "BOX",
+  LITER = "LITER",
+  PACKAGE = "PACKAGE",
+  SET = "SET",
+  PERSON = "PERSON",
+  OTHER = "OTHER",
 }
 
 export const UNIT_LABELS: Record<UnitOptions, string> = {
-  [UnitOptions.PIECE]: "Piece",
+  [UnitOptions.VND]: "VND",
   [UnitOptions.KG]: "Kg",
+  [UnitOptions.PIECE]: "Piece",
+  [UnitOptions.BOX]: "Box",
   [UnitOptions.LITER]: "Liter",
+  [UnitOptions.PACKAGE]: "Package",
+  [UnitOptions.SET]: "Set",
+  [UnitOptions.PERSON]: "Person",
   [UnitOptions.OTHER]: "Other",
 };
 

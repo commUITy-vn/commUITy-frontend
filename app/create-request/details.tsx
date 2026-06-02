@@ -28,7 +28,7 @@ export default function CreateRequestDetailsScreen() {
   const router = useRouter();
   const theme = useTheme();
   const webViewRef = useRef<any>(null);
-  const typingTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const typingTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const {
     title,

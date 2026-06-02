@@ -19,16 +19,15 @@ import { createSupportNeed } from "../api/create-support-need";
 import { updateSupportNeed } from "../api/update-support-need";
 
 // Khai báo chuẩn xác list Enum theo schema db.txt
-const PRISMA_UNITS = [
+const SUPPORT_NEED_UNITS = [
+  "VND",
   "PIECE",
   "KG",
   "LITER",
   "BOX",
-  "PACK",
-  "PORTION",
+  "PACKAGE",
   "SET",
-  "BOTTLE",
-  "CAN",
+  "PERSON",
   "OTHER",
 ];
 
@@ -263,7 +262,7 @@ export const SupportNeedModal = ({
         <BottomSheet
           isVisible={showUnitPicker}
           onClose={() => setShowUnitPicker(false)}
-          options={PRISMA_UNITS.map((u) => ({
+          options={SUPPORT_NEED_UNITS.map((u) => ({
             key: u,
             label: u,
             onPress: () => {

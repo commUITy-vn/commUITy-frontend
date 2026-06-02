@@ -22,6 +22,9 @@ export interface CommunityFundDetail {
 export interface ExpenseResponse {
   id: string;
   fundId: string;
+  fundName?: string;
+  supportRequestId?: string;
+  supportRequestTitle?: string;
   amount: number;
   description: string;
   createdBy: string;
@@ -33,12 +36,15 @@ export interface DonationResponse {
   id: string;
   fundId: string;
   fundName?: string;
+  donorId: string;
+  donorName: string;
+  createdBy?: string;
+  createdByName?: string;
   amount: number;
   paymentMethod: string;
+  status: string;
   transactionCode?: string;
   note?: string;
-  createdBy: string;
-  createdByName: string;
   createdAt: string;
 }
 
@@ -108,6 +114,7 @@ export const useFundDonations = (fundId: string) => {
 
 export interface CreateExpensePayload {
   fundId: string;
+  supportRequestId?: string;
   amount: number;
   description: string;
 }

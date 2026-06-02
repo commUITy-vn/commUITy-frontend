@@ -1,7 +1,7 @@
 import { BottomSheet, Button } from "@/components/ui";
 import TextInput from "@/components/ui/TextInput";
 import { MaterialIcons } from "@expo/vector-icons";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import * as Haptics from "expo-haptics";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import React, { useEffect, useRef, useState } from "react";
@@ -9,6 +9,7 @@ import {
   ActivityIndicator,
   Alert,
   KeyboardAvoidingView,
+  Modal,
   Platform,
   Pressable,
   ScrollView,
@@ -25,7 +26,16 @@ if (Platform.OS !== "web") {
 const HERE_API_KEY = process.env.EXPO_PUBLIC_HERE_API_KEY || "";
 
 import { useAuthStore } from "@/features/auth/stores/useAuthStore";
+import { UserRole } from "@/features/auth/types";
 import {
+  applyToSupportRequest,
+  approveVolunteer,
+  getAssignmentsBySupportRequest,
+  rejectVolunteer,
+  type VolunteerAssignment,
+} from "@/features/support/api/volunteer-assignments";
+import {
+  ItemCategory,
   STATUS_LABELS,
   SupportStatus,
 } from "@/features/support/types/support.types";
@@ -33,8 +43,8 @@ import { useTheme } from "@/hooks/useTheme";
 
 // Hooks & API
 import { deleteSupportNeed } from "@/features/support/api/delete-support-need";
-import { deleteSupportRequest } from "@/features/support/api/delete-support-request";
 import { updateSupportRequest } from "@/features/support/api/update-support-request";
+import { ContributeItemModal } from "@/features/support/components/ContributeItemModal";
 import { SupportNeedModal } from "@/features/support/components/SupportNeedModal";
 import { useCategories } from "@/features/support/hooks/useCategories"; // Hook load categories động
 import { useSupportNeeds } from "@/features/support/hooks/useSupportNeeds";
@@ -49,6 +59,10 @@ export default function RequestDetailScreen() {
 
   const [isNeedModalVisible, setIsNeedModalVisible] = useState(false);
   const [selectedNeed, setSelectedNeed] = useState<any>(null);
+  const [contributeNeed, setContributeNeed] = useState<any>(null);
+  const [rejectAssignment, setRejectAssignment] =
+    useState<VolunteerAssignment | null>(null);
+  const [assignmentRejectReason, setAssignmentRejectReason] = useState("");
 
   // States for Editable Fields
   const [editTitle, setEditTitle] = useState("");
@@ -63,22 +77,50 @@ export default function RequestDetailScreen() {
   const [lngStr, setLngStr] = useState("106.6297");
   const [suggestions, setSuggestions] = useState<any[]>([]);
   const [isSearching, setIsSearching] = useState(false);
-  const typingTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const typingTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const webViewRef = useRef<any>(null);
 
   // Data Fetching
   const { data: request, isLoading: requestLoading } = useSupportRequestById(
     id as string,
   );
-  const { needs, isLoading: needsLoading } = useSupportNeeds(id as string);
-  const { data: categories } = useCategories(); // Fetch Categories từ backend
+  const {
+    needs,
+    isLoading: needsLoading,
+    contribute,
+  } = useSupportNeeds(id as string);
+  const { data: categories } = useCategories(true); // Fetch active categories from backend
+  const { data: assignments = [], isLoading: assignmentsLoading } = useQuery<
+    VolunteerAssignment[],
+    Error
+  >({
+    queryKey: ["volunteerAssignments", "request", id],
+    queryFn: () => getAssignmentsBySupportRequest(id as string),
+    enabled: !!id,
+  });
 
   // Quyền chỉnh sửa
   const isOwner = user?.id === request?.requesterId;
-  const canEdit =
+  const isStaff =
+    user?.role === UserRole.ADMIN || user?.role === UserRole.COLLABORATOR;
+  const isVolunteer = user?.role === UserRole.VOLUNTEER;
+  const canEditRequest = isOwner && request?.status === SupportStatus.PENDING;
+  const canManageNeeds =
     isOwner &&
     (request?.status === SupportStatus.PENDING ||
       request?.status === SupportStatus.APPROVED);
+  const canApplyVolunteer =
+    isVolunteer &&
+    !isOwner &&
+    (request?.status === SupportStatus.APPROVED ||
+      request?.status === SupportStatus.IN_PROGRESS);
+  const currentUserAssignment = assignments.find(
+    (assignment) => assignment.volunteerId === user?.id,
+  );
+  const canContribute =
+    user?.role === UserRole.COLLABORATOR ||
+    currentUserAssignment?.status === "ACCEPTED";
+  const canReviewAssignments = !!request && (isOwner || isStaff);
 
   useEffect(() => {
     if (request) {
@@ -98,15 +140,6 @@ export default function RequestDetailScreen() {
       if (request.longitude) setLngStr(request.longitude.toString());
     }
   }, [request]);
-
-  const deleteRequestMutation = useMutation({
-    mutationFn: () => deleteSupportRequest(id as string),
-    onSuccess: () => {
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-      queryClient.invalidateQueries({ queryKey: ["supportRequests"] });
-      router.back();
-    },
-  });
 
   const updateRequestMutation = useMutation({
     mutationFn: (data: any) => updateSupportRequest(id as string, data),
@@ -132,6 +165,57 @@ export default function RequestDetailScreen() {
     onSuccess: () => {
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       queryClient.invalidateQueries({ queryKey: ["supportNeeds", id] });
+    },
+  });
+
+  const applyMutation = useMutation({
+    mutationFn: () => applyToSupportRequest(id as string),
+    onSuccess: () => {
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      queryClient.invalidateQueries({
+        queryKey: ["volunteerAssignments", "request", id],
+      });
+      Alert.alert("Success", "Your volunteer application has been submitted.");
+    },
+    onError: (error: any) => {
+      Alert.alert("Error", error?.message || "Failed to apply as volunteer.");
+    },
+  });
+
+  const approveVolunteerMutation = useMutation({
+    mutationFn: (volunteerId: string) =>
+      approveVolunteer(id as string, volunteerId),
+    onSuccess: () => {
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      queryClient.invalidateQueries({
+        queryKey: ["volunteerAssignments", "request", id],
+      });
+      queryClient.invalidateQueries({ queryKey: ["supportRequest", id] });
+      queryClient.invalidateQueries({ queryKey: ["supportRequests"] });
+    },
+    onError: (error: any) => {
+      Alert.alert("Error", error?.message || "Failed to approve volunteer.");
+    },
+  });
+
+  const rejectVolunteerMutation = useMutation({
+    mutationFn: ({
+      volunteerId,
+      rejectionReason,
+    }: {
+      volunteerId: string;
+      rejectionReason: string;
+    }) => rejectVolunteer(id as string, volunteerId, rejectionReason),
+    onSuccess: () => {
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
+      setRejectAssignment(null);
+      setAssignmentRejectReason("");
+      queryClient.invalidateQueries({
+        queryKey: ["volunteerAssignments", "request", id],
+      });
+    },
+    onError: (error: any) => {
+      Alert.alert("Error", error?.message || "Failed to reject volunteer.");
     },
   });
 
@@ -185,6 +269,7 @@ export default function RequestDetailScreen() {
   };
 
   const handleSaveRequestUpdates = () => {
+    if (!request) return;
     if (!editTitle.trim()) {
       Alert.alert("Notice", "Title cannot be empty.");
       return;
@@ -223,21 +308,6 @@ export default function RequestDetailScreen() {
       </View>
     );
   }
-
-  const handleDeleteRequest = () => {
-    Alert.alert(
-      "Delete Request",
-      "Are you sure you want to delete this request?",
-      [
-        { text: "Cancel", style: "cancel" },
-        {
-          text: "Delete",
-          style: "destructive",
-          onPress: () => deleteRequestMutation.mutate(),
-        },
-      ],
-    );
-  };
 
   const getHereMapHtml = (lat: string, lng: string) => `
     <!DOCTYPE html>
@@ -306,17 +376,7 @@ export default function RequestDetailScreen() {
         <Text style={[localStyles.headerTitle, { color: theme.text }]}>
           Request Details
         </Text>
-        {canEdit ? (
-          <Pressable onPress={handleDeleteRequest} style={localStyles.iconBtn}>
-            <MaterialIcons
-              name="delete-outline"
-              size={24}
-              color={theme.danger}
-            />
-          </Pressable>
-        ) : (
-          <View style={{ width: 48 }} />
-        )}
+        <View style={{ width: 48 }} />
       </View>
 
       <ScrollView
@@ -336,8 +396,23 @@ export default function RequestDetailScreen() {
           </View>
         </View>
 
+        {canApplyVolunteer && (
+          <Button
+            text={
+              currentUserAssignment
+                ? `Volunteer request: ${currentUserAssignment.status}`
+                : "I want to help"
+            }
+            onPress={() => applyMutation.mutate()}
+            primary={!currentUserAssignment}
+            isDisabled={!!currentUserAssignment}
+            isLoading={applyMutation.isPending}
+            style={{ marginBottom: 16 }}
+          />
+        )}
+
         {/* Dynamic Fields */}
-        {canEdit ? (
+        {canEditRequest ? (
           <View style={{ gap: 12 }}>
             <TextInput
               label="Title"
@@ -420,7 +495,7 @@ export default function RequestDetailScreen() {
           Location Details
         </Text>
 
-        {canEdit ? (
+        {canEditRequest ? (
           <View style={{ position: "relative", zIndex: 20 }}>
             <TextInput
               placeholder="Search address..."
@@ -508,7 +583,7 @@ export default function RequestDetailScreen() {
           )}
         </View>
 
-        {canEdit && (
+        {canEditRequest && (
           <Button
             text="Save Request Updates"
             onPress={handleSaveRequestUpdates}
@@ -516,6 +591,90 @@ export default function RequestDetailScreen() {
             style={{ marginTop: 24 }}
             isLoading={updateRequestMutation.isPending}
           />
+        )}
+
+        {canReviewAssignments && (
+          <>
+            <View
+              style={[localStyles.divider, { backgroundColor: theme.border }]}
+            />
+            <Text
+              style={[
+                localStyles.sectionTitle,
+                { color: theme.text, marginBottom: 12 },
+              ]}
+            >
+              Volunteer applications
+            </Text>
+            {assignmentsLoading ? (
+              <ActivityIndicator size="small" color={theme.primary} />
+            ) : assignments.length === 0 ? (
+              <Text style={{ color: theme.textSupporting }}>
+                No volunteer applications yet.
+              </Text>
+            ) : (
+              <View style={localStyles.assignmentList}>
+                {assignments.map((assignment) => (
+                  <View
+                    key={`${assignment.volunteerId}-${assignment.assignedAt}`}
+                    style={[
+                      localStyles.assignmentCard,
+                      {
+                        borderColor: theme.border,
+                        backgroundColor: theme.highlightBG,
+                      },
+                    ]}
+                  >
+                    <View style={{ flex: 1 }}>
+                      <Text
+                        style={{ color: theme.text, fontWeight: "700" }}
+                        numberOfLines={1}
+                      >
+                        {assignment.volunteerName || "Volunteer"}
+                      </Text>
+                      <Text
+                        style={{
+                          color: theme.textSupporting,
+                          fontSize: 12,
+                          marginTop: 2,
+                        }}
+                      >
+                        {assignment.status}
+                      </Text>
+                    </View>
+                    {assignment.status === "PENDING" && (
+                      <View style={localStyles.assignmentActions}>
+                        <Pressable
+                          onPress={() =>
+                            approveVolunteerMutation.mutate(
+                              assignment.volunteerId,
+                            )
+                          }
+                          style={localStyles.actionBtn}
+                        >
+                          <MaterialIcons
+                            name="check-circle"
+                            size={22}
+                            color={theme.success}
+                          />
+                        </Pressable>
+                        <Pressable
+                          onPress={() => setRejectAssignment(assignment)}
+                          style={localStyles.actionBtn}
+                        >
+                          <MaterialIcons
+                            name="cancel"
+                            size={22}
+                            color={theme.danger}
+                          />
+                        </Pressable>
+                      </View>
+                    )}
+                  </View>
+                ))}
+              </View>
+            )}
+          </>
         )}
 
         <View
@@ -527,7 +686,7 @@ export default function RequestDetailScreen() {
           <Text style={[localStyles.sectionTitle, { color: theme.text }]}>
             Items needed
           </Text>
-          {canEdit && (
+          {canManageNeeds && (
             <Pressable
               onPress={() => {
                 setSelectedNeed(null);
@@ -591,31 +750,47 @@ export default function RequestDetailScreen() {
                     {need.supportType === "MONEY" ? "Money" : "Goods"}
                   </Text>
                 </View>
-                {canEdit && (
+                {(canManageNeeds || canContribute) && (
                   <View style={localStyles.needActions}>
-                    <Pressable
-                      onPress={() => {
-                        setSelectedNeed(need);
-                        setIsNeedModalVisible(true);
-                      }}
-                      style={localStyles.actionBtn}
-                    >
-                      <MaterialIcons
-                        name="edit"
-                        size={20}
-                        color={theme.primary}
-                      />
-                    </Pressable>
-                    <Pressable
-                      onPress={() => deleteNeedMutation.mutate(need.id)}
-                      style={localStyles.actionBtn}
-                    >
-                      <MaterialIcons
-                        name="close"
-                        size={20}
-                        color={theme.danger}
-                      />
-                    </Pressable>
+                    {canContribute && (
+                      <Pressable
+                        onPress={() => setContributeNeed(need)}
+                        style={localStyles.actionBtn}
+                      >
+                        <MaterialIcons
+                          name="volunteer-activism"
+                          size={20}
+                          color={theme.success}
+                        />
+                      </Pressable>
+                    )}
+                    {canManageNeeds && (
+                      <>
+                        <Pressable
+                          onPress={() => {
+                            setSelectedNeed(need);
+                            setIsNeedModalVisible(true);
+                          }}
+                          style={localStyles.actionBtn}
+                        >
+                          <MaterialIcons
+                            name="edit"
+                            size={20}
+                            color={theme.primary}
+                          />
+                        </Pressable>
+                        <Pressable
+                          onPress={() => deleteNeedMutation.mutate(need.id)}
+                          style={localStyles.actionBtn}
+                        >
+                          <MaterialIcons
+                            name="close"
+                            size={20}
+                            color={theme.danger}
+                          />
+                        </Pressable>
+                      </>
+                    )}
                   </View>
                 )}
               </View>
@@ -638,6 +813,91 @@ export default function RequestDetailScreen() {
           },
         }))}
       />
+
+      <ContributeItemModal
+        visible={!!contributeNeed}
+        onClose={() => setContributeNeed(null)}
+        item={
+          contributeNeed
+            ? {
+                id: contributeNeed.id,
+                category:
+                  contributeNeed.supportType === "MONEY"
+                    ? ItemCategory.MONEY
+                    : ItemCategory.GOODS,
+                name: contributeNeed.needName || "Support need",
+                neededQuantity: contributeNeed.requiredQuantity || 0,
+                receivedQuantity: contributeNeed.receivedQuantity || 0,
+                unit: contributeNeed.unit,
+              }
+            : null
+        }
+        onConfirm={async (needId, quantity, notes) => {
+          await contribute({
+            needId,
+            data: {
+              quantity,
+              note: notes || undefined,
+            },
+          });
+          queryClient.invalidateQueries({ queryKey: ["supportRequests"] });
+          setContributeNeed(null);
+        }}
+      />
+
+      <Modal
+        visible={!!rejectAssignment}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setRejectAssignment(null)}
+      >
+        <View style={localStyles.modalOverlay}>
+          <View
+            style={[
+              localStyles.rejectModal,
+              { backgroundColor: theme.componentBG, borderColor: theme.border },
+            ]}
+          >
+            <Text style={[localStyles.modalTitle, { color: theme.text }]}>
+              Reject volunteer
+            </Text>
+            <Text style={{ color: theme.textSupporting, fontSize: 13 }}>
+              {rejectAssignment?.volunteerName || "Volunteer"}
+            </Text>
+            <TextInput
+              label="Reason"
+              value={assignmentRejectReason}
+              onChangeText={setAssignmentRejectReason}
+              multiline
+              height={90}
+            />
+            <View style={{ flexDirection: "row", gap: 10 }}>
+              <Button
+                text="Reject"
+                danger
+                style={{ flex: 1 }}
+                isLoading={rejectVolunteerMutation.isPending}
+                isDisabled={!assignmentRejectReason.trim()}
+                onPress={() => {
+                  if (!rejectAssignment) return;
+                  rejectVolunteerMutation.mutate({
+                    volunteerId: rejectAssignment.volunteerId,
+                    rejectionReason: assignmentRejectReason.trim(),
+                  });
+                }}
+              />
+              <Button
+                text="Cancel"
+                style={{ flex: 1, backgroundColor: theme.highlightBG }}
+                onPress={() => {
+                  setRejectAssignment(null);
+                  setAssignmentRejectReason("");
+                }}
+              />
+            </View>
+          </View>
+        </View>
+      </Modal>
 
       <SupportNeedModal
         visible={isNeedModalVisible}
@@ -736,6 +996,20 @@ const localStyles = StyleSheet.create({
   emptyContainer: { alignItems: "center", paddingVertical: 40 },
   emptyText: { fontSize: 15, textAlign: "center" },
   needsList: { gap: 0 },
+  assignmentList: { gap: 10 },
+  assignmentCard: {
+    borderRadius: 12,
+    borderWidth: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    padding: 12,
+    gap: 10,
+  },
+  assignmentActions: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+  },
   needCard: {
     flexDirection: "row",
     alignItems: "center",
@@ -749,4 +1023,23 @@ const localStyles = StyleSheet.create({
   needMeta: { fontSize: 13 },
   needActions: { flexDirection: "row", gap: 4 },
   actionBtn: { padding: 8 },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: "rgba(0,0,0,0.55)",
+    justifyContent: "center",
+    alignItems: "center",
+    padding: 20,
+  },
+  rejectModal: {
+    width: "100%",
+    maxWidth: 420,
+    borderRadius: 14,
+    borderWidth: 1,
+    padding: 18,
+    gap: 12,
+  },
+  modalTitle: {
+    fontSize: 18,
+    fontWeight: "700",
+  },
 });

@@ -19,7 +19,7 @@ export const SummaryRequestCard = ({ request, onPress }: SummaryRequestCardProps
         return theme.success + '20'; // 12% alpha green
       case 'IN_PROGRESS':
         return theme.primary + '20'; // 12% alpha primary
-      case 'FULFILLED':
+      case 'COMPLETED':
         return theme.success + '20';
       case 'REJECTED':
         return theme.danger + '20';
@@ -38,7 +38,7 @@ export const SummaryRequestCard = ({ request, onPress }: SummaryRequestCardProps
         return theme.success;
       case 'IN_PROGRESS':
         return theme.primary;
-      case 'FULFILLED':
+      case 'COMPLETED':
         return theme.success;
       case 'REJECTED':
         return theme.danger;

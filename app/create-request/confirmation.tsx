@@ -19,6 +19,7 @@ export default function CreateRequestConfirmationScreen() {
   const {
     category,
     categoryId,
+    categoryName,
     title,
     description,
     address,
@@ -65,29 +66,41 @@ export default function CreateRequestConfirmationScreen() {
       });
       // Submit items if any exist
       if (items && items.length > 0) {
-        // Group items by name to avoid duplicate needName constraints on backend
-        const groupedItems: { [name: string]: number } = {};
+        const groupedItems: Record<
+          string,
+          {
+            supportType: "GOODS" | "MONEY";
+            needName: string;
+            unit: string;
+            requiredQuantity: number;
+          }
+        > = {};
+
         for (const item of items) {
           const name = item.name.trim();
           if (!name) continue;
+
+          const supportType = item.category === "MONEY" ? "MONEY" : "GOODS";
+          const unit = item.unit || (supportType === "MONEY" ? "VND" : "PIECE");
+          const key = `${supportType}:${unit}:${name.toLowerCase()}`;
           const qty = Number(item.neededQuantity) || 1;
-          // Case-insensitive grouping to be extra safe against backend constraints
-          const matchingKey = Object.keys(groupedItems).find(
-            (k) => k.toLowerCase() === name.toLowerCase(),
-          );
-          if (matchingKey) {
-            groupedItems[matchingKey] += qty;
+
+          if (groupedItems[key]) {
+            groupedItems[key].requiredQuantity += qty;
           } else {
-            groupedItems[name] = qty;
+            groupedItems[key] = {
+              supportType,
+              needName: name,
+              unit,
+              requiredQuantity: qty,
+            };
           }
         }
 
-        for (const [name, qty] of Object.entries(groupedItems)) {
+        for (const item of Object.values(groupedItems)) {
           await createSupportNeed(createdRequest.id, {
-            supportType: "GOODS",
-            needName: name,
-            unit: "PIECE", // Default unit since only quantity is specified in this view
-            requiredQuantity: Math.max(0.01, qty),
+            ...item,
+            requiredQuantity: Math.max(0.01, item.requiredQuantity),
           });
         }
       }
@@ -167,7 +180,7 @@ export default function CreateRequestConfirmationScreen() {
             style={localStyles.fieldValue}
           >
             <Text style={[localStyles.fieldValueText, { color: theme.text }]}>
-              {category ? CATEGORY_LABELS[category] : "Not set"}
+              {categoryName || (category ? CATEGORY_LABELS[category] : "Not set")}
             </Text>
             <MaterialIcons name="chevron-right" size={18} color={theme.icon} />
           </Pressable>

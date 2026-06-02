@@ -20,7 +20,7 @@ const STATUS_COLORS: Record<SupportStatus, { bg: string; text: string }> = {
   [SupportStatus.PENDING]: { bg: '#E2E8F0', text: '#475569' }, // Pending / Neutral
   [SupportStatus.APPROVED]: { bg: '#E5F6EE', text: '#008040' }, // Low Urgency / Success / Approved
   [SupportStatus.IN_PROGRESS]: { bg: '#E0F2FE', text: '#0369A1' }, // In Progress / Info
-  [SupportStatus.FULFILLED]: { bg: '#E5F6EE', text: '#008040' }, // Low Urgency / Success / Approved
+  [SupportStatus.COMPLETED]: { bg: '#E5F6EE', text: '#008040' }, // Low Urgency / Success / Approved
   [SupportStatus.REJECTED]: { bg: '#FFE5E5', text: '#CC0000' }, // High Urgency / Danger
   [SupportStatus.CANCELLED]: { bg: '#F0F0F0', text: '#666666' }, // Default neutral
 };
@@ -40,7 +40,7 @@ export const RequestCard = ({ request, onPress, containerStyle }: RequestCardPro
     : (request.description || '');
 
   const urgencyColor = URGENCY_COLORS[request.urgency];
-  const statusColor = STATUS_COLORS[request.status];
+  const statusColor = STATUS_COLORS[request.status] ?? STATUS_COLORS[SupportStatus.PENDING];
 
   return (
     <Pressable

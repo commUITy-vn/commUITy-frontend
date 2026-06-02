@@ -1,28 +1,5 @@
 import { env } from "@/config/env";
 
-declare module "@stomp/stompjs" {
-  export class Client {
-    constructor(config: any);
-    activate(): void;
-    deactivate(): void;
-    publish(options: {
-      destination: string;
-      headers?: Record<string, string>;
-      body: string;
-    }): void;
-    subscribe(
-      destination: string,
-      callback: (message: any) => void,
-      headers?: any,
-    ): { unsubscribe: () => void };
-  }
-  export interface IMessage {
-    headers: Record<string, string>;
-    body: string;
-  }
-  export type StompSubscription = { unsubscribe: () => void };
-}
-
 import { Client, type IMessage, type StompSubscription } from "@stomp/stompjs";
 import * as encoding from "text-encoding";
 
@@ -194,15 +171,15 @@ export class StompClient {
           sub.stompSubscription = undefined;
         });
       },
-      onStompError: (frame) => {
+      onStompError: (frame: any) => {
         console.error("[STOMP] Protocol error frame:", frame.body);
         this.emitError(new Error(frame.body || "STOMP protocol error"));
       },
-      onWebSocketError: (event) => {
+      onWebSocketError: (event: any) => {
         console.error("[STOMP] WebSocket transport error:", event);
         this.emitError(event);
       },
-      onWebSocketClose: (event) => {
+      onWebSocketClose: (event: any) => {
         this.connected = false;
         this.connecting = false;
         this.subscriptions.forEach((sub) => {

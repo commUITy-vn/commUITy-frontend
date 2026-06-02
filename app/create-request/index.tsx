@@ -18,8 +18,8 @@ export default function CreateRequestCategoryScreen() {
     const router = useRouter()
     const theme = useTheme()
     const themeStyles = useThemeStyles()
-    const { category: selectedCategory, setCategory, setCategoryId } = useCreateRequestStore()
-    const { data: serverCategories, isLoading } = useCategories()
+    const { categoryId: selectedCategoryId, setCategory, setCategoryId, setCategoryName } = useCreateRequestStore()
+    const { data: serverCategories, isLoading } = useCategories(true)
 
     const [searchQuery, setSearchQuery] = useState("")
 
@@ -57,6 +57,7 @@ export default function CreateRequestCategoryScreen() {
             
         setCategory(enumValue)
         setCategoryId(item.id)
+        setCategoryName(item.name)
         
         setTimeout(() => {
             router.push("/create-request/details")
@@ -146,7 +147,7 @@ export default function CreateRequestCategoryScreen() {
                     data={filteredCategories}
                     keyExtractor={(item) => item.id}
                     renderItem={({ item }) => {
-                        const isSelected = selectedCategory === item.code
+                        const isSelected = selectedCategoryId === item.id
                         return (
                             <Pressable
                                 onPress={() => handleSelect(item)}

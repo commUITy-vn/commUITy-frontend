@@ -102,9 +102,9 @@ export default function HomeScreen() {
 
         if (requests) {
             requests.forEach((r) => {
-                // Visibility rules: hide PENDING/REJECTED requests from volunteer/public unless owned
+                // Public users should only see actionable approved/in-progress requests.
                 const isOwner = user && r.requesterId === user.id
-                if ((r.status === 'PENDING' || r.status === 'REJECTED') && !isOwner && !isStaff) {
+                if (!isOwner && !isStaff && r.status !== 'APPROVED' && r.status !== 'IN_PROGRESS') {
                     return
                 }
                 items.push({
@@ -201,7 +201,7 @@ export default function HomeScreen() {
     // Secondary Filter Options depending on selected primary tab
     const secondaryOptions = useMemo(() => {
         if (primaryFilter === 'Requests') {
-            return ['All', 'APPROVED', 'IN_PROGRESS', 'FULFILLED', ...(isStaff ? ['PENDING'] : [])]
+            return ['All', 'APPROVED', 'IN_PROGRESS', 'COMPLETED', ...(isStaff ? ['PENDING'] : [])]
         }
         if (primaryFilter === 'Funds' || primaryFilter === 'Locations') {
             return ['All', 'Active', 'Inactive']
@@ -212,7 +212,6 @@ export default function HomeScreen() {
     // Simulated progress tracker helper for Help Request Cards
     const getSimulatedProgress = (status?: string) => {
         switch (status) {
-            case 'FULFILLED':
             case 'COMPLETED':
                 return 100
             case 'IN_PROGRESS': return 65
@@ -268,7 +267,7 @@ export default function HomeScreen() {
         const isPending = item.status === 'PENDING'
         const isApproved = item.status === 'APPROVED' || item.status === 'ACCEPTED'
         const isInProgress = item.status === 'IN_PROGRESS'
-        const isFulfilled = item.status === 'FULFILLED' || item.status === 'COMPLETED'
+        const isFulfilled = item.status === 'COMPLETED'
 
         let statusText = item.status || 'PENDING'
         let statusColor = theme.textSupporting
@@ -720,7 +719,7 @@ export default function HomeScreen() {
                             let label = opt
                             if (opt === 'APPROVED') label = 'Approved'
                             if (opt === 'IN_PROGRESS') label = 'In Progress'
-                            if (opt === 'FULFILLED') label = 'Fulfilled'
+                            if (opt === 'COMPLETED') label = 'Completed'
                             if (opt === 'PENDING') label = 'Pending'
 
                             return (

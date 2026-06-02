@@ -79,7 +79,7 @@ export default function VolunteerDashboardScreen() {
     'PENDING': SupportStatus.PENDING,
     'APPROVED': SupportStatus.APPROVED,
     'IN_PROGRESS': SupportStatus.IN_PROGRESS,
-    'COMPLETED': SupportStatus.FULFILLED,
+    'COMPLETED': SupportStatus.COMPLETED,
     'REJECTED': SupportStatus.REJECTED,
     'CANCELLED': SupportStatus.CANCELLED,
   };
