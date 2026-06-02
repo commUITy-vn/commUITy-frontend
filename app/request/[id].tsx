@@ -27,6 +27,7 @@ const HERE_API_KEY = process.env.EXPO_PUBLIC_HERE_API_KEY || "";
 
 import { useAuthStore } from "@/features/auth/stores/useAuthStore";
 import { UserRole } from "@/features/auth/types";
+import { geocodeAddress } from "@/features/maps/api/geocode-address";
 import { useSupportLocations } from "@/features/maps/hooks/useSupportLocations";
 import { assignSupportLocation } from "@/features/support/api/assign-support-location";
 import {
@@ -335,7 +336,7 @@ export default function RequestDetailScreen() {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
   };
 
-  const handleSaveRequestUpdates = () => {
+  const handleSaveRequestUpdates = async () => {
     if (!request) return;
     if (!editTitle.trim()) {
       Alert.alert("Notice", "Title cannot be empty.");
@@ -345,15 +346,40 @@ export default function RequestDetailScreen() {
       Alert.alert("Notice", "Please select a category.");
       return;
     }
+    if (!address.trim()) {
+      Alert.alert("Notice", "Address cannot be empty.");
+      return;
+    }
+
+    let resolved = {
+      address: address.trim(),
+      latitude: parseFloat(latStr) || request.latitude,
+      longitude: parseFloat(lngStr) || request.longitude,
+    };
+
+    if (address.trim() !== request.address) {
+      const geocoded = await geocodeAddress(address.trim());
+      if (!geocoded) {
+        Alert.alert(
+          "Notice",
+          "Could not resolve this address. Please choose a valid address from suggestions.",
+        );
+        return;
+      }
+      resolved = geocoded;
+      setAddress(geocoded.address);
+      setLatStr(geocoded.latitude.toString());
+      setLngStr(geocoded.longitude.toString());
+    }
 
     // Payload sử dụng categoryId để Backend không văng lỗi 500
     updateRequestMutation.mutate({
       title: editTitle.trim(),
       description: editDescription.trim(),
       categoryId: editCategoryId,
-      address: address,
-      latitude: parseFloat(latStr) || request.latitude,
-      longitude: parseFloat(lngStr) || request.longitude,
+      address: resolved.address,
+      latitude: resolved.latitude,
+      longitude: resolved.longitude,
     });
   };
 

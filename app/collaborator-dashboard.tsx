@@ -169,25 +169,6 @@ export default function CollaboratorDashboard() {
                         </View>
                         <MaterialIcons name="chevron-right" size={22} color={theme.icon} />
                     </Pressable>
-                    <Pressable
-                        onPress={async () => {
-                            await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light)
-                            router.push("/(app)/map" as any)
-                        }}
-                        style={({ pressed }) => [
-                            styles.quickAction,
-                            { borderColor: theme.border, backgroundColor: pressed ? theme.highlightBG : "transparent" },
-                        ]}
-                    >
-                        <MaterialIcons name="map" size={20} color={theme.primary} />
-                        <View style={{ flex: 1 }}>
-                            <Text style={[styles.quickActionTitle, { color: theme.text }]}>Map & Locations</Text>
-                            <Text style={[styles.quickActionText, { color: theme.textSupporting }]} numberOfLines={1}>
-                                View SR and SupportLocation on map
-                            </Text>
-                        </View>
-                        <MaterialIcons name="chevron-right" size={22} color={theme.icon} />
-                    </Pressable>
                 </View>
 
                 {/* Dashboard List */}

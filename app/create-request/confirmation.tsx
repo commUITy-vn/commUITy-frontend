@@ -1,4 +1,5 @@
 import { Button, ConfirmModal } from "@/components/ui";
+import { geocodeAddress } from "@/features/maps/api/geocode-address";
 import { createSupportNeed } from "@/features/support/api/create-support-need";
 import { useCreateSupportRequest } from "@/features/support/hooks/useCreateSupportRequest";
 import {
@@ -51,18 +52,32 @@ export default function CreateRequestConfirmationScreen() {
       showAlert("Error", "Please select a category first.");
       return;
     }
+    if (!address.trim()) {
+      showAlert("Error", "Please select a support request address.");
+      return;
+    }
     await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
     setIsSubmitting(true);
 
     try {
+      const resolvedAddress =
+        latitude && longitude
+          ? { address, latitude, longitude }
+          : await geocodeAddress(address);
+
+      if (!resolvedAddress) {
+        setIsSubmitting(false);
+        showAlert("Error", "Could not resolve this address. Please choose a valid address from suggestions.");
+        return;
+      }
+
       const createdRequest = await createRequestMutation.mutateAsync({
         title,
         description,
         categoryId,
-        address: address || address || undefined,
-        // Sử dụng tọa độ từ store thay vì số hardcode
-        latitude: latitude ?? 10.762622,
-        longitude: longitude ?? 106.660172,
+        address: resolvedAddress.address,
+        latitude: resolvedAddress.latitude,
+        longitude: resolvedAddress.longitude,
       });
       // Submit items if any exist
       if (items && items.length > 0) {
@@ -350,7 +365,7 @@ export default function CreateRequestConfirmationScreen() {
             size="large"
             primary
             isLoading={isSubmitting}
-            isDisabled={isSubmitting || !category || !title.trim()}
+            isDisabled={isSubmitting || !category || !title.trim() || !address.trim()}
           />
         </View>
       </ScrollView>

@@ -1,4 +1,5 @@
 import { Button } from "@/components/ui";
+import { geocodeAddress } from "@/features/maps/api/geocode-address";
 import TextInput from "@/components/ui/TextInput";
 import { useTheme } from "@/hooks/useTheme";
 import { useCreateRequestStore } from "@/stores/useCreateRequestStore";
@@ -8,6 +9,7 @@ import { useRouter } from "expo-router";
 import React, { useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
+  Alert,
   KeyboardAvoidingView,
   Platform,
   Pressable,
@@ -50,6 +52,8 @@ export default function CreateRequestDetailsScreen() {
   );
   const [suggestions, setSuggestions] = useState<any[]>([]);
   const [isSearching, setIsSearching] = useState(false);
+  const [isResolvingAddress, setIsResolvingAddress] = useState(false);
+  const [selectedAddress, setSelectedAddress] = useState(address);
 
   useEffect(() => {
     if (!latitude || !longitude) {
@@ -82,6 +86,7 @@ export default function CreateRequestDetailsScreen() {
 
   const handleSearchLocation = (text: string) => {
     setAddress(text);
+    setSelectedAddress("");
     setIsSearching(true);
     if (typingTimerRef.current) clearTimeout(typingTimerRef.current);
     typingTimerRef.current = setTimeout(() => fetchSuggestions(text), 600);
@@ -91,6 +96,7 @@ export default function CreateRequestDetailsScreen() {
     const { lat, lng } = item.position;
     const fullAddress = item.address?.label || item.title;
     setAddress(fullAddress);
+    setSelectedAddress(fullAddress);
     setCoordinates(lat, lng);
     setLatStr(lat.toString());
     setLngStr(lng.toString());
@@ -104,6 +110,35 @@ export default function CreateRequestDetailsScreen() {
       webViewRef.current?.postMessage(message);
     }
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+  };
+
+  const handleContinue = async () => {
+    if (!title.trim() || !address.trim()) return;
+    await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+
+    if (selectedAddress !== address || !latitude || !longitude) {
+      setIsResolvingAddress(true);
+      try {
+        const resolved = await geocodeAddress(address);
+        if (!resolved) {
+          setIsResolvingAddress(false);
+          Alert.alert(
+            "Invalid address",
+            "Could not resolve this address. Please choose a valid address from suggestions.",
+          );
+          return;
+        }
+        setAddress(resolved.address);
+        setSelectedAddress(resolved.address);
+        setCoordinates(resolved.latitude, resolved.longitude);
+        setLatStr(resolved.latitude.toString());
+        setLngStr(resolved.longitude.toString());
+      } finally {
+        setIsResolvingAddress(false);
+      }
+    }
+
+    router.push("/create-request/items");
   };
 
   const getHereMapHtml = (lat: string, lng: string) => `
@@ -317,12 +352,9 @@ export default function CreateRequestDetailsScreen() {
         </View>
 
         <Button
-          text="Continue"
-          onPress={() => {
-            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-            router.push("/create-request/items"); // Direct to items as per requirement
-          }}
-          disabled={!title || !address}
+          text={isResolvingAddress ? "Resolving address..." : "Continue"}
+          onPress={handleContinue}
+          disabled={!title.trim() || !address.trim() || isResolvingAddress}
           primary
           size="large"
           style={{ marginTop: 10 }}

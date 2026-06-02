@@ -6,20 +6,33 @@ type DirectionTarget = {
   label?: string;
 };
 
-export async function openDirections(target: DirectionTarget): Promise<void> {
+type DirectionOrigin = {
+  latitude: number;
+  longitude: number;
+};
+
+export async function openDirections(
+  target: DirectionTarget,
+  origin?: DirectionOrigin | null,
+): Promise<void> {
   const { latitude, longitude, label } = target;
   const latLng = `${latitude},${longitude}`;
+  const originLatLng = origin ? `${origin.latitude},${origin.longitude}` : "";
   const encodedLabel = label ? encodeURIComponent(label) : "";
   const nativeLabel = encodedLabel ? `(${encodedLabel})` : "";
+  const googleDirectionsUrl =
+    `https://www.google.com/maps/dir/?api=1&destination=${latLng}` +
+    `${originLatLng ? `&origin=${originLatLng}` : ""}` +
+    "&travelmode=driving&dir_action=navigate";
 
   const urls =
     Platform.OS === "ios"
-      ? [`maps://0,0?q=${latLng}${nativeLabel}`]
+      ? [googleDirectionsUrl, `maps://0,0?q=${latLng}${nativeLabel}`]
       : Platform.OS === "android"
-        ? [`geo:0,0?q=${latLng}${nativeLabel}`]
+        ? [googleDirectionsUrl, `geo:0,0?q=${latLng}${nativeLabel}`]
         : [];
 
-  urls.push(`https://www.google.com/maps/dir/?api=1&destination=${latLng}`);
+  urls.push(googleDirectionsUrl);
 
   for (const url of urls) {
     try {

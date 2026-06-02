@@ -54,6 +54,15 @@ export default function AppLayout() {
                 }}
             />
             <Tabs.Screen
+                name="map"
+                options={{
+                    title: "Map",
+                    tabBarIcon: ({ color, size }) => (
+                        <MaterialIcons name="map" size={size} color={color} />
+                    ),
+                }}
+            />
+            <Tabs.Screen
                 name="messages"
                 options={{
                     title: "Inbox",
@@ -88,12 +97,6 @@ export default function AppLayout() {
                             </Text>
                         </View>
                     ),
-                }}
-            />
-            <Tabs.Screen
-                name="map"
-                options={{
-                    href: null,
                 }}
             />
             {/* All other routes set href: null to prevent tab bar appearance */}
