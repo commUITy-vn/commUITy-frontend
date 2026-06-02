@@ -7,7 +7,8 @@ import { useTheme } from '@/hooks/useTheme';
 import { useThemeStyles } from '@/hooks/useThemeStyles';
 import { RequestCard } from '@/features/support/components/RequestCard';
 import ApplyCollaboratorModal from '@/features/support/components/ApplyCollaboratorModal';
-import { SupportRequest, SupportStatus, UrgencyLevel } from '@/features/support/types/support.types';
+import { SupportCategory, SupportRequest, SupportStatus, UrgencyLevel } from '@/features/support/types/support.types';
+import type { VolunteerAssignment } from '@/features/support/api/volunteer-assignments';
 import { useVolunteerAssignments } from '@/features/support/hooks/useVolunteerAssignments';
 import { ConfirmModal } from '@/components/ui';
 
@@ -84,21 +85,36 @@ export default function VolunteerDashboardScreen() {
     'CANCELLED': SupportStatus.CANCELLED,
   };
 
-  const renderVolunteerItem = ({ item }: { item: any }) => {
+  const getAssignmentKey = (item: VolunteerAssignment, index: number) =>
+    item.id ||
+    `${item.supportRequestId}-${item.volunteerId}-${item.assignedAt || item.updatedAt || index}`;
+
+  const renderVolunteerItem = ({ item }: { item: VolunteerAssignment }) => {
+    const requestTimestamp = item.assignedAt || item.updatedAt || new Date().toISOString();
+    const requestUrgency = item.supportRequestUrgency ?? 'MEDIUM';
+    const requestStatus =
+      statusMap[item.supportRequestStatus || ''] ||
+      (item.status === 'ACCEPTED'
+        ? SupportStatus.IN_PROGRESS
+        : item.status === 'COMPLETED'
+          ? SupportStatus.COMPLETED
+          : SupportStatus.APPROVED);
+
     // Map VolunteerAssignment to SupportRequest type
     const mappedRequest: SupportRequest = {
       id: item.supportRequestId,
-      title: item.supportRequestTitle,
-      description: item.supportRequestDescription,
-      location: item.supportRequestLocation,
-      urgency: urgencyMap[item.supportRequestUrgency] || UrgencyLevel.MEDIUM,
-      status: statusMap[item.status] || SupportStatus.IN_PROGRESS,
-      category: item.category || 'OTHER',
-      createdAt: item.createdAt,
-      updatedAt: item.createdAt,
+      title: item.supportRequestTitle || 'Support request',
+      description: item.supportRequestDescription || 'No description supplied.',
+      location: item.supportRequestLocation || 'No location supplied',
+      urgency: urgencyMap[requestUrgency] || UrgencyLevel.MEDIUM,
+      status: requestStatus,
+      category: SupportCategory.EMERGENCY,
+      createdAt: requestTimestamp,
+      updatedAt: item.updatedAt || requestTimestamp,
     };
 
-    const isFinished = item.status === 'COMPLETED' || item.status === 'CANCELLED' || item.status === 'REJECTED';
+    const canComplete = item.status === 'ACCEPTED';
+    const canWithdraw = item.status === 'PENDING' || item.status === 'ACCEPTED';
 
     return (
       <View style={{ marginBottom: 16 }}>
@@ -107,23 +123,27 @@ export default function VolunteerDashboardScreen() {
           onPress={() => router.push(`/request/${mappedRequest.id}`)}
           containerStyle={{ marginHorizontal: 0 }}
         />
-        {!isFinished && (
+        {(canComplete || canWithdraw) && (
           <View style={[styles.row, { paddingHorizontal: 0, marginTop: -4 }]}>
-            <TouchableOpacity
-              style={[
-                styles.buttonPrimary,
-                { backgroundColor: theme.primary, marginRight: 8 },
-              ]}
-              onPress={() => handleMarkComplete(item.supportRequestId)}
-            >
-              <Text style={[styles.buttonText, { color: theme.textLight }]}>Mark Complete</Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={[styles.buttonSecondary, { backgroundColor: theme.danger }]}
-              onPress={() => handleWithdraw(item.supportRequestId)}
-            >
-              <Text style={[styles.buttonText, { color: theme.textLight }]}>Withdraw</Text>
-            </TouchableOpacity>
+            {canComplete && (
+              <TouchableOpacity
+                style={[
+                  styles.buttonPrimary,
+                  { backgroundColor: theme.primary, marginRight: 8 },
+                ]}
+                onPress={() => handleMarkComplete(item.supportRequestId)}
+              >
+                <Text style={[styles.buttonText, { color: theme.textLight }]}>Mark Complete</Text>
+              </TouchableOpacity>
+            )}
+            {canWithdraw && (
+              <TouchableOpacity
+                style={[styles.buttonSecondary, { backgroundColor: theme.danger }]}
+                onPress={() => handleWithdraw(item.supportRequestId)}
+              >
+                <Text style={[styles.buttonText, { color: theme.textLight }]}>Withdraw</Text>
+              </TouchableOpacity>
+            )}
           </View>
         )}
       </View>
@@ -132,7 +152,7 @@ export default function VolunteerDashboardScreen() {
 
   // Compute live stats based on real assignments
   const completedCount = assignments.filter((a) => a.status === 'COMPLETED').length;
-  const inProgressCount = assignments.filter((a) => a.status === 'APPROVED' || a.status === 'IN_PROGRESS').length;
+  const inProgressCount = assignments.filter((a) => a.status === 'PENDING' || a.status === 'ACCEPTED').length;
   const completionRate = assignments.length > 0 
     ? Math.round((completedCount / assignments.length) * 100) 
     : 100;
@@ -200,7 +220,7 @@ export default function VolunteerDashboardScreen() {
           <FlatList
             data={assignments}
             renderItem={renderVolunteerItem}
-            keyExtractor={(item) => item.id}
+            keyExtractor={getAssignmentKey}
             contentContainerStyle={{ paddingTop: 24, paddingBottom: 80 }}
             showsVerticalScrollIndicator={false}
             ListEmptyComponent={

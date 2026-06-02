@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, Pressable, ActivityIndicator, Alert, ScrollView, Platform, Linking } from 'react-native';
+import { View, Text, StyleSheet, Pressable, ActivityIndicator, Alert, ScrollView, Platform, Linking, Modal } from 'react-native';
 import { useTheme } from '@/hooks/useTheme';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import * as Haptics from 'expo-haptics';
@@ -8,6 +8,12 @@ import { useSupportLocation } from '@/features/maps/hooks/useSupportLocation';
 import { BottomSheet } from '@/components/ui';
 import { api } from '@/lib/api-client';
 import { useAuthStore } from '@/features/auth/stores/useAuthStore';
+import { UserRole } from '@/features/auth/types';
+import TextInput from '@/components/ui/TextInput';
+import Button from '@/components/ui/Button';
+import { updateSupportLocation } from '@/features/maps/api/update-support-location';
+import { updateSupportLocationStatus } from '@/features/maps/api/update-support-location-status';
+import { useMutation, useQueryClient } from '@tanstack/react-query';
 
 // Conditional imports for WebView
 let WebView: any;
@@ -62,12 +68,71 @@ export default function LocationDetail() {
   const router = useRouter();
   const { id } = useLocalSearchParams<{ id: string }>();
   const { user } = useAuthStore();
+  const queryClient = useQueryClient();
   const [isOptionsVisible, setIsOptionsVisible] = useState(false);
   const [isShareSheetVisible, setIsShareSheetVisible] = useState(false);
+  const [isEditVisible, setIsEditVisible] = useState(false);
   const [conversations, setConversations] = useState<any[]>([]);
   const [isConversationsLoading, setIsConversationsLoading] = useState(false);
+  const [editName, setEditName] = useState('');
+  const [editDescription, setEditDescription] = useState('');
+  const [editAddress, setEditAddress] = useState('');
+  const [editPhone, setEditPhone] = useState('');
+  const [editLat, setEditLat] = useState('');
+  const [editLng, setEditLng] = useState('');
+  const [editBankName, setEditBankName] = useState('');
+  const [editBankAccount, setEditBankAccount] = useState('');
 
   const { data: location, isLoading, isError } = useSupportLocation(id);
+  const canManageLocation = user?.role === UserRole.ADMIN || user?.role === UserRole.COLLABORATOR;
+
+  useEffect(() => {
+    if (!location) return;
+    setEditName(location.name || '');
+    setEditDescription(location.description || '');
+    setEditAddress(location.address || '');
+    setEditPhone(location.contactPhone || '');
+    setEditLat(String(location.latitude || ''));
+    setEditLng(String(location.longitude || ''));
+    setEditBankName(location.bankName || '');
+    setEditBankAccount(location.bankAccountNumber || '');
+  }, [location]);
+
+  const updateLocationMutation = useMutation({
+    mutationFn: () =>
+      updateSupportLocation(id, {
+        name: editName.trim(),
+        description: editDescription.trim(),
+        address: editAddress.trim(),
+        contactPhone: editPhone.trim() || undefined,
+        latitude: Number(editLat),
+        longitude: Number(editLng),
+        bankName: editBankName.trim() || undefined,
+        bankAccountNumber: editBankAccount.trim() || undefined,
+      }),
+    onSuccess: async () => {
+      await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      setIsEditVisible(false);
+      queryClient.invalidateQueries({ queryKey: ['supportLocation', id] });
+      queryClient.invalidateQueries({ queryKey: ['supportLocations'] });
+      Alert.alert('Success', 'Support location updated.');
+    },
+    onError: (err: any) => {
+      Alert.alert('Error', err?.message || 'Failed to update support location.');
+    },
+  });
+
+  const updateStatusMutation = useMutation({
+    mutationFn: (isActive: boolean) => updateSupportLocationStatus(id, isActive),
+    onSuccess: async () => {
+      await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      queryClient.invalidateQueries({ queryKey: ['supportLocation', id] });
+      queryClient.invalidateQueries({ queryKey: ['supportLocations'] });
+    },
+    onError: (err: any) => {
+      Alert.alert('Error', err?.message || 'Failed to update support location status.');
+    },
+  });
 
   useEffect(() => {
     if (isShareSheetVisible) {
@@ -160,6 +225,29 @@ export default function LocationDetail() {
   }
 
   const options = [
+    ...(canManageLocation
+      ? [
+          {
+            key: 'edit',
+            label: 'Edit Location Hub',
+            icon: 'edit' as any,
+            onPress: () => {
+              setIsOptionsVisible(false);
+              requestAnimationFrame(() => setIsEditVisible(true));
+            },
+          },
+          {
+            key: 'status',
+            label: location.isActive === false ? 'Activate Location Hub' : 'Deactivate Location Hub',
+            icon: (location.isActive === false ? 'play-arrow' : 'power-settings-new') as any,
+            destructive: location.isActive !== false,
+            onPress: () => {
+              setIsOptionsVisible(false);
+              updateStatusMutation.mutate(location.isActive === false);
+            },
+          },
+        ]
+      : []),
     {
       key: 'share',
       label: 'Share Location Hub',
@@ -225,6 +313,17 @@ export default function LocationDetail() {
           <View style={styles.infoRow}>
             <Ionicons name="pin" size={18} color={theme.primary} />
             <Text style={[styles.infoText, { color: theme.text }]}>{location.address}</Text>
+          </View>
+
+          <View style={styles.infoRow}>
+            <Ionicons
+              name={location.isActive === false ? 'pause-circle' : 'checkmark-circle'}
+              size={18}
+              color={location.isActive === false ? theme.danger : theme.success}
+            />
+            <Text style={[styles.infoText, { color: theme.text }]}>
+              {location.isActive === false ? 'Inactive' : 'Active'}
+            </Text>
           </View>
 
           {location.contactPhone ? (
@@ -340,6 +439,58 @@ export default function LocationDetail() {
           )}
         </View>
       </BottomSheet>
+
+      <Modal
+        visible={isEditVisible}
+        animationType="slide"
+        presentationStyle="pageSheet"
+        onRequestClose={() => setIsEditVisible(false)}
+      >
+        <View style={{ flex: 1, backgroundColor: theme.appBG }}>
+          <View style={[styles.modalHeader, { borderBottomColor: theme.border }]}>
+            <Pressable onPress={() => setIsEditVisible(false)} style={styles.backButton}>
+              <MaterialIcons name="close" size={24} color={theme.text} />
+            </Pressable>
+            <Text style={[styles.headerTitle, { color: theme.text }]}>Edit Location Hub</Text>
+            <View style={{ width: 48 }} />
+          </View>
+          <ScrollView contentContainerStyle={styles.editContent} keyboardShouldPersistTaps="handled">
+            <TextInput label="Name" value={editName} onChangeText={setEditName} />
+            <TextInput
+              label="Description"
+              value={editDescription}
+              onChangeText={setEditDescription}
+              multiline
+              height={90}
+            />
+            <TextInput label="Address" value={editAddress} onChangeText={setEditAddress} />
+            <TextInput label="Contact Phone" value={editPhone} onChangeText={setEditPhone} />
+            <View style={styles.editRow}>
+              <View style={{ flex: 1 }}>
+                <TextInput label="Latitude" value={editLat} onChangeText={setEditLat} keyboardType="numeric" />
+              </View>
+              <View style={{ flex: 1 }}>
+                <TextInput label="Longitude" value={editLng} onChangeText={setEditLng} keyboardType="numeric" />
+              </View>
+            </View>
+            <TextInput label="Bank Name" value={editBankName} onChangeText={setEditBankName} />
+            <TextInput label="Bank Account" value={editBankAccount} onChangeText={setEditBankAccount} />
+            <Button
+              text="Save Changes"
+              primary
+              isLoading={updateLocationMutation.isPending}
+              isDisabled={
+                !editName.trim() ||
+                !editDescription.trim() ||
+                !editAddress.trim() ||
+                Number.isNaN(Number(editLat)) ||
+                Number.isNaN(Number(editLng))
+              }
+              onPress={() => updateLocationMutation.mutate()}
+            />
+          </ScrollView>
+        </View>
+      </Modal>
     </View>
   );
 }
@@ -414,5 +565,22 @@ const styles = StyleSheet.create({
   directionsButtonText: {
     fontSize: 16,
     fontWeight: '700',
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 8,
+    paddingVertical: 12,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+  },
+  editContent: {
+    padding: 20,
+    gap: 14,
+    paddingBottom: 60,
+  },
+  editRow: {
+    flexDirection: 'row',
+    gap: 12,
   },
 });

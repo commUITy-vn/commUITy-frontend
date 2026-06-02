@@ -1,5 +1,6 @@
-import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useQuery } from '@tanstack/react-query';
 import { getSupportRequests, SupportRequestSummaryResponse } from '@/features/support/api/get-support-requests';
+import { getMySupportRequests } from '@/features/support/api/get-my-support-requests';
 
 export const useSupportRequests = (status?: string) => {
   return useQuery<SupportRequestSummaryResponse[], Error>({
@@ -9,10 +10,8 @@ export const useSupportRequests = (status?: string) => {
 };
 
 export const useMySupportRequests = () => {
-  // This would need an authenticated endpoint - for now we'll use the general one
-  // In a real implementation, this would call a different endpoint like /api/support-requests/my-requests
   return useQuery<SupportRequestSummaryResponse[], Error>({
     queryKey: ['mySupportRequests'],
-    queryFn: () => getSupportRequests(), // TODO: Replace with actual my-requests endpoint
+    queryFn: () => getMySupportRequests(),
   });
 };

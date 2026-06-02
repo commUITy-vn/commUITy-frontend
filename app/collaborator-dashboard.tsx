@@ -44,7 +44,7 @@ export default function CollaboratorDashboard() {
         return (
             <View style={{ marginBottom: 16 }}>
                 <Pressable
-                    onPress={() => router.push(`/(app)/location/${item.id}` as any)}
+                    onPress={() => router.push(`/location/${item.id}` as any)}
                     style={({ pressed }) => [
                         styles.card,
                         { 
@@ -84,7 +84,7 @@ export default function CollaboratorDashboard() {
                             ]}
                             onPress={async () => {
                                 await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                                router.push(`/(app)/location/${item.id}` as any);
+                                router.push(`/location/${item.id}` as any);
                             }}
                         >
                             <Text style={[styles.buttonText, { color: theme.textLight }]}>View Location</Text>
@@ -96,7 +96,7 @@ export default function CollaboratorDashboard() {
                             ]}
                             onPress={async () => {
                                 await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                                router.push(`/(app)/location/${item.id}` as any);
+                                router.push(`/location/${item.id}` as any);
                             }}
                         >
                             <Text style={[styles.buttonText, { color: theme.text }]}>Settings</Text>

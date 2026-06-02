@@ -5,16 +5,42 @@ import { useRouter } from 'expo-router';
 import * as Haptics from 'expo-haptics';
 import { MaterialIcons } from '@expo/vector-icons';
 import { BorderRadius, Spacing } from '@/constants/theme';
+import { useQueries } from '@tanstack/react-query';
+import { getUsers } from '@/features/users/api/get-users';
+import { getSupportRequests } from '@/features/support/api/get-support-requests';
+import { getAllReports } from '@/features/reports/api/get-all-reports';
+
+const toArray = (value: any): any[] => {
+  if (Array.isArray(value)) return value;
+  if (Array.isArray(value?.content)) return value.content;
+  if (Array.isArray(value?.items)) return value.items;
+  if (Array.isArray(value?.data)) return value.data;
+  return [];
+};
 
 export default function AdminDashboard() {
   const theme = useTheme();
   const router = useRouter();
+  const [usersQuery, requestsQuery, reportsQuery] = useQueries({
+    queries: [
+      { queryKey: ['adminDashboard', 'users'], queryFn: getUsers },
+      { queryKey: ['adminDashboard', 'supportRequests'], queryFn: () => getSupportRequests() },
+      { queryKey: ['adminDashboard', 'reports'], queryFn: getAllReports },
+    ],
+  });
+
+  const users = toArray(usersQuery.data);
+  const requests = toArray(requestsQuery.data);
+  const reports = toArray(reportsQuery.data);
+  const activeUsers = users.filter((user) => user.status === 'ACTIVE' || user.isActive === true).length;
+  const pendingRequests = requests.filter((request) => request.status === 'PENDING').length;
+  const openReports = reports.filter((report) => report.status === 'PENDING').length;
 
   const stats = [
-    { label: 'Total Users', value: '1,204', icon: 'people' },
-    { label: 'Pending Requests', value: '15', icon: 'pending-actions' },
-    { label: 'Open Reports', value: '3', icon: 'report' },
-    { label: 'System Health', value: '99%', icon: 'bolt' },
+    { label: 'Total Users', value: String(users.length), icon: 'people' },
+    { label: 'Active Users', value: String(activeUsers), icon: 'verified-user' },
+    { label: 'Pending Requests', value: String(pendingRequests), icon: 'pending-actions' },
+    { label: 'Open Reports', value: String(openReports), icon: 'report' },
   ];
 
   const adminOptions = [

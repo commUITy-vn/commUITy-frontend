@@ -14,12 +14,14 @@ export enum UrgencyLevel {
 }
 
 export enum SupportCategory {
-  FOOD = "FOOD",
-  SHELTER = "SHELTER",
   MEDICAL = "MEDICAL",
+  FOOD = "FOOD",
+  LIVING = "LIVING",
   EDUCATION = "EDUCATION",
-  TRANSPORT = "TRANSPORT",
-  OTHER = "OTHER",
+  JOB = "JOB",
+  HOUSING = "HOUSING",
+  LEGAL = "LEGAL",
+  EMERGENCY = "EMERGENCY",
 }
 
 export interface SupportRequest {
@@ -59,12 +61,14 @@ export const URGENCY_LABELS: Record<UrgencyLevel, string> = {
 };
 
 export const CATEGORY_LABELS: Record<SupportCategory, string> = {
-  [SupportCategory.FOOD]: "Food",
-  [SupportCategory.SHELTER]: "Shelter",
   [SupportCategory.MEDICAL]: "Medical",
+  [SupportCategory.FOOD]: "Food",
+  [SupportCategory.LIVING]: "Living",
   [SupportCategory.EDUCATION]: "Education",
-  [SupportCategory.TRANSPORT]: "Transport",
-  [SupportCategory.OTHER]: "Other",
+  [SupportCategory.JOB]: "Job",
+  [SupportCategory.HOUSING]: "Housing",
+  [SupportCategory.LEGAL]: "Legal",
+  [SupportCategory.EMERGENCY]: "Emergency",
 };
 
 // --- Support Item Types (Module 7) ---

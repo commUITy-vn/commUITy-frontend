@@ -51,9 +51,7 @@ export default function CreateRequestCategoryScreen() {
     const handleSelect = async (item: { id: string, name: string, code: string }) => {
         await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium)
         
-        const enumValue = Object.values(SupportCategory).includes(item.code as any)
-            ? (item.code as SupportCategory)
-            : SupportCategory.OTHER
+        const enumValue = item.code as SupportCategory
             
         setCategory(enumValue)
         setCategoryId(item.id)

@@ -27,6 +27,8 @@ const HERE_API_KEY = process.env.EXPO_PUBLIC_HERE_API_KEY || "";
 
 import { useAuthStore } from "@/features/auth/stores/useAuthStore";
 import { UserRole } from "@/features/auth/types";
+import { useSupportLocations } from "@/features/maps/hooks/useSupportLocations";
+import { assignSupportLocation } from "@/features/support/api/assign-support-location";
 import {
   applyToSupportRequest,
   approveVolunteer,
@@ -70,6 +72,7 @@ export default function RequestDetailScreen() {
   const [editCategoryId, setEditCategoryId] = useState("");
   const [editCategoryName, setEditCategoryName] = useState("Select Category");
   const [showCategoryPicker, setShowCategoryPicker] = useState(false);
+  const [showLocationPicker, setShowLocationPicker] = useState(false);
 
   // States for Address Search
   const [address, setAddress] = useState("");
@@ -90,6 +93,7 @@ export default function RequestDetailScreen() {
     contribute,
   } = useSupportNeeds(id as string);
   const { data: categories } = useCategories(true); // Fetch active categories from backend
+  const { data: supportLocations = [] } = useSupportLocations();
   const { data: assignments = [], isLoading: assignmentsLoading } = useQuery<
     VolunteerAssignment[],
     Error
@@ -114,13 +118,17 @@ export default function RequestDetailScreen() {
     !isOwner &&
     (request?.status === SupportStatus.APPROVED ||
       request?.status === SupportStatus.IN_PROGRESS);
-  const currentUserAssignment = assignments.find(
-    (assignment) => assignment.volunteerId === user?.id,
+  const activeUserAssignment = assignments.find(
+    (assignment) =>
+      assignment.volunteerId === user?.id &&
+      (assignment.status === "PENDING" || assignment.status === "ACCEPTED"),
   );
   const canContribute =
     user?.role === UserRole.COLLABORATOR ||
-    currentUserAssignment?.status === "ACCEPTED";
+    activeUserAssignment?.status === "ACCEPTED";
   const canReviewAssignments = !!request && (isOwner || isStaff);
+  const canAssignSupportLocation =
+    !!request && isStaff && request.status === SupportStatus.APPROVED;
 
   useEffect(() => {
     if (request) {
@@ -216,6 +224,24 @@ export default function RequestDetailScreen() {
     },
     onError: (error: any) => {
       Alert.alert("Error", error?.message || "Failed to reject volunteer.");
+    },
+  });
+
+  const assignSupportLocationMutation = useMutation({
+    mutationFn: (supportLocationId: string) =>
+      assignSupportLocation(id as string, { supportLocationId }),
+    onSuccess: () => {
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      setShowLocationPicker(false);
+      queryClient.invalidateQueries({ queryKey: ["supportRequest", id] });
+      queryClient.invalidateQueries({ queryKey: ["supportRequests"] });
+      Alert.alert("Success", "Support request assigned to support location.");
+    },
+    onError: (error: any) => {
+      Alert.alert(
+        "Error",
+        error?.message || "Failed to assign support location.",
+      );
     },
   });
 
@@ -399,13 +425,13 @@ export default function RequestDetailScreen() {
         {canApplyVolunteer && (
           <Button
             text={
-              currentUserAssignment
-                ? `Volunteer request: ${currentUserAssignment.status}`
+              activeUserAssignment
+                ? `Volunteer request: ${activeUserAssignment.status}`
                 : "I want to help"
             }
             onPress={() => applyMutation.mutate()}
-            primary={!currentUserAssignment}
-            isDisabled={!!currentUserAssignment}
+            primary={!activeUserAssignment}
+            isDisabled={!!activeUserAssignment}
             isLoading={applyMutation.isPending}
             style={{ marginBottom: 16 }}
           />
@@ -583,6 +609,48 @@ export default function RequestDetailScreen() {
           )}
         </View>
 
+        {(request.assignedSupportLocationName || canAssignSupportLocation) && (
+          <View style={{ marginTop: 16, gap: 10 }}>
+            <Text style={[localStyles.sectionTitleSmall, { color: theme.text }]}>
+              Support location
+            </Text>
+            <View
+              style={[
+                localStyles.addressBox,
+                {
+                  borderColor: theme.border,
+                  backgroundColor: theme.highlightBG,
+                },
+              ]}
+            >
+              <MaterialIcons
+                name="home-work"
+                size={22}
+                color={theme.primary}
+              />
+              <Text
+                style={[localStyles.addressText, { color: theme.text }]}
+                numberOfLines={2}
+              >
+                {request.assignedSupportLocationName ||
+                  "No support location assigned"}
+              </Text>
+            </View>
+            {canAssignSupportLocation && (
+              <Button
+                text={
+                  request.assignedSupportLocationId
+                    ? "Change Support Location"
+                    : "Assign Support Location"
+                }
+                onPress={() => setShowLocationPicker(true)}
+                isLoading={assignSupportLocationMutation.isPending}
+                style={{ backgroundColor: theme.highlightBG }}
+              />
+            )}
+          </View>
+        )}
+
         {canEditRequest && (
           <Button
             text="Save Request Updates"
@@ -614,9 +682,12 @@ export default function RequestDetailScreen() {
               </Text>
             ) : (
               <View style={localStyles.assignmentList}>
-                {assignments.map((assignment) => (
+                {assignments.map((assignment, index) => (
                   <View
-                    key={`${assignment.volunteerId}-${assignment.assignedAt}`}
+                    key={
+                      assignment.id ||
+                      `${assignment.supportRequestId}-${assignment.volunteerId}-${assignment.assignedAt || assignment.updatedAt || index}`
+                    }
                     style={[
                       localStyles.assignmentCard,
                       {
@@ -814,6 +885,30 @@ export default function RequestDetailScreen() {
         }))}
       />
 
+      <BottomSheet
+        isVisible={showLocationPicker}
+        onClose={() => setShowLocationPicker(false)}
+        title="Select support location"
+        options={
+          supportLocations.length > 0
+            ? supportLocations.map((location: any) => ({
+                key: location.id,
+                label: location.name,
+                icon: "home-work" as const,
+                onPress: () =>
+                  assignSupportLocationMutation.mutate(location.id),
+              }))
+            : [
+                {
+                  key: "empty",
+                  label: "No active support locations available",
+                  icon: "info-outline" as const,
+                  onPress: () => {},
+                },
+              ]
+        }
+      />
+
       <ContributeItemModal
         visible={!!contributeNeed}
         onClose={() => setContributeNeed(null)}
@@ -841,6 +936,8 @@ export default function RequestDetailScreen() {
             },
           });
           queryClient.invalidateQueries({ queryKey: ["supportRequests"] });
+          queryClient.invalidateQueries({ queryKey: ["supportRequest", id] });
+          queryClient.invalidateQueries({ queryKey: ["supportNeeds", id] });
           setContributeNeed(null);
         }}
       />
@@ -940,6 +1037,7 @@ const localStyles = StyleSheet.create({
     marginBottom: 16,
   },
   sectionTitle: { fontSize: 22, fontWeight: "700" },
+  sectionTitleSmall: { fontSize: 16, fontWeight: "700" },
   pickerRow: {
     borderWidth: 1,
     borderRadius: 12,

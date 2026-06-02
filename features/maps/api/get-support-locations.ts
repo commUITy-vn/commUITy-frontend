@@ -8,6 +8,8 @@ export interface SupportLocation {
   latitude: number;
   longitude: number;
   contactPhone?: string;
+  bankName?: string;
+  bankAccountNumber?: string;
   isActive: boolean;
   createdAt: string;
 }

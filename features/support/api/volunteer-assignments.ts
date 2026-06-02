@@ -1,7 +1,7 @@
 import { api } from '@/lib/api-client';
 
 export interface VolunteerAssignment {
-  id: string;
+  id?: string;
   supportRequestId: string;
   supportRequestTitle: string;
   supportRequestDescription?: string;
