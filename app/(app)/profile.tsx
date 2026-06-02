@@ -64,6 +64,9 @@ export default function ProfileScreen() {
         ...(user?.role === 'VOLUNTEER' ? [
             { key: "volunteer-dashboard", title: "Volunteer Panel", icon: "volunteer-activism" }
         ] : []),
+        ...(user?.role === 'REQUESTER' ? [
+            { key: "requester-dashboard", title: "Requester Panel", icon: "assignment" }
+        ] : []),
         { key: "theme", title: "Appearance: " + (themeMode === 'light' ? 'Light Mode' : themeMode === 'dark' ? 'Dark Mode' : 'System Mode'), icon: themeMode === 'light' ? 'light-mode' : themeMode === 'dark' ? 'dark-mode' : 'brightness-auto' },
         { key: "transaction-history", title: "Transaction History", icon: "history" },
         { key: "notifications", title: "Notifications", icon: "notifications" },
@@ -89,6 +92,9 @@ export default function ProfileScreen() {
                 break
             case "volunteer-dashboard":
                 router.push("/volunteer-dashboard")
+                break
+            case "requester-dashboard":
+                router.push("/requester-dashboard")
                 break
             case "sign-out":
                 setShowSignOutConfirm(true)

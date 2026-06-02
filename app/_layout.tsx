@@ -232,6 +232,20 @@ function AppContent({ theme }: { theme: any }) {
                     }}
                 />
                 <Stack.Screen
+                    name="requester-dashboard"
+                    options={{
+                        headerShown: false,
+                        animation: Platform.select({
+                            ios: "slide_from_right",
+                            android: "slide_from_right",
+                            default: "slide_from_right",
+                        }),
+                        contentStyle: {
+                            backgroundColor: theme.appBG,
+                        },
+                    }}
+                />
+                <Stack.Screen
                     name="community-funds"
                     options={{
                         headerShown: false,

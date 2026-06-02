@@ -33,6 +33,7 @@ import {
   applyToSupportRequest,
   approveVolunteer,
   getAssignmentsBySupportRequest,
+  getMyAssignments,
   rejectVolunteer,
   type VolunteerAssignment,
 } from "@/features/support/api/volunteer-assignments";
@@ -84,9 +85,11 @@ export default function RequestDetailScreen() {
   const webViewRef = useRef<any>(null);
 
   // Data Fetching
-  const { data: request, isLoading: requestLoading } = useSupportRequestById(
-    id as string,
-  );
+  const {
+    data: request,
+    isLoading: requestLoading,
+    refetch: refetchRequest,
+  } = useSupportRequestById(id as string);
   const {
     needs,
     isLoading: needsLoading,
@@ -94,6 +97,14 @@ export default function RequestDetailScreen() {
   } = useSupportNeeds(id as string);
   const { data: categories } = useCategories(true); // Fetch active categories from backend
   const { data: supportLocations = [] } = useSupportLocations();
+  const { data: myVolunteerAssignments = [] } = useQuery<
+    VolunteerAssignment[],
+    Error
+  >({
+    queryKey: ["volunteerAssignments", "me"],
+    queryFn: getMyAssignments,
+    enabled: user?.role === UserRole.VOLUNTEER,
+  });
   const { data: assignments = [], isLoading: assignmentsLoading } = useQuery<
     VolunteerAssignment[],
     Error
@@ -108,24 +119,42 @@ export default function RequestDetailScreen() {
   const isStaff =
     user?.role === UserRole.ADMIN || user?.role === UserRole.COLLABORATOR;
   const isVolunteer = user?.role === UserRole.VOLUNTEER;
-  const canEditRequest = isOwner && request?.status === SupportStatus.PENDING;
+  const isRequesterOwner = user?.role === UserRole.REQUESTER && isOwner;
+  const requestAllowsSupportNeedChanges =
+    request?.status === SupportStatus.PENDING ||
+    request?.status === SupportStatus.APPROVED;
+  const requestAllowsContributions =
+    request?.status === SupportStatus.APPROVED ||
+    request?.status === SupportStatus.IN_PROGRESS;
+  const canEditRequest =
+    isRequesterOwner && request?.status === SupportStatus.PENDING;
   const canManageNeeds =
-    isOwner &&
-    (request?.status === SupportStatus.PENDING ||
-      request?.status === SupportStatus.APPROVED);
-  const canApplyVolunteer =
-    isVolunteer &&
-    !isOwner &&
-    (request?.status === SupportStatus.APPROVED ||
-      request?.status === SupportStatus.IN_PROGRESS);
-  const activeUserAssignment = assignments.find(
-    (assignment) =>
-      assignment.volunteerId === user?.id &&
-      (assignment.status === "PENDING" || assignment.status === "ACCEPTED"),
+    isRequesterOwner && requestAllowsSupportNeedChanges;
+  const requestAllowsVolunteerApplication =
+    request?.status === SupportStatus.APPROVED ||
+    request?.status === SupportStatus.IN_PROGRESS;
+  const requestAssignmentForUser = assignments.find(
+    (assignment) => assignment.volunteerId === user?.id,
   );
+  const myAssignmentForRequest = myVolunteerAssignments.find(
+    (assignment) => assignment.supportRequestId === id,
+  );
+  const userAssignmentForRequest =
+    requestAssignmentForUser || myAssignmentForRequest;
+  const shouldShowVolunteerHelp =
+    isVolunteer && !isOwner && requestAllowsVolunteerApplication;
+  const canApplyVolunteer =
+    shouldShowVolunteerHelp && !userAssignmentForRequest;
+  const canContributeAsAcceptedVolunteer =
+    userAssignmentForRequest?.status === "ACCEPTED";
+  const volunteerHelpLabel = userAssignmentForRequest
+    ? `Volunteer request: ${userAssignmentForRequest.status}`
+    : "I want to help";
   const canContribute =
-    user?.role === UserRole.COLLABORATOR ||
-    activeUserAssignment?.status === "ACCEPTED";
+    !isOwner &&
+    requestAllowsContributions &&
+    (user?.role === UserRole.COLLABORATOR ||
+      canContributeAsAcceptedVolunteer);
   const canReviewAssignments = !!request && (isOwner || isStaff);
   const canAssignSupportLocation =
     !!request && isStaff && request.status === SupportStatus.APPROVED;
@@ -183,6 +212,10 @@ export default function RequestDetailScreen() {
       queryClient.invalidateQueries({
         queryKey: ["volunteerAssignments", "request", id],
       });
+      queryClient.invalidateQueries({
+        queryKey: ["volunteerAssignments", "me"],
+      });
+      queryClient.invalidateQueries({ queryKey: ["volunteerAssignments"] });
       Alert.alert("Success", "Your volunteer application has been submitted.");
     },
     onError: (error: any) => {
@@ -198,6 +231,10 @@ export default function RequestDetailScreen() {
       queryClient.invalidateQueries({
         queryKey: ["volunteerAssignments", "request", id],
       });
+      queryClient.invalidateQueries({
+        queryKey: ["volunteerAssignments", "me"],
+      });
+      queryClient.invalidateQueries({ queryKey: ["volunteerAssignments"] });
       queryClient.invalidateQueries({ queryKey: ["supportRequest", id] });
       queryClient.invalidateQueries({ queryKey: ["supportRequests"] });
     },
@@ -221,6 +258,10 @@ export default function RequestDetailScreen() {
       queryClient.invalidateQueries({
         queryKey: ["volunteerAssignments", "request", id],
       });
+      queryClient.invalidateQueries({
+        queryKey: ["volunteerAssignments", "me"],
+      });
+      queryClient.invalidateQueries({ queryKey: ["volunteerAssignments"] });
     },
     onError: (error: any) => {
       Alert.alert("Error", error?.message || "Failed to reject volunteer.");
@@ -422,16 +463,14 @@ export default function RequestDetailScreen() {
           </View>
         </View>
 
-        {canApplyVolunteer && (
+        {shouldShowVolunteerHelp && (
           <Button
-            text={
-              activeUserAssignment
-                ? `Volunteer request: ${activeUserAssignment.status}`
-                : "I want to help"
-            }
-            onPress={() => applyMutation.mutate()}
-            primary={!activeUserAssignment}
-            isDisabled={!!activeUserAssignment}
+            text={volunteerHelpLabel}
+            onPress={() => {
+              if (canApplyVolunteer) applyMutation.mutate();
+            }}
+            primary={canApplyVolunteer}
+            isDisabled={!canApplyVolunteer}
             isLoading={applyMutation.isPending}
             style={{ marginBottom: 16 }}
           />
@@ -826,12 +865,17 @@ export default function RequestDetailScreen() {
                     {canContribute && (
                       <Pressable
                         onPress={() => setContributeNeed(need)}
+                        disabled={need.isFulfilled || need.remainingQuantity === 0}
                         style={localStyles.actionBtn}
                       >
                         <MaterialIcons
                           name="volunteer-activism"
                           size={20}
-                          color={theme.success}
+                          color={
+                            need.isFulfilled || need.remainingQuantity === 0
+                              ? theme.textSupporting
+                              : theme.success
+                          }
                         />
                       </Pressable>
                     )}
@@ -923,6 +967,8 @@ export default function RequestDetailScreen() {
                 name: contributeNeed.needName || "Support need",
                 neededQuantity: contributeNeed.requiredQuantity || 0,
                 receivedQuantity: contributeNeed.receivedQuantity || 0,
+                remainingQuantity: contributeNeed.remainingQuantity,
+                isFulfilled: contributeNeed.isFulfilled,
                 unit: contributeNeed.unit,
               }
             : null
@@ -935,9 +981,12 @@ export default function RequestDetailScreen() {
               note: notes || undefined,
             },
           });
-          queryClient.invalidateQueries({ queryKey: ["supportRequests"] });
-          queryClient.invalidateQueries({ queryKey: ["supportRequest", id] });
-          queryClient.invalidateQueries({ queryKey: ["supportNeeds", id] });
+          await Promise.all([
+            queryClient.invalidateQueries({ queryKey: ["supportRequests"] }),
+            queryClient.invalidateQueries({ queryKey: ["supportRequest", id] }),
+            queryClient.invalidateQueries({ queryKey: ["supportNeeds", id] }),
+          ]);
+          await refetchRequest();
           setContributeNeed(null);
         }}
       />

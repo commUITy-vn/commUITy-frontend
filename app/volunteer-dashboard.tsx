@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { View, Text, FlatList, TouchableOpacity, StyleSheet, Pressable, ActivityIndicator, Platform } from 'react-native';
+import { useQueries } from '@tanstack/react-query';
 import { useRouter } from 'expo-router';
 import { MaterialIcons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
@@ -11,6 +12,7 @@ import { SupportCategory, SupportRequest, SupportStatus, UrgencyLevel } from '@/
 import type { VolunteerAssignment } from '@/features/support/api/volunteer-assignments';
 import { useVolunteerAssignments } from '@/features/support/hooks/useVolunteerAssignments';
 import { ConfirmModal } from '@/components/ui';
+import { getSupportRequestById, type SupportRequestDetailResponse } from '@/features/support/api/get-support-request-by-id';
 
 const StatCard = ({ label, value }: { label: string; value: string }) => {
   const theme = useTheme();
@@ -29,6 +31,11 @@ export default function VolunteerDashboardScreen() {
   const [applyModalVisible, setApplyModalVisible] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [showSuccessModal, setShowSuccessModal] = useState(false);
+  const [pendingAction, setPendingAction] = useState<{
+    type: 'complete' | 'withdraw';
+    supportRequestId: string;
+    title: string;
+  } | null>(null);
 
   const handleApplyCollaborator = async (reason: string) => {
     setIsSubmitting(true);
@@ -49,6 +56,22 @@ export default function VolunteerDashboardScreen() {
     cancel,
   } = useVolunteerAssignments();
 
+  const requestDetailQueries = useQueries({
+    queries: assignments.map((assignment) => ({
+      queryKey: ['supportRequest', assignment.supportRequestId],
+      queryFn: () => getSupportRequestById(assignment.supportRequestId),
+      enabled: !!assignment.supportRequestId,
+    })),
+  });
+
+  const requestDetailById = new Map<string, SupportRequestDetailResponse>();
+  assignments.forEach((assignment, index) => {
+    const detail = requestDetailQueries[index]?.data;
+    if (detail) {
+      requestDetailById.set(assignment.supportRequestId, detail);
+    }
+  });
+
   const handleMarkComplete = async (supportRequestId: string) => {
     try {
       await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
@@ -65,6 +88,17 @@ export default function VolunteerDashboardScreen() {
     } catch (err) {
       console.error('Failed to cancel assignment:', err);
     }
+  };
+
+  const handleConfirmPendingAction = async () => {
+    if (!pendingAction) return;
+    const action = pendingAction;
+    setPendingAction(null);
+    if (action.type === 'complete') {
+      await handleMarkComplete(action.supportRequestId);
+      return;
+    }
+    await handleWithdraw(action.supportRequestId);
   };
 
   const urgencyMap: Record<number | string, UrgencyLevel> = {
@@ -85,32 +119,43 @@ export default function VolunteerDashboardScreen() {
     'CANCELLED': SupportStatus.CANCELLED,
   };
 
+  const assignmentStatusColors: Record<string, { bg: string; text: string }> = {
+    PENDING: { bg: '#E2E8F0', text: '#475569' },
+    ACCEPTED: { bg: '#E0F2FE', text: '#0369A1' },
+    COMPLETED: { bg: '#DCFCE7', text: '#166534' },
+    CANCELLED: { bg: '#F0F0F0', text: '#666666' },
+    REJECTED: { bg: '#FFE5E5', text: '#CC0000' },
+  };
+
   const getAssignmentKey = (item: VolunteerAssignment, index: number) =>
     item.id ||
     `${item.supportRequestId}-${item.volunteerId}-${item.assignedAt || item.updatedAt || index}`;
 
   const renderVolunteerItem = ({ item }: { item: VolunteerAssignment }) => {
+    const detail = requestDetailById.get(item.supportRequestId);
     const requestTimestamp = item.assignedAt || item.updatedAt || new Date().toISOString();
-    const requestUrgency = item.supportRequestUrgency ?? 'MEDIUM';
+    const requestUrgency = detail?.urgency ?? item.supportRequestUrgency ?? 'MEDIUM';
     const requestStatus =
-      statusMap[item.supportRequestStatus || ''] ||
+      statusMap[detail?.status || item.supportRequestStatus || ''] ||
       (item.status === 'ACCEPTED'
         ? SupportStatus.IN_PROGRESS
         : item.status === 'COMPLETED'
           ? SupportStatus.COMPLETED
           : SupportStatus.APPROVED);
+    const assignmentColors =
+      assignmentStatusColors[item.status] || assignmentStatusColors.PENDING;
 
     // Map VolunteerAssignment to SupportRequest type
     const mappedRequest: SupportRequest = {
       id: item.supportRequestId,
-      title: item.supportRequestTitle || 'Support request',
-      description: item.supportRequestDescription || 'No description supplied.',
-      location: item.supportRequestLocation || 'No location supplied',
+      title: detail?.title || item.supportRequestTitle || 'Support request',
+      description: detail?.description || item.supportRequestDescription || 'No description supplied.',
+      location: detail?.address || item.supportRequestLocation || 'No location supplied',
       urgency: urgencyMap[requestUrgency] || UrgencyLevel.MEDIUM,
       status: requestStatus,
       category: SupportCategory.EMERGENCY,
-      createdAt: requestTimestamp,
-      updatedAt: item.updatedAt || requestTimestamp,
+      createdAt: detail?.createdAt || requestTimestamp,
+      updatedAt: detail?.updatedAt || item.updatedAt || requestTimestamp,
     };
 
     const canComplete = item.status === 'ACCEPTED';
@@ -123,6 +168,24 @@ export default function VolunteerDashboardScreen() {
           onPress={() => router.push(`/request/${mappedRequest.id}`)}
           containerStyle={{ marginHorizontal: 0 }}
         />
+        <View style={[styles.assignmentMeta, { backgroundColor: theme.componentBG, borderColor: theme.border }]}>
+          <View style={[styles.assignmentBadge, { backgroundColor: assignmentColors.bg }]}>
+            <Text style={[styles.assignmentBadgeText, { color: assignmentColors.text }]}>
+              VA {item.status}
+            </Text>
+          </View>
+          <Text style={[styles.assignmentHint, { color: theme.textSupporting }]} numberOfLines={1}>
+            {item.status === 'ACCEPTED'
+              ? 'Accepted volunteers can contribute support needs.'
+              : item.status === 'COMPLETED'
+                ? 'You marked this assignment complete. SR status is managed separately.'
+                : item.status === 'CANCELLED'
+                  ? 'You withdrew from this assignment.'
+                  : item.status === 'PENDING'
+                    ? 'Waiting for requester/admin/collaborator review.'
+                    : item.rejectionReason || 'Assignment is no longer active.'}
+          </Text>
+        </View>
         {(canComplete || canWithdraw) && (
           <View style={[styles.row, { paddingHorizontal: 0, marginTop: -4 }]}>
             {canComplete && (
@@ -131,7 +194,13 @@ export default function VolunteerDashboardScreen() {
                   styles.buttonPrimary,
                   { backgroundColor: theme.primary, marginRight: 8 },
                 ]}
-                onPress={() => handleMarkComplete(item.supportRequestId)}
+                onPress={() =>
+                  setPendingAction({
+                    type: 'complete',
+                    supportRequestId: item.supportRequestId,
+                    title: mappedRequest.title,
+                  })
+                }
               >
                 <Text style={[styles.buttonText, { color: theme.textLight }]}>Mark Complete</Text>
               </TouchableOpacity>
@@ -139,7 +208,13 @@ export default function VolunteerDashboardScreen() {
             {canWithdraw && (
               <TouchableOpacity
                 style={[styles.buttonSecondary, { backgroundColor: theme.danger }]}
-                onPress={() => handleWithdraw(item.supportRequestId)}
+                onPress={() =>
+                  setPendingAction({
+                    type: 'withdraw',
+                    supportRequestId: item.supportRequestId,
+                    title: mappedRequest.title,
+                  })
+                }
               >
                 <Text style={[styles.buttonText, { color: theme.textLight }]}>Withdraw</Text>
               </TouchableOpacity>
@@ -250,6 +325,25 @@ export default function VolunteerDashboardScreen() {
         onCancel={() => setShowSuccessModal(false)}
       />
 
+      <ConfirmModal
+        visible={!!pendingAction}
+        title={
+          pendingAction?.type === 'complete'
+            ? 'Mark assignment complete?'
+            : 'Withdraw assignment?'
+        }
+        message={
+          pendingAction?.type === 'complete'
+            ? `This will set your volunteer assignment for "${pendingAction?.title}" to COMPLETED. The support request status will not change.`
+            : `This will cancel your volunteer assignment for "${pendingAction?.title}". If this is the last accepted volunteer, the support request may return to APPROVED.`
+        }
+        confirmText={pendingAction?.type === 'complete' ? 'Mark Complete' : 'Withdraw'}
+        cancelText="Cancel"
+        isDestructive={pendingAction?.type === 'withdraw'}
+        onConfirm={handleConfirmPendingAction}
+        onCancel={() => setPendingAction(null)}
+      />
+
       {isSubmitting && (
         <View style={[StyleSheet.absoluteFill, { backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', alignItems: 'center', zIndex: 1000 }]}>
           <View style={{ backgroundColor: theme.componentBG, padding: 24, borderRadius: 16, alignItems: 'center', gap: 12, borderWidth: 1, borderColor: theme.border }}>
@@ -312,6 +406,30 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     marginTop: 8,
+  },
+  assignmentMeta: {
+    marginTop: -6,
+    marginBottom: 12,
+    borderWidth: 1,
+    borderRadius: 10,
+    padding: 10,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  assignmentBadge: {
+    borderRadius: 6,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+  },
+  assignmentBadgeText: {
+    fontSize: 11,
+    fontWeight: '800',
+  },
+  assignmentHint: {
+    flex: 1,
+    fontSize: 12,
+    fontWeight: '500',
   },
   buttonPrimary: {
     flex: 1,

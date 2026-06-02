@@ -38,7 +38,10 @@ export default function CollaboratorDashboard() {
     }))
 
     const activeLocationsCount = mappedLocations.filter((l: any) => l.status === "ACTIVE").length
-    const requestsCount = requests?.length || 0
+    const pendingRequestsCount = ((requests as any) || []).filter((request: any) => request.status === "PENDING").length
+    const activeRequestsCount = ((requests as any) || []).filter((request: any) =>
+        request.status === "APPROVED" || request.status === "IN_PROGRESS"
+    ).length
 
     const renderLocationItem = ({ item }: { item: any }) => {
         return (
@@ -142,8 +145,49 @@ export default function CollaboratorDashboard() {
                 {/* Stats Grid */}
                 <View style={styles.statsGrid}>
                     <StatCard label="Active Hubs" value={String(activeLocationsCount)} />
-                    <StatCard label="Total Requests" value={String(requestsCount)} />
-                    <StatCard label="Control Level" value="100%" />
+                    <StatCard label="Pending SR" value={String(pendingRequestsCount)} />
+                    <StatCard label="Active SR" value={String(activeRequestsCount)} />
+                </View>
+
+                <View style={[styles.quickActions, { backgroundColor: theme.componentBG, borderColor: theme.border }]}>
+                    <Pressable
+                        onPress={async () => {
+                            await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light)
+                            router.push("/(admin)/moderation" as any)
+                        }}
+                        style={({ pressed }) => [
+                            styles.quickAction,
+                            { borderColor: theme.border, backgroundColor: pressed ? theme.highlightBG : "transparent" },
+                        ]}
+                    >
+                        <MaterialIcons name="fact-check" size={20} color={theme.primary} />
+                        <View style={{ flex: 1 }}>
+                            <Text style={[styles.quickActionTitle, { color: theme.text }]}>Review SR & Reports</Text>
+                            <Text style={[styles.quickActionText, { color: theme.textSupporting }]} numberOfLines={1}>
+                                Approve/reject pending support requests
+                            </Text>
+                        </View>
+                        <MaterialIcons name="chevron-right" size={22} color={theme.icon} />
+                    </Pressable>
+                    <Pressable
+                        onPress={async () => {
+                            await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light)
+                            router.push("/(app)/map" as any)
+                        }}
+                        style={({ pressed }) => [
+                            styles.quickAction,
+                            { borderColor: theme.border, backgroundColor: pressed ? theme.highlightBG : "transparent" },
+                        ]}
+                    >
+                        <MaterialIcons name="map" size={20} color={theme.primary} />
+                        <View style={{ flex: 1 }}>
+                            <Text style={[styles.quickActionTitle, { color: theme.text }]}>Map & Locations</Text>
+                            <Text style={[styles.quickActionText, { color: theme.textSupporting }]} numberOfLines={1}>
+                                View SR and SupportLocation on map
+                            </Text>
+                        </View>
+                        <MaterialIcons name="chevron-right" size={22} color={theme.icon} />
+                    </Pressable>
                 </View>
 
                 {/* Dashboard List */}
@@ -273,6 +317,27 @@ const styles = StyleSheet.create({
     statLabel: {
         fontSize: 12,
         marginTop: 4,
+    },
+    quickActions: {
+        marginTop: 16,
+        borderWidth: 1,
+        borderRadius: 12,
+        overflow: "hidden",
+    },
+    quickAction: {
+        padding: 14,
+        borderBottomWidth: StyleSheet.hairlineWidth,
+        flexDirection: "row",
+        alignItems: "center",
+        gap: 10,
+    },
+    quickActionTitle: {
+        fontSize: 14,
+        fontWeight: "700",
+    },
+    quickActionText: {
+        fontSize: 12,
+        marginTop: 2,
     },
     card: {
         padding: 14,

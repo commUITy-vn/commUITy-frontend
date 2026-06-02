@@ -113,6 +113,8 @@ export interface SupportItem {
   name: string;
   neededQuantity: number;
   receivedQuantity: number;
+  remainingQuantity?: number;
+  isFulfilled?: boolean;
   unit?: string;
 }
 

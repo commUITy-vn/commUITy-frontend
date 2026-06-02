@@ -20,15 +20,23 @@ export const useVolunteerAssignments = () => {
 
   const completeMutation = useMutation<any, Error, string>({
     mutationFn: (supportRequestId) => completeAssignment(supportRequestId),
-    onSuccess: () => {
+    onSuccess: (_data, supportRequestId) => {
       queryClient.invalidateQueries({ queryKey: ['volunteerAssignments'] });
+      queryClient.invalidateQueries({ queryKey: ['volunteerAssignments', 'me'] });
+      queryClient.invalidateQueries({ queryKey: ['volunteerAssignments', 'request', supportRequestId] });
+      queryClient.invalidateQueries({ queryKey: ['supportRequest', supportRequestId] });
+      queryClient.invalidateQueries({ queryKey: ['supportRequests'] });
     },
   });
 
   const cancelMutation = useMutation<any, Error, string>({
     mutationFn: (supportRequestId) => cancelAssignment(supportRequestId),
-    onSuccess: () => {
+    onSuccess: (_data, supportRequestId) => {
       queryClient.invalidateQueries({ queryKey: ['volunteerAssignments'] });
+      queryClient.invalidateQueries({ queryKey: ['volunteerAssignments', 'me'] });
+      queryClient.invalidateQueries({ queryKey: ['volunteerAssignments', 'request', supportRequestId] });
+      queryClient.invalidateQueries({ queryKey: ['supportRequest', supportRequestId] });
+      queryClient.invalidateQueries({ queryKey: ['supportRequests'] });
     },
   });
 

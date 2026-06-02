@@ -31,6 +31,8 @@ const SUPPORT_NEED_UNITS = [
   "OTHER",
 ];
 
+const GOODS_SUPPORT_NEED_UNITS = SUPPORT_NEED_UNITS.filter((u) => u !== "VND");
+
 interface Props {
   visible: boolean;
   onClose: () => void;
@@ -55,6 +57,8 @@ export const SupportNeedModal = ({
 
   const [showCategoryPicker, setShowCategoryPicker] = useState(false);
   const [showUnitPicker, setShowUnitPicker] = useState(false);
+  const availableUnits =
+    category === "MONEY" ? ["VND"] : GOODS_SUPPORT_NEED_UNITS;
 
   useEffect(() => {
     if (initialData) {
@@ -98,11 +102,13 @@ export const SupportNeedModal = ({
     if (!name.trim() || !quantity) return;
     await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
 
+    const supportType = category.toUpperCase() === "MONEY" ? "MONEY" : "GOODS";
+
     // Chuẩn hóa chuẩn Payload cho backend Prisma
     const payload = {
-      supportType: category.toUpperCase() === "MONEY" ? "MONEY" : "GOODS",
+      supportType,
       needName: name.trim(),
-      unit: unit.toUpperCase(), // Ép hoa để khớp Enum
+      unit: supportType === "MONEY" ? "VND" : unit.toUpperCase(),
       requiredQuantity: parseFloat(quantity) || 1, // Ép kiểu Float
     };
 
@@ -244,6 +250,7 @@ export const SupportNeedModal = ({
               label: "Goods",
               onPress: () => {
                 setCategory("GOODS");
+                if (unit === "VND") setUnit("PIECE");
                 setShowCategoryPicker(false);
               },
             },
@@ -252,6 +259,7 @@ export const SupportNeedModal = ({
               label: "Money",
               onPress: () => {
                 setCategory("MONEY");
+                setUnit("VND");
                 setShowCategoryPicker(false);
               },
             },
@@ -262,7 +270,7 @@ export const SupportNeedModal = ({
         <BottomSheet
           isVisible={showUnitPicker}
           onClose={() => setShowUnitPicker(false)}
-          options={SUPPORT_NEED_UNITS.map((u) => ({
+          options={availableUnits.map((u) => ({
             key: u,
             label: u,
             onPress: () => {

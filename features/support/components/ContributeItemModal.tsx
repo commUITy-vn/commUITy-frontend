@@ -1,4 +1,4 @@
-import { View, Text, Modal, StyleSheet, Pressable, Platform } from 'react-native';
+import { Alert, View, Text, Modal, StyleSheet, Pressable, Platform } from 'react-native';
 import { useTheme } from '@/hooks/useTheme';
 import * as Haptics from 'expo-haptics';
 import { useState } from 'react';
@@ -10,7 +10,7 @@ interface ContributeItemModalProps {
   visible: boolean;
   onClose: () => void;
   item: SupportItem | null;
-  onConfirm: (itemId: string, quantity: number, notes: string) => void;
+  onConfirm: (itemId: string, quantity: number, notes: string) => Promise<void> | void;
 }
 
 export const ContributeItemModal = ({
@@ -22,19 +22,39 @@ export const ContributeItemModal = ({
   const theme = useTheme();
   const [quantity, setQuantity] = useState(1);
   const [notes, setNotes] = useState('');
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
+  const remainingQuantity = item
+    ? Math.max(
+        0,
+        item.remainingQuantity ??
+          item.neededQuantity - item.receivedQuantity,
+      )
+    : 0;
 
   const handleQuantityChange = async (delta: number) => {
     await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    const newQuantity = Math.max(1, quantity + delta);
+    const maxQuantity = remainingQuantity > 0 ? remainingQuantity : 1;
+    const newQuantity = Math.min(maxQuantity, Math.max(1, quantity + delta));
     setQuantity(newQuantity);
   };
 
   const handleConfirm = async () => {
     if (!item) return;
-    await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-    onConfirm(item.id, quantity, notes);
-    setQuantity(1);
-    setNotes('');
+    setIsSubmitting(true);
+    try {
+      await onConfirm(item.id, quantity, notes);
+      await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      setQuantity(1);
+      setNotes('');
+    } catch (error: any) {
+      Alert.alert(
+        'Unable to contribute',
+        error?.message || 'Please try again after your volunteer request is accepted.',
+      );
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   const handleClose = async () => {
@@ -85,7 +105,9 @@ export const ContributeItemModal = ({
                     {item.name}
                   </Text>
                   <Text style={{ fontSize: 12, color: theme.textSupporting, marginTop: 2 }}>
-                    Help fulfill this required support item
+                    {remainingQuantity > 0
+                      ? `${remainingQuantity} ${item.unit || ''} remaining`
+                      : 'This support item is already fulfilled'}
                   </Text>
                 </View>
               </View>
@@ -171,10 +193,11 @@ export const ContributeItemModal = ({
                   opacity: pressed ? 0.9 : 1,
                 },
               ]}
+              disabled={isSubmitting || remainingQuantity <= 0}
               onPress={handleConfirm}
             >
               <Text style={[styles.confirmButtonText, { color: theme.textLight }]}>
-                Confirm Help
+                {isSubmitting ? 'Sending...' : 'Confirm Help'}
               </Text>
             </Pressable>
           </View>
