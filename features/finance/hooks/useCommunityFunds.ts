@@ -48,6 +48,18 @@ export interface DonationResponse {
   createdAt: string;
 }
 
+export type CommunityFundMemberRole = 'MEMBER' | 'MANAGER';
+
+export interface CommunityFundMemberResponse {
+  fundId: string;
+  userId: string;
+  userName: string;
+  userEmail: string;
+  role: CommunityFundMemberRole;
+  isActive: boolean;
+  joinedAt: string;
+}
+
 export const getCommunityFunds = (activeOnly?: boolean): Promise<CommunityFundSummary[]> => {
   return api.get('/api/v1/community-funds', {
     params: { activeOnly: activeOnly !== undefined ? activeOnly : false },
@@ -109,6 +121,95 @@ export const useFundDonations = (fundId: string) => {
     queryKey: ['fundDonations', fundId],
     queryFn: () => getDonationsByFund(fundId),
     enabled: !!fundId,
+  });
+};
+
+export const getCommunityFundMembers = (fundId: string): Promise<CommunityFundMemberResponse[]> => {
+  return api
+    .get<CommunityFundMemberResponse[]>(`/api/v1/community-funds/${fundId}/members`)
+    .then((members) => members.filter((member) => member.isActive !== false));
+};
+
+export const useCommunityFundMembers = (fundId: string) => {
+  return useQuery<CommunityFundMemberResponse[], Error>({
+    queryKey: ['communityFundMembers', fundId],
+    queryFn: () => getCommunityFundMembers(fundId),
+    enabled: !!fundId,
+  });
+};
+
+export const addCommunityFundMember = (
+  fundId: string,
+  data: { userId: string; role: CommunityFundMemberRole },
+): Promise<CommunityFundMemberResponse> => {
+  return api.post(`/api/v1/community-funds/${fundId}/members`, data);
+};
+
+export const updateCommunityFundMemberRole = (
+  fundId: string,
+  userId: string,
+  role: CommunityFundMemberRole,
+): Promise<CommunityFundMemberResponse> => {
+  return api.patch(`/api/v1/community-funds/${fundId}/members/${userId}/role`, { role });
+};
+
+export const removeCommunityFundMember = (fundId: string, userId: string): Promise<void> => {
+  return api.delete(`/api/v1/community-funds/${fundId}/members/${userId}`);
+};
+
+export const useAddCommunityFundMember = (fundId: string) => {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (data: { userId: string; role: CommunityFundMemberRole }) =>
+      addCommunityFundMember(fundId, data),
+    onSuccess: (createdMember) => {
+      queryClient.setQueryData<CommunityFundMemberResponse[]>(['communityFundMembers', fundId], (old = []) => {
+        const withoutDuplicate = old.filter((member) => member.userId !== createdMember.userId);
+        return [...withoutDuplicate, createdMember];
+      });
+      queryClient.invalidateQueries({ queryKey: ['communityFundMembers', fundId] });
+    },
+  });
+};
+
+export const useUpdateCommunityFundMemberRole = (fundId: string) => {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ userId, role }: { userId: string; role: CommunityFundMemberRole }) =>
+      updateCommunityFundMemberRole(fundId, userId, role),
+    onSuccess: (updatedMember, variables) => {
+      queryClient.setQueryData<CommunityFundMemberResponse[]>(['communityFundMembers', fundId], (old = []) =>
+        old.map((member) =>
+          member.userId === variables.userId
+            ? { ...member, ...updatedMember, role: variables.role }
+            : member,
+        ),
+      );
+      queryClient.invalidateQueries({ queryKey: ['communityFundMembers', fundId] });
+    },
+  });
+};
+
+export const useRemoveCommunityFundMember = (fundId: string) => {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (userId: string) => removeCommunityFundMember(fundId, userId),
+    onMutate: async (removedUserId) => {
+      await queryClient.cancelQueries({ queryKey: ['communityFundMembers', fundId] });
+      const previousMembers = queryClient.getQueryData<CommunityFundMemberResponse[]>(['communityFundMembers', fundId]);
+      queryClient.setQueryData<CommunityFundMemberResponse[]>(['communityFundMembers', fundId], (old = []) =>
+        old.filter((member) => member.userId !== removedUserId),
+      );
+      return { previousMembers };
+    },
+    onError: (_error, _removedUserId, context) => {
+      if (context?.previousMembers) {
+        queryClient.setQueryData(['communityFundMembers', fundId], context.previousMembers);
+      }
+    },
+    onSettled: () => {
+      queryClient.invalidateQueries({ queryKey: ['communityFundMembers', fundId] });
+    },
   });
 };
 

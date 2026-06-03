@@ -923,7 +923,7 @@ const styles = StyleSheet.create({
   center: { flex: 1, alignItems: "center", justifyContent: "center" },
   topPanel: {
     position: "absolute",
-    top: 56,
+    top: 20,
     left: 16,
     right: 16,
     zIndex: 30,
@@ -1029,7 +1029,7 @@ const styles = StyleSheet.create({
   },
   legend: {
     position: "absolute",
-    top: 226,
+    top: 190,
     left: 16,
     zIndex: 2,
     flexDirection: "row",

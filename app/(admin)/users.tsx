@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, Pressable, FlatList, StyleSheet, Platform, Modal } from 'react-native';
+import { View, Text, Pressable, FlatList, StyleSheet, Platform, Modal, Alert } from 'react-native';
 import { useTheme } from '@/hooks/useTheme';
 import { useRouter } from 'expo-router';
 import { MaterialIcons } from '@expo/vector-icons';
@@ -9,6 +9,7 @@ import { useQuery } from '@tanstack/react-query';
 import { getUsers } from '@/features/users/api/get-users';
 import { updateUserRole } from '@/features/users/api/update-user-role';
 import { updateUserStatus } from '@/features/users/api/update-user-status';
+import { useAuthStore } from '@/features/auth/stores/useAuthStore';
 
 const initialUsers = [
   { id: 'mock-1', name: 'Nguyen Van A', role: 'ADMIN', status: 'Active', email: 'a.nguyen@commuity.org' },
@@ -20,9 +21,11 @@ const initialUsers = [
 export default function UsersScreen() {
   const theme = useTheme();
   const router = useRouter();
+  const { user: currentUser } = useAuthStore();
   const [usersList, setUsersList] = useState(initialUsers);
   const [roleModalVisible, setRoleModalVisible] = useState(false);
   const [selectedUserForRole, setSelectedUserForRole] = useState<any>(null);
+  const [detailUser, setDetailUser] = useState<any>(null);
 
   const handleBack = async () => {
     await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
@@ -43,8 +46,11 @@ export default function UsersScreen() {
             id: u.id || String(Math.random()),
             name: u.fullName || u.name || 'Real User',
             role: u.role || 'REQUESTER',
-            status: u.status === 'SUSPENDED' ? 'Suspended' : 'Active',
+            status: u.isActive === false || u.status === 'SUSPENDED' ? 'Suspended' : 'Active',
             email: u.email || 'user@commuity.org',
+            phone: u.phone || u.phoneNumber || '',
+            address: u.address || '',
+            createdAt: u.createdAt || '',
           }));
         }
       } catch (e) {
@@ -65,33 +71,110 @@ export default function UsersScreen() {
     await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     const targetUser = usersList.find(u => u.id === userId);
     if (!targetUser) return;
-    const isCurrentlySuspended = targetUser.status === 'Suspended';
-    const newStatus = isCurrentlySuspended ? 'ACTIVE' : 'SUSPENDED';
-
-    // Optimistic UI Update
-    setUsersList(prev =>
-      prev.map(u =>
-        u.id === userId
-          ? { ...u, status: isCurrentlySuspended ? 'Active' : 'Suspended' }
-          : u
-      )
-    );
-
-    try {
-      if (userId && !userId.startsWith('mock-') && userId.length > 5) {
-        await updateUserStatus(userId, newStatus);
-      }
-    } catch (err) {
-      console.error('Failed to update status on server:', err);
-      // Rollback on failure
-      setUsersList(prev =>
-        prev.map(u =>
-          u.id === userId
-            ? { ...u, status: targetUser.status }
-            : u
-        )
-      );
+    if (targetUser.id === currentUser?.id) {
+      Alert.alert('Action blocked', 'You cannot suspend or restore your own admin account from this screen.');
+      return;
     }
+    const isCurrentlySuspended = targetUser.status === 'Suspended';
+    const nextStatus = isCurrentlySuspended ? 'Active' : 'Suspended';
+    const nextIsActive = isCurrentlySuspended;
+
+    Alert.alert(
+      isCurrentlySuspended ? 'Restore user?' : 'Suspend user?',
+      `${targetUser.name} will be marked as ${nextStatus}.`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: isCurrentlySuspended ? 'Restore' : 'Suspend',
+          style: isCurrentlySuspended ? 'default' : 'destructive',
+          onPress: async () => {
+            setUsersList(prev =>
+              prev.map(u =>
+                u.id === userId
+                  ? { ...u, status: nextStatus }
+                  : u
+              )
+            );
+
+            try {
+              if (userId && !userId.startsWith('mock-') && userId.length > 5) {
+                await updateUserStatus(userId, nextIsActive);
+              }
+            } catch (err: any) {
+              console.error('Failed to update status on server:', err);
+              Alert.alert('Update failed', err?.message || 'Could not update user status.');
+              setUsersList(prev =>
+                prev.map(u =>
+                  u.id === userId
+                    ? { ...u, status: targetUser.status }
+                    : u
+                )
+              );
+            }
+          },
+        },
+      ]
+    );
+  };
+
+  const handleChangeRole = async (role: string) => {
+    await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    const targetUser = selectedUserForRole;
+    if (!targetUser) return;
+    if (targetUser.id === currentUser?.id) {
+      Alert.alert('Action blocked', 'You cannot change your own role from this screen.');
+      return;
+    }
+    if (targetUser.role === 'ADMIN' && role !== 'ADMIN') {
+      Alert.alert('Action blocked', 'Admin accounts cannot be downgraded from the mobile admin panel.');
+      return;
+    }
+    if (targetUser.role === role) {
+      Alert.alert('No change needed', `${targetUser.name} already has the ${role} role.`);
+      return;
+    }
+
+    const workflowWarning =
+      targetUser.role === 'REQUESTER' || role === 'REQUESTER' || targetUser.role === 'VOLUNTEER' || role === 'VOLUNTEER'
+        ? '\n\nThis may change which dashboard and use-case actions the user can access. Existing records remain in backend, but the user may no longer see the same role panel.'
+        : '';
+
+    Alert.alert(
+      'Change role?',
+      `${targetUser.name} will be changed from ${targetUser.role} to ${role}.${workflowWarning}`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Change',
+          onPress: async () => {
+            const originalRole = targetUser.role;
+            setUsersList(prev =>
+              prev.map(u =>
+                u.id === targetUser.id ? { ...u, role } : u
+              )
+            );
+            setRoleModalVisible(false);
+
+            try {
+              const userId = targetUser.id;
+              if (userId && !userId.startsWith('mock-') && userId.length > 5) {
+                await updateUserRole(userId, role);
+              }
+            } catch (err: any) {
+              console.error('Failed to update role on server:', err);
+              Alert.alert('Update failed', err?.message || 'Could not update user role.');
+              setUsersList(prev =>
+                prev.map(u =>
+                  u.id === targetUser.id ? { ...u, role: originalRole } : u
+                )
+              );
+            } finally {
+              setSelectedUserForRole(null);
+            }
+          },
+        },
+      ]
+    );
   };
 
 
@@ -136,6 +219,20 @@ export default function UsersScreen() {
 
         {/* Action Controls */}
         <View style={[styles.actionsRow, { borderTopColor: theme.border }]}>
+          <Pressable
+            style={({ pressed }) => [
+              styles.actionButton,
+              {
+                borderColor: theme.border,
+                backgroundColor: pressed ? theme.highlightBG : 'transparent',
+              },
+            ]}
+            onPress={() => setDetailUser(item)}
+          >
+            <MaterialIcons name="info-outline" size={18} color={theme.primary} />
+            <Text style={[styles.actionText, { color: theme.text }]}>Details</Text>
+          </Pressable>
+
           <Pressable
             style={({ pressed }) => [
               styles.actionButton,
@@ -239,34 +336,7 @@ export default function UsersScreen() {
             {['REQUESTER', 'VOLUNTEER', 'COLLABORATOR', 'ADMIN'].map((role) => (
               <Pressable
                 key={role}
-                onPress={async () => {
-                  await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                  const originalRole = selectedUserForRole?.role;
-                  
-                  // Optimistic UI Update
-                  setUsersList(prev =>
-                    prev.map(u =>
-                      u.id === selectedUserForRole?.id ? { ...u, role } : u
-                    )
-                  );
-                  setRoleModalVisible(false);
-                  
-                  try {
-                    const userId = selectedUserForRole?.id;
-                    if (userId && !userId.startsWith('mock-') && userId.length > 5) {
-                      await updateUserRole(userId, role);
-                    }
-                  } catch (err) {
-                    console.error('Failed to update role on server:', err);
-                    // Rollback on failure
-                    setUsersList(prev =>
-                      prev.map(u =>
-                        u.id === selectedUserForRole?.id ? { ...u, role: originalRole } : u
-                      )
-                    );
-                  }
-                  setSelectedUserForRole(null);
-                }}
+                onPress={() => handleChangeRole(role)}
                 style={({ pressed }) => ({
                   paddingVertical: 12,
                   paddingHorizontal: 16,
@@ -275,7 +345,7 @@ export default function UsersScreen() {
                   borderColor: selectedUserForRole?.role === role ? theme.primary : theme.border,
                   backgroundColor: selectedUserForRole?.role === role ? theme.highlightBG : 'transparent',
                   alignItems: 'center',
-                  opacity: pressed ? 0.8 : 1,
+                  opacity: selectedUserForRole?.role === 'ADMIN' && role !== 'ADMIN' ? 0.45 : pressed ? 0.8 : 1,
                 })}
               >
                 <Text
@@ -288,6 +358,41 @@ export default function UsersScreen() {
                   {role}
                 </Text>
               </Pressable>
+            ))}
+          </Pressable>
+        </Pressable>
+      </Modal>
+
+      <Modal
+        visible={!!detailUser}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setDetailUser(null)}
+      >
+        <Pressable style={styles.modalBackdrop} onPress={() => setDetailUser(null)}>
+          <Pressable
+            style={[styles.detailModal, { backgroundColor: theme.componentBG, borderColor: theme.border }]}
+            onPress={(e) => e.stopPropagation()}
+          >
+            <View style={styles.detailHeader}>
+              <Text style={[styles.detailTitle, { color: theme.text }]}>User Details</Text>
+              <Pressable onPress={() => setDetailUser(null)}>
+                <MaterialIcons name="close" size={22} color={theme.icon} />
+              </Pressable>
+            </View>
+            {detailUser && [
+              ['Name', detailUser.name],
+              ['Email', detailUser.email],
+              ['Role', detailUser.role],
+              ['Status', detailUser.status],
+              ['Phone', detailUser.phone || 'N/A'],
+              ['Address', detailUser.address || 'N/A'],
+              ['User ID', detailUser.id],
+            ].map(([label, value]) => (
+              <View key={label} style={[styles.detailRow, { borderBottomColor: theme.border }]}>
+                <Text style={[styles.detailLabel, { color: theme.textSupporting }]}>{label}</Text>
+                <Text style={[styles.detailValue, { color: theme.text }]}>{value}</Text>
+              </View>
             ))}
           </Pressable>
         </Pressable>
@@ -404,6 +509,45 @@ const styles = StyleSheet.create({
   },
   actionText: {
     fontSize: 13,
+    fontWeight: '600',
+  },
+  modalBackdrop: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    padding: 20,
+  },
+  detailModal: {
+    width: '100%',
+    maxWidth: 360,
+    borderRadius: 12,
+    borderWidth: 1,
+    padding: 18,
+    gap: 4,
+  },
+  detailHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 8,
+  },
+  detailTitle: {
+    fontSize: 18,
+    fontWeight: '800',
+  },
+  detailRow: {
+    paddingVertical: 10,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+  },
+  detailLabel: {
+    fontSize: 12,
+    fontWeight: '700',
+    textTransform: 'uppercase',
+    marginBottom: 3,
+  },
+  detailValue: {
+    fontSize: 14,
     fontWeight: '600',
   },
 });

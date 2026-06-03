@@ -1,11 +1,13 @@
 import React, { useState, useMemo, useEffect } from 'react';
-import { View, Text, ScrollView, Pressable, StyleSheet, ActivityIndicator, Modal, FlatList, Platform, Alert } from 'react-native';
+import { View, Text, ScrollView, Pressable, StyleSheet, ActivityIndicator, Modal, Platform, Alert } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { MaterialIcons, Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
+import { useQuery } from '@tanstack/react-query';
 import { useTheme } from '@/hooks/useTheme';
 import { useThemeStyles } from '@/hooks/useThemeStyles';
 import { useAuthStore } from '@/features/auth/stores/useAuthStore';
+import { getUsers } from '@/features/users/api/get-users';
 import TextInput from '@/components/ui/TextInput';
 import Button from '@/components/ui/Button';
 import { BottomSheet } from '@/components/ui';
@@ -16,6 +18,11 @@ import {
   useFundDonations,
   useCreateDonation,
   useCreateExpense,
+  useCommunityFundMembers,
+  useAddCommunityFundMember,
+  useUpdateCommunityFundMemberRole,
+  useRemoveCommunityFundMember,
+  type CommunityFundMemberRole,
 } from '@/features/finance/hooks/useCommunityFunds';
 
 const QUICK_AMOUNTS = [
@@ -35,15 +42,43 @@ export default function FundDetailScreen() {
   const theme = useTheme();
   const stylesGlobal = useThemeStyles();
   const router = useRouter();
-  const { id } = useLocalSearchParams<{ id: string }>();
+  const { id: idParam } = useLocalSearchParams<{ id: string | string[] }>();
+  const fundId = Array.isArray(idParam) ? idParam[0] : idParam;
   const { user } = useAuthStore();
 
-  const { data: fund, isLoading: isFundLoading, isError: isFundError } = useCommunityFund(id);
-  const { data: expenses, isLoading: isExpensesLoading } = useFundExpenses(id);
-  const { data: donations, isLoading: isDonationsLoading } = useFundDonations(id);
+  const { data: fund, isLoading: isFundLoading, isError: isFundError } = useCommunityFund(fundId);
+  const { data: expenses, isLoading: isExpensesLoading } = useFundExpenses(fundId);
+  const { data: donations, isLoading: isDonationsLoading } = useFundDonations(fundId);
+  const { data: members = [], isLoading: isMembersLoading } = useCommunityFundMembers(fundId);
+  const { data: searchableUsers = [] } = useQuery({
+    queryKey: ['fundMemberSearchUsers'],
+    queryFn: async () => {
+      const response: any = await getUsers();
+      const pageData = response?.data || response;
+      const list = Array.isArray(pageData?.content)
+        ? pageData.content
+        : Array.isArray(pageData)
+          ? pageData
+          : [];
+      return list
+        .map((u: any) => ({
+          id: u.id,
+          name: u.fullName || u.name || 'Unnamed user',
+          email: u.email || '',
+          role: u.role || 'REQUESTER',
+          isActive: u.isActive !== false,
+        }))
+        .filter((u: any) => !!u.id);
+    },
+    enabled: !!fundId,
+    retry: false,
+  });
 
   const createDonationMutation = useCreateDonation();
   const createExpenseMutation = useCreateExpense();
+  const addMemberMutation = useAddCommunityFundMember(fundId);
+  const updateMemberRoleMutation = useUpdateCommunityFundMemberRole(fundId);
+  const removeMemberMutation = useRemoveCommunityFundMember(fundId);
 
   // Modals state
   const [donateModalVisible, setDonateModalVisible] = useState(false);
@@ -65,6 +100,9 @@ export default function FundDetailScreen() {
   const [expenseAmount, setExpenseAmount] = useState('');
   const [expenseDescription, setExpenseDescription] = useState('');
   const [expenseError, setExpenseError] = useState('');
+  const [memberSearchQuery, setMemberSearchQuery] = useState('');
+  const [selectedFundUser, setSelectedFundUser] = useState<any>(null);
+  const [memberRole, setMemberRole] = useState<CommunityFundMemberRole>('MEMBER');
 
   // Load conversations when sharing bottom sheet is open
   useEffect(() => {
@@ -87,7 +125,7 @@ export default function FundDetailScreen() {
     await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     try {
       const payload = {
-        content: `[SHARED_ITEM:FUND:${id}:${fund?.name || 'Community Fund'}]`,
+        content: `[SHARED_ITEM:FUND:${fundId}:${fund?.name || 'Community Fund'}]`,
       };
       await api.post(`/api/v1/conversations/${conversationId}/messages`, payload);
       Alert.alert('Success', 'Community fund shared successfully!');
@@ -141,6 +179,25 @@ export default function FundDetailScreen() {
     return list.sort((a, b) => b.timestamp - a.timestamp);
   }, [donations, expenses]);
 
+  const memberSearchResults = useMemo(() => {
+    const query = memberSearchQuery.trim().toLowerCase();
+    if (!query) return [];
+    return searchableUsers
+      .filter((candidate: any) => {
+        const haystack = `${candidate.name} ${candidate.email} ${candidate.id}`.toLowerCase();
+        const alreadyMember = members.some((m) => m.userId === candidate.id);
+        return !alreadyMember && haystack.includes(query);
+      })
+      .slice(0, 6);
+  }, [memberSearchQuery, members, searchableUsers]);
+
+  const currentFundMember = useMemo(
+    () => members.find((member) => member.userId === user?.id),
+    [members, user?.id],
+  );
+  const canManageFund = user?.role === 'ADMIN' || currentFundMember?.role === 'MANAGER';
+  const managerCount = members.filter((member) => member.role === 'MANAGER').length;
+
   const handleBack = async () => {
     await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     router.back();
@@ -180,7 +237,7 @@ export default function FundDetailScreen() {
     try {
       await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
       await createDonationMutation.mutateAsync({
-        fundId: id,
+        fundId,
         amount: finalAmount,
         paymentMethod: selectedPayment,
         note: donationNote.trim() || undefined,
@@ -208,7 +265,7 @@ export default function FundDetailScreen() {
     try {
       await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
       await createExpenseMutation.mutateAsync({
-        fundId: id,
+        fundId,
         amount: parsedAmount,
         description: expenseDescription.trim(),
       });
@@ -217,6 +274,81 @@ export default function FundDetailScreen() {
     } catch (err: any) {
       setExpenseError(err?.message || 'Failed to record expense');
     }
+  };
+
+  const handleAddMember = async () => {
+    if (!selectedFundUser?.id) {
+      Alert.alert('Notice', 'Search and select a user first.');
+      return;
+    }
+    Alert.alert(
+      'Add fund member?',
+      `${selectedFundUser.name}\n${selectedFundUser.email || 'No email'}\nRole: ${memberRole}`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Add',
+          onPress: async () => {
+            try {
+              await addMemberMutation.mutateAsync({ userId: selectedFundUser.id, role: memberRole });
+              setMemberSearchQuery('');
+              setSelectedFundUser(null);
+              await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+            } catch (err: any) {
+              Alert.alert('Error', err?.message || 'Failed to add member.');
+            }
+          },
+        },
+      ],
+    );
+  };
+
+  const handleToggleMemberRole = async (userId: string, currentRole: CommunityFundMemberRole, userName?: string) => {
+    const nextRole: CommunityFundMemberRole = currentRole === 'MANAGER' ? 'MEMBER' : 'MANAGER';
+    if (currentRole === 'MANAGER' && managerCount <= 1 && user?.role !== 'ADMIN') {
+      Alert.alert('Cannot change role', 'This fund needs at least one manager.');
+      return;
+    }
+    Alert.alert('Change member role?', `${userName || 'This member'} will become ${nextRole}.`, [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Change',
+        onPress: async () => {
+          try {
+            await updateMemberRoleMutation.mutateAsync({ userId, role: nextRole });
+            await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+          } catch (err: any) {
+            Alert.alert('Error', err?.message || 'Failed to update member role.');
+          }
+        },
+      },
+    ]);
+  };
+
+  const handleRemoveMember = (userId: string, userName: string, role: CommunityFundMemberRole) => {
+    if (userId === user?.id) {
+      Alert.alert('Action blocked', 'You cannot remove yourself from this fund. Ask another manager or admin to change fund membership.');
+      return;
+    }
+    if (role === 'MANAGER' && managerCount <= 1 && user?.role !== 'ADMIN') {
+      Alert.alert('Cannot remove manager', 'This fund needs at least one manager.');
+      return;
+    }
+    Alert.alert('Remove fund member?', `Remove ${userName || 'this member'} from this fund?`, [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Remove',
+        style: 'destructive',
+        onPress: async () => {
+          try {
+            await removeMemberMutation.mutateAsync(userId);
+            await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+          } catch (err: any) {
+            Alert.alert('Error', err?.message || 'Failed to remove member.');
+          }
+        },
+      },
+    ]);
   };
 
   if (isFundLoading) {
@@ -235,7 +367,7 @@ export default function FundDetailScreen() {
     );
   }
 
-  const isStaff = user?.role === 'ADMIN' || user?.role === 'COLLABORATOR';
+  const isStaff = canManageFund;
 
   const options = [
     {
@@ -359,6 +491,126 @@ export default function FundDetailScreen() {
             </Pressable>
           )}
         </View>
+
+        {isStaff && (
+          <View style={[styles.infoCard, { backgroundColor: theme.componentBG, borderColor: theme.border }]}>
+            <Text style={[styles.sectionTitle, { color: theme.text, marginTop: 0 }]}>Fund Members</Text>
+            <View style={{ gap: 10 }}>
+              <TextInput
+                label="Search by name, email, or user ID"
+                value={memberSearchQuery}
+                onChangeText={(text) => {
+                  setMemberSearchQuery(text);
+                  setSelectedFundUser(null);
+                }}
+              />
+              {!!memberSearchQuery.trim() && !selectedFundUser && (
+                <View style={[styles.memberSearchBox, { borderColor: theme.border }]}>
+                  {memberSearchResults.length === 0 ? (
+                    <Text style={{ color: theme.textSupporting, padding: 10 }}>No matching users found.</Text>
+                  ) : (
+                    memberSearchResults.map((candidate: any) => (
+                      <Pressable
+                        key={candidate.id}
+                        onPress={() => {
+                          setSelectedFundUser(candidate);
+                          if (candidate.role === 'ADMIN') {
+                            setMemberRole('MANAGER');
+                          }
+                          setMemberSearchQuery(`${candidate.name} (${candidate.email || candidate.id})`);
+                        }}
+                        style={({ pressed }) => [
+                          styles.memberSearchRow,
+                          {
+                            borderBottomColor: theme.border,
+                            backgroundColor: pressed ? theme.highlightBG : 'transparent',
+                          },
+                        ]}
+                      >
+                        <View style={{ flex: 1 }}>
+                          <Text style={{ color: theme.text, fontWeight: '700' }}>{candidate.name}</Text>
+                          <Text style={{ color: theme.textSupporting, fontSize: 12 }}>{candidate.email || candidate.id}</Text>
+                        </View>
+                        <Text style={{ color: theme.primary, fontSize: 12, fontWeight: '700' }}>{candidate.role}</Text>
+                      </Pressable>
+                    ))
+                  )}
+                </View>
+              )}
+              {selectedFundUser && (
+                <View style={[styles.selectedMemberBox, { borderColor: theme.primary, backgroundColor: theme.highlightBG }]}>
+                  <View style={{ flex: 1 }}>
+                    <Text style={{ color: theme.text, fontWeight: '800' }}>{selectedFundUser.name}</Text>
+                    <Text style={{ color: theme.textSupporting, fontSize: 12 }}>{selectedFundUser.email || selectedFundUser.id}</Text>
+                    <Text style={{ color: theme.textSupporting, fontSize: 12 }}>Current role: {selectedFundUser.role}</Text>
+                  </View>
+                  <Pressable
+                    onPress={() => {
+                      setSelectedFundUser(null);
+                      setMemberSearchQuery('');
+                    }}
+                  >
+                    <MaterialIcons name="close" size={20} color={theme.icon} />
+                  </Pressable>
+                </View>
+              )}
+              <View style={styles.memberRoleRow}>
+                {(['MEMBER', 'MANAGER'] as CommunityFundMemberRole[]).map((role) => (
+                  <Pressable
+                    key={role}
+                    onPress={() => setMemberRole(role)}
+                    style={[
+                      styles.rolePill,
+                      {
+                        borderColor: memberRole === role ? theme.primary : theme.border,
+                        backgroundColor: memberRole === role ? theme.highlightBG : 'transparent',
+                      },
+                    ]}
+                  >
+                    <Text style={{ color: memberRole === role ? theme.primary : theme.text, fontWeight: '700' }}>
+                      {role}
+                    </Text>
+                  </Pressable>
+                ))}
+              </View>
+              <Button
+                text={addMemberMutation.isPending ? 'Adding...' : 'Add Member'}
+                onPress={handleAddMember}
+                primary
+                isDisabled={addMemberMutation.isPending || !selectedFundUser}
+              />
+            </View>
+
+            <View style={{ marginTop: 12, gap: 8 }}>
+              {isMembersLoading ? (
+                <ActivityIndicator color={theme.primary} />
+              ) : members.length === 0 ? (
+                <Text style={{ color: theme.textSupporting }}>No fund members yet.</Text>
+              ) : (
+                members.map((member) => (
+                  <View key={member.userId} style={[styles.memberRow, { borderColor: theme.border }]}>
+                    <View style={{ flex: 1 }}>
+                      <Text style={{ color: theme.text, fontWeight: '700' }}>{member.userName}</Text>
+                      <Text style={{ color: theme.textSupporting, fontSize: 12 }}>{member.userEmail}</Text>
+                    </View>
+                    <Pressable
+                      onPress={() => handleToggleMemberRole(member.userId, member.role, member.userName)}
+                      style={[styles.smallAction, { borderColor: theme.border }]}
+                    >
+                      <Text style={{ color: theme.primary, fontWeight: '700', fontSize: 12 }}>{member.role}</Text>
+                    </Pressable>
+                    <Pressable
+                      onPress={() => handleRemoveMember(member.userId, member.userName, member.role)}
+                      style={[styles.smallAction, { borderColor: theme.danger }]}
+                    >
+                      <MaterialIcons name="person-remove" size={16} color={theme.danger} />
+                    </Pressable>
+                  </View>
+                ))
+              )}
+            </View>
+          </View>
+        )}
 
         {/* Transactions list */}
         <Text style={[styles.sectionTitle, { color: theme.text }]}>Fund Ledger</Text>
@@ -713,6 +965,56 @@ const styles = StyleSheet.create({
   actionButtonText: {
     fontSize: 15,
     fontWeight: '700',
+  },
+  memberRoleRow: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  rolePill: {
+    flex: 1,
+    borderWidth: 1,
+    borderRadius: 8,
+    paddingVertical: 10,
+    alignItems: 'center',
+  },
+  memberSearchBox: {
+    borderWidth: 1,
+    borderRadius: 10,
+    overflow: 'hidden',
+  },
+  memberSearchRow: {
+    minHeight: 52,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+  },
+  selectedMemberBox: {
+    borderWidth: 1,
+    borderRadius: 10,
+    padding: 10,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  memberRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    borderWidth: 1,
+    borderRadius: 10,
+    padding: 10,
+  },
+  smallAction: {
+    minHeight: 34,
+    minWidth: 42,
+    borderRadius: 8,
+    borderWidth: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 8,
   },
   sectionTitle: {
     fontSize: 18,

@@ -47,6 +47,7 @@ import { useTheme } from "@/hooks/useTheme";
 
 // Hooks & API
 import { deleteSupportNeed } from "@/features/support/api/delete-support-need";
+import { getSupportNeedContributions } from "@/features/support/api/get-support-need-contributions";
 import { updateSupportRequest } from "@/features/support/api/update-support-request";
 import { ContributeItemModal } from "@/features/support/components/ContributeItemModal";
 import { SupportNeedModal } from "@/features/support/components/SupportNeedModal";
@@ -64,6 +65,7 @@ export default function RequestDetailScreen() {
   const [isNeedModalVisible, setIsNeedModalVisible] = useState(false);
   const [selectedNeed, setSelectedNeed] = useState<any>(null);
   const [contributeNeed, setContributeNeed] = useState<any>(null);
+  const [historyNeed, setHistoryNeed] = useState<any>(null);
   const [rejectAssignment, setRejectAssignment] =
     useState<VolunteerAssignment | null>(null);
   const [assignmentRejectReason, setAssignmentRejectReason] = useState("");
@@ -113,6 +115,14 @@ export default function RequestDetailScreen() {
     queryKey: ["volunteerAssignments", "request", id],
     queryFn: () => getAssignmentsBySupportRequest(id as string),
     enabled: !!id,
+  });
+  const {
+    data: contributionHistory = [],
+    isLoading: isContributionHistoryLoading,
+  } = useQuery({
+    queryKey: ["supportNeedContributions", historyNeed?.id],
+    queryFn: () => getSupportNeedContributions(historyNeed.id),
+    enabled: !!historyNeed?.id,
   });
 
   // Quyền chỉnh sửa
@@ -886,8 +896,18 @@ export default function RequestDetailScreen() {
                     {need.supportType === "MONEY" ? "Money" : "Goods"}
                   </Text>
                 </View>
-                {(canManageNeeds || canContribute) && (
+                {(canManageNeeds || canContribute || need.receivedQuantity > 0) && (
                   <View style={localStyles.needActions}>
+                    <Pressable
+                      onPress={() => setHistoryNeed(need)}
+                      style={localStyles.actionBtn}
+                    >
+                      <MaterialIcons
+                        name="history"
+                        size={20}
+                        color={theme.textSupporting}
+                      />
+                    </Pressable>
                     {canContribute && (
                       <Pressable
                         onPress={() => setContributeNeed(need)}
@@ -1071,6 +1091,73 @@ export default function RequestDetailScreen() {
         </View>
       </Modal>
 
+      <Modal
+        visible={!!historyNeed}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setHistoryNeed(null)}
+      >
+        <View style={localStyles.modalOverlay}>
+          <View
+            style={[
+              localStyles.rejectModal,
+              { backgroundColor: theme.componentBG, borderColor: theme.border },
+            ]}
+          >
+            <View style={localStyles.modalHeaderRow}>
+              <View style={{ flex: 1 }}>
+                <Text style={[localStyles.modalTitle, { color: theme.text }]}>
+                  Contribution history
+                </Text>
+                <Text style={{ color: theme.textSupporting, fontSize: 13 }}>
+                  {historyNeed?.needName || "Support need"}
+                </Text>
+              </View>
+              <Pressable onPress={() => setHistoryNeed(null)} style={localStyles.actionBtn}>
+                <MaterialIcons name="close" size={22} color={theme.text} />
+              </Pressable>
+            </View>
+
+            {isContributionHistoryLoading ? (
+              <ActivityIndicator size="small" color={theme.primary} />
+            ) : contributionHistory.length === 0 ? (
+              <Text style={{ color: theme.textSupporting }}>
+                No contributions recorded for this need yet.
+              </Text>
+            ) : (
+              <ScrollView style={{ maxHeight: 320 }} showsVerticalScrollIndicator={false}>
+                {contributionHistory.map((item) => (
+                  <View
+                    key={item.id}
+                    style={[
+                      localStyles.historyRow,
+                      { borderBottomColor: theme.border },
+                    ]}
+                  >
+                    <View style={{ flex: 1 }}>
+                      <Text style={{ color: theme.text, fontWeight: "700" }}>
+                        {item.contributorName || "Contributor"}
+                      </Text>
+                      <Text style={{ color: theme.textSupporting, fontSize: 12 }}>
+                        {item.createdAt ? new Date(item.createdAt).toLocaleString() : ""}
+                      </Text>
+                      {!!item.note && (
+                        <Text style={{ color: theme.textSupporting, fontSize: 12, marginTop: 4 }}>
+                          {item.note}
+                        </Text>
+                      )}
+                    </View>
+                    <Text style={{ color: theme.primary, fontWeight: "800" }}>
+                      +{item.quantity} {historyNeed?.unit || ""}
+                    </Text>
+                  </View>
+                ))}
+              </ScrollView>
+            )}
+          </View>
+        </View>
+      </Modal>
+
       <SupportNeedModal
         visible={isNeedModalVisible}
         onClose={() => setIsNeedModalVisible(false)}
@@ -1214,5 +1301,17 @@ const localStyles = StyleSheet.create({
   modalTitle: {
     fontSize: 18,
     fontWeight: "700",
+  },
+  modalHeaderRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+  },
+  historyRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+    paddingVertical: 12,
+    borderBottomWidth: StyleSheet.hairlineWidth,
   },
 });

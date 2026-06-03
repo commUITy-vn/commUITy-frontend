@@ -599,8 +599,8 @@ export default function HomeScreen() {
         const options = [];
         const role = user?.role;
 
-        // 1. Admins, Collaborators, and Requesters can create support requests
-        if (role === 'ADMIN' || role === 'COLLABORATOR' || role === 'REQUESTER') {
+        // Requesters own SupportRequest creation in the current backend workflow.
+        if (role === 'REQUESTER') {
             options.push({
                 key: "create-request",
                 label: "Create Support Request",

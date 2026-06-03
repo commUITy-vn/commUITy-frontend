@@ -7,6 +7,9 @@ import { useTheme } from "@/hooks/useTheme"
 import { useThemeStyles } from "@/hooks/useThemeStyles"
 import { useCreateRequestStore } from "@/stores/useCreateRequestStore"
 import TextInput from "@/components/ui/TextInput"
+import Button from "@/components/ui/Button"
+import { useAuthStore } from "@/features/auth/stores/useAuthStore"
+import { UserRole } from "@/features/auth/types"
 import {
     SupportCategory,
     CATEGORY_LABELS,
@@ -18,6 +21,7 @@ export default function CreateRequestCategoryScreen() {
     const router = useRouter()
     const theme = useTheme()
     const themeStyles = useThemeStyles()
+    const { user } = useAuthStore()
     const { categoryId: selectedCategoryId, setCategory, setCategoryId, setCategoryName } = useCreateRequestStore()
     const { data: serverCategories, isLoading } = useCategories(true)
 
@@ -47,6 +51,21 @@ export default function CreateRequestCategoryScreen() {
             cat.name.toLowerCase().includes(query),
         )
     }, [categoriesList, searchQuery])
+
+    if (user?.role !== UserRole.REQUESTER) {
+        return (
+            <View style={[themeStyles.container, localStyles.restrictedContainer]}>
+                <MaterialIcons name="lock-outline" size={42} color={theme.textSupporting} />
+                <Text style={[localStyles.restrictedTitle, { color: theme.text }]}>
+                    Requester only
+                </Text>
+                <Text style={[localStyles.restrictedText, { color: theme.textSupporting }]}>
+                    Support requests are created by requesters. Admins and collaborators review or manage existing requests.
+                </Text>
+                <Button text="Go back" onPress={() => router.back()} primary style={{ marginTop: 18 }} />
+            </View>
+        )
+    }
 
     const handleSelect = async (item: { id: string, name: string, code: string }) => {
         await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium)
@@ -287,5 +306,21 @@ const localStyles = StyleSheet.create({
     emptyContainer: {
         alignItems: "center",
         paddingTop: 40,
+    },
+    restrictedContainer: {
+        justifyContent: "center",
+        alignItems: "center",
+        padding: 24,
+    },
+    restrictedTitle: {
+        marginTop: 14,
+        fontSize: 20,
+        fontWeight: "800",
+    },
+    restrictedText: {
+        marginTop: 8,
+        fontSize: 14,
+        lineHeight: 20,
+        textAlign: "center",
     },
 })

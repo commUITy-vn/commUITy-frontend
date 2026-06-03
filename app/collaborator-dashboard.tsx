@@ -180,7 +180,7 @@ export default function CollaboratorDashboard() {
                     <View style={{ flex: 1, justifyContent: "center", alignItems: "center", paddingHorizontal: 32 }}>
                         <MaterialIcons name="place" size={48} color={theme.textSupporting} style={{ marginBottom: 12 }} />
                         <Text style={{ color: theme.text, fontSize: 16, fontWeight: "600", marginBottom: 4, textAlign: "center" }}>No Support Locations Yet</Text>
-                        <Text style={{ color: theme.textSupporting, fontSize: 14, textAlign: "center" }}>{"Tap the '+' FAB button to create a support location!"}</Text>
+                        <Text style={{ color: theme.textSupporting, fontSize: 14, textAlign: "center" }}>{"Use the '+' button to create a support location."}</Text>
                     </View>
                 ) : (
                     <FlatList
@@ -235,19 +235,8 @@ export default function CollaboratorDashboard() {
                 onClose={() => setIsMenuVisible(false)}
                 options={[
                     {
-                        key: "create-request",
-                        label: "Create Support Request",
-                        icon: "support" as any,
-                        onPress: () => {
-                            setIsMenuVisible(false);
-                            setTimeout(() => {
-                                router.push("/create-request");
-                            }, 180);
-                        },
-                    },
-                    {
                         key: "add-location",
-                        label: "Add Help Location",
+                        label: "Create Support Location",
                         icon: "map" as any,
                         onPress: () => {
                             setIsMenuVisible(false);

@@ -1,4 +1,4 @@
-import React, { useMemo } from "react";
+import React from "react";
 import {
   ActivityIndicator,
   Pressable,
@@ -13,17 +13,15 @@ import { useQueries } from "@tanstack/react-query";
 import { useRouter } from "expo-router";
 
 import { BorderRadius, Spacing } from "@/constants/theme";
-import { getPosts } from "@/features/community/api/get-posts";
+import {
+  getCategoryStatistics,
+  getPostStatistics,
+  getReportStatistics,
+  getSupportRequestStatistics,
+  getUserStatistics,
+} from "@/features/admin/api/dashboard-statistics";
 import { getCommunityFunds } from "@/features/finance/hooks/useCommunityFunds";
-import { getAllReports } from "@/features/reports/api/get-all-reports";
-import { ReportTargetType } from "@/features/reports/types/reports.types";
-import { getCategories } from "@/features/support/api/get-categories";
-import { getSupportRequests } from "@/features/support/api/get-support-requests";
-import { SupportStatus } from "@/features/support/types/support.types";
-import { getUsers } from "@/features/users/api/get-users";
 import { useTheme } from "@/hooks/useTheme";
-
-type CountMap = Record<string, number>;
 
 const toArray = (value: any): any[] => {
   if (Array.isArray(value)) return value;
@@ -32,13 +30,6 @@ const toArray = (value: any): any[] => {
   if (Array.isArray(value?.data)) return value.data;
   return [];
 };
-
-const countBy = (items: any[], key: string): CountMap =>
-  items.reduce((acc: CountMap, item: any) => {
-    const value = item?.[key] || "UNKNOWN";
-    acc[value] = (acc[value] || 0) + 1;
-    return acc;
-  }, {});
 
 const StatPill = ({ label, value }: { label: string; value: string | number }) => {
   const theme = useTheme();
@@ -86,35 +77,21 @@ export default function AdminStatistics() {
     fundsQuery,
   ] = useQueries({
     queries: [
-      { queryKey: ["adminStats", "users"], queryFn: getUsers },
-      { queryKey: ["adminStats", "supportRequests"], queryFn: () => getSupportRequests() },
-      { queryKey: ["adminStats", "categories"], queryFn: () => getCategories(false) },
-      { queryKey: ["adminStats", "reports"], queryFn: getAllReports },
-      { queryKey: ["adminStats", "posts"], queryFn: () => getPosts() },
+      { queryKey: ["adminDashboard", "users"], queryFn: getUserStatistics },
+      { queryKey: ["adminDashboard", "supportRequests"], queryFn: getSupportRequestStatistics },
+      { queryKey: ["adminDashboard", "categories"], queryFn: getCategoryStatistics },
+      { queryKey: ["adminDashboard", "reports"], queryFn: getReportStatistics },
+      { queryKey: ["adminDashboard", "posts"], queryFn: getPostStatistics },
       { queryKey: ["adminStats", "communityFunds"], queryFn: () => getCommunityFunds(false) },
     ],
   });
 
-  const users = toArray(usersQuery.data);
-  const requests = toArray(requestsQuery.data);
-  const categories = toArray(categoriesQuery.data);
-  const reports = toArray(reportsQuery.data);
-  const posts = toArray(postsQuery.data);
+  const userStats = usersQuery.data;
+  const requestStats = requestsQuery.data;
+  const categoryStats = categoriesQuery.data;
+  const reportStats = reportsQuery.data;
+  const postStats = postsQuery.data;
   const funds = toArray(fundsQuery.data);
-
-  const requestStatus = useMemo(() => countBy(requests, "status"), [requests]);
-  const userRoles = useMemo(() => countBy(users, "role"), [users]);
-  const reportStatus = useMemo(() => countBy(reports, "status"), [reports]);
-  const reportTargets = useMemo(() => countBy(reports, "targetType"), [reports]);
-  const postStatus = useMemo(() => countBy(posts, "status"), [posts]);
-  const requestsByCategory = useMemo(
-    () => countBy(requests, "categoryName"),
-    [requests],
-  );
-
-  const activeUsers = users.filter((user) => user.status === "ACTIVE" || user.isActive === true).length;
-  const inactiveUsers = users.length - activeUsers;
-  const activeCategories = categories.filter((category) => category.isActive !== false).length;
   const totalFundBalance = funds.reduce((sum, fund) => sum + Number(fund.totalBalance || 0), 0);
 
   const isLoading =
@@ -161,38 +138,38 @@ export default function AdminStatistics() {
         <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
           <Section title="User Statistics" icon="people">
             <View style={styles.grid}>
-              <StatPill label="Total Users" value={users.length} />
-              <StatPill label="Active" value={activeUsers} />
-              <StatPill label="Inactive" value={inactiveUsers} />
-              <StatPill label="Requester" value={userRoles.REQUESTER || 0} />
-              <StatPill label="Volunteer" value={userRoles.VOLUNTEER || 0} />
-              <StatPill label="Collaborator" value={userRoles.COLLABORATOR || 0} />
-              <StatPill label="Admin" value={userRoles.ADMIN || 0} />
+              <StatPill label="Total Users" value={userStats?.totalUsers || 0} />
+              <StatPill label="Active" value={userStats?.activeUsers || 0} />
+              <StatPill label="Inactive" value={userStats?.inactiveUsers || 0} />
+              <StatPill label="Requester" value={userStats?.requesters || 0} />
+              <StatPill label="Volunteer" value={userStats?.volunteers || 0} />
+              <StatPill label="Collaborator" value={userStats?.collaborators || 0} />
+              <StatPill label="Admin" value={userStats?.admins || 0} />
             </View>
           </Section>
 
           <Section title="Support Request Statistics" icon="volunteer-activism">
             <View style={styles.grid}>
-              <StatPill label="Total SR" value={requests.length} />
-              <StatPill label="Pending" value={requestStatus[SupportStatus.PENDING] || 0} />
-              <StatPill label="Approved" value={requestStatus[SupportStatus.APPROVED] || 0} />
-              <StatPill label="In Progress" value={requestStatus[SupportStatus.IN_PROGRESS] || 0} />
-              <StatPill label="Rejected" value={requestStatus[SupportStatus.REJECTED] || 0} />
-              <StatPill label="Completed" value={requestStatus[SupportStatus.COMPLETED] || 0} />
-              <StatPill label="Cancelled" value={requestStatus[SupportStatus.CANCELLED] || 0} />
+              <StatPill label="Total SR" value={requestStats?.totalSupportRequests || 0} />
+              <StatPill label="Pending" value={requestStats?.pending || 0} />
+              <StatPill label="Approved" value={requestStats?.approved || 0} />
+              <StatPill label="In Progress" value={requestStats?.inProgress || 0} />
+              <StatPill label="Rejected" value={requestStats?.rejected || 0} />
+              <StatPill label="Completed" value={requestStats?.completed || 0} />
+              <StatPill label="Cancelled" value={requestStats?.cancelled || 0} />
             </View>
           </Section>
 
           <Section title="Category Statistics" icon="category">
             <View style={styles.grid}>
-              <StatPill label="Total Categories" value={categories.length} />
-              <StatPill label="Active Categories" value={activeCategories} />
+              <StatPill label="Total Categories" value={categoryStats?.totalCategories || 0} />
+              <StatPill label="Active Categories" value={categoryStats?.activeCategories || 0} />
             </View>
             <View style={styles.list}>
-              {Object.entries(requestsByCategory).map(([category, count]) => (
-                <View key={category} style={[styles.row, { borderBottomColor: theme.border }]}>
-                  <Text style={[styles.rowLabel, { color: theme.text }]}>{category}</Text>
-                  <Text style={[styles.rowValue, { color: theme.textSupporting }]}>{count}</Text>
+              {(categoryStats?.categories || []).map((category) => (
+                <View key={category.categoryId} style={[styles.row, { borderBottomColor: theme.border }]}>
+                  <Text style={[styles.rowLabel, { color: theme.text }]}>{category.categoryName}</Text>
+                  <Text style={[styles.rowValue, { color: theme.textSupporting }]}>{category.supportRequestCount}</Text>
                 </View>
               ))}
             </View>
@@ -200,23 +177,23 @@ export default function AdminStatistics() {
 
           <Section title="Report Statistics" icon="report">
             <View style={styles.grid}>
-              <StatPill label="Total Reports" value={reports.length} />
-              <StatPill label="Pending" value={reportStatus.PENDING || 0} />
-              <StatPill label="Reviewed" value={reportStatus.REVIEWED || 0} />
-              <StatPill label="Resolved" value={reportStatus.RESOLVED || 0} />
-              <StatPill label="SR Target" value={reportTargets[ReportTargetType.SUPPORT_REQUEST] || 0} />
-              <StatPill label="Post Target" value={reportTargets[ReportTargetType.POST] || 0} />
-              <StatPill label="User Target" value={reportTargets[ReportTargetType.USER] || 0} />
+              <StatPill label="Total Reports" value={reportStats?.totalReports || 0} />
+              <StatPill label="Pending" value={reportStats?.pending || 0} />
+              <StatPill label="Reviewed" value={reportStats?.reviewed || 0} />
+              <StatPill label="Resolved" value={reportStats?.resolved || 0} />
+              <StatPill label="SR Target" value={reportStats?.supportRequestReports || 0} />
+              <StatPill label="Post Target" value={reportStats?.postReports || 0} />
+              <StatPill label="User Target" value={reportStats?.userReports || 0} />
             </View>
           </Section>
 
           <Section title="Post Statistics" icon="article">
             <View style={styles.grid}>
-              <StatPill label="Total Posts" value={posts.length} />
-              <StatPill label="Active" value={postStatus.ACTIVE || posts.filter((post) => post.isActive !== false).length} />
-              <StatPill label="Under Review" value={postStatus.UNDER_REVIEW || 0} />
-              <StatPill label="Hidden" value={postStatus.HIDDEN || 0} />
-              <StatPill label="Removed" value={postStatus.REMOVED || 0} />
+              <StatPill label="Total Posts" value={postStats?.totalPosts || 0} />
+              <StatPill label="Active" value={postStats?.active || 0} />
+              <StatPill label="Under Review" value={postStats?.underReview || 0} />
+              <StatPill label="Hidden" value={postStats?.hidden || 0} />
+              <StatPill label="Removed" value={postStats?.removed || 0} />
             </View>
           </Section>
 

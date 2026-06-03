@@ -7,7 +7,6 @@ import * as Haptics from 'expo-haptics';
 import { useTheme } from '@/hooks/useTheme';
 import { useThemeStyles } from '@/hooks/useThemeStyles';
 import { RequestCard } from '@/features/support/components/RequestCard';
-import ApplyCollaboratorModal from '@/features/support/components/ApplyCollaboratorModal';
 import { SupportCategory, SupportRequest, SupportStatus, UrgencyLevel } from '@/features/support/types/support.types';
 import type { VolunteerAssignment } from '@/features/support/api/volunteer-assignments';
 import { useVolunteerAssignments } from '@/features/support/hooks/useVolunteerAssignments';
@@ -28,25 +27,11 @@ export default function VolunteerDashboardScreen() {
   const theme = useTheme();
   const stylesGlobal = useThemeStyles();
   const router = useRouter();
-  const [applyModalVisible, setApplyModalVisible] = useState(false);
-  const [isSubmitting, setIsSubmitting] = useState(false);
-  const [showSuccessModal, setShowSuccessModal] = useState(false);
   const [pendingAction, setPendingAction] = useState<{
     type: 'complete' | 'withdraw';
     supportRequestId: string;
     title: string;
   } | null>(null);
-
-  const handleApplyCollaborator = async (reason: string) => {
-    setIsSubmitting(true);
-    setApplyModalVisible(false);
-    
-    setTimeout(async () => {
-      setIsSubmitting(false);
-      await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-      setShowSuccessModal(true);
-    }, 1200);
-  };
 
   const {
     assignments,
@@ -271,16 +256,21 @@ export default function VolunteerDashboardScreen() {
           <StatCard label="Completion Rate" value={`${completionRate}%`} />
         </View>
 
-        {/* Role Banner */}
-        <TouchableOpacity
+        {/* Role upgrade note */}
+        <View
           style={[
             styles.banner,
             { backgroundColor: theme.componentBG, borderColor: theme.border, marginTop: 16 },
           ]}
-          onPress={() => setApplyModalVisible(true)}
         >
-          <Text style={[styles.bannerText, { color: theme.text }]}>Apply to be a Collaborator</Text>
-        </TouchableOpacity>
+          <MaterialIcons name="admin-panel-settings" size={20} color={theme.primary} />
+          <View style={{ flex: 1 }}>
+            <Text style={[styles.bannerText, { color: theme.text }]}>Collaborator upgrade</Text>
+            <Text style={[styles.bannerSubtext, { color: theme.textSupporting }]}>
+              Backend currently supports role promotion from Admin User Management.
+            </Text>
+          </View>
+        </View>
 
         {/* Volunteer Feed */}
         {isLoading ? (
@@ -307,24 +297,6 @@ export default function VolunteerDashboardScreen() {
         )}
       </View>
 
-      {/* Apply Collaborator Modal */}
-      <ApplyCollaboratorModal
-        isOpen={applyModalVisible}
-        onClose={() => setApplyModalVisible(false)}
-        onSubmit={handleApplyCollaborator}
-      />
-
-      {/* Success Confirmation Modal */}
-      <ConfirmModal
-        visible={showSuccessModal}
-        title="Application Submitted!"
-        message="Application submitted successfully! Our team will review your application to become a collaborator."
-        confirmText="Awesome"
-        cancelText="" // Hide cancel button
-        onConfirm={() => setShowSuccessModal(false)}
-        onCancel={() => setShowSuccessModal(false)}
-      />
-
       <ConfirmModal
         visible={!!pendingAction}
         title={
@@ -344,14 +316,6 @@ export default function VolunteerDashboardScreen() {
         onCancel={() => setPendingAction(null)}
       />
 
-      {isSubmitting && (
-        <View style={[StyleSheet.absoluteFill, { backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', alignItems: 'center', zIndex: 1000 }]}>
-          <View style={{ backgroundColor: theme.componentBG, padding: 24, borderRadius: 16, alignItems: 'center', gap: 12, borderWidth: 1, borderColor: theme.border }}>
-            <ActivityIndicator size="large" color={theme.primary} />
-            <Text style={{ color: theme.text, fontWeight: '600' }}>Submitting Application...</Text>
-          </View>
-        </View>
-      )}
     </View>
   );
 }
@@ -396,10 +360,17 @@ const styles = StyleSheet.create({
     padding: 12,
     borderRadius: 12,
     borderWidth: 1,
+    flexDirection: 'row',
     alignItems: 'center',
+    gap: 10,
   },
   bannerText: {
-    fontSize: 16,
+    fontSize: 15,
+    fontWeight: '700',
+  },
+  bannerSubtext: {
+    marginTop: 2,
+    fontSize: 12,
     fontWeight: '500',
   },
   row: {
