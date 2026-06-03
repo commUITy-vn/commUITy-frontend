@@ -13,9 +13,13 @@ import {
     Linking,
 } from "react-native"
 import { useRouter, useFocusEffect } from "expo-router"
+import { useQueries } from "@tanstack/react-query"
 import { useTheme } from "@/hooks/useTheme"
 import { useThemeStyles } from "@/hooks/useThemeStyles"
 import { useSupportRequests } from "@/features/support/hooks/useSupportRequests"
+import { getSupportNeeds } from "@/features/support/api/get-support-needs"
+import { getSupportNeedContributions } from "@/features/support/api/get-support-need-contributions"
+import { getAssignmentsBySupportRequest } from "@/features/support/api/volunteer-assignments"
 import { useCommunityFunds } from "@/features/finance/hooks/useCommunityFunds"
 import { useSupportLocations } from "@/features/maps/hooks/useSupportLocations"
 import {
@@ -55,6 +59,7 @@ interface UnifiedFeedItem {
     address?: string;
     latitude?: number;
     longitude?: number;
+    completionPercent?: number;
     contactPhone?: string;
     totalBalance?: number;
     isActive?: boolean;
@@ -96,6 +101,87 @@ export default function HomeScreen() {
     const isLoading = isRequestsLoading || isFundsLoading || isLocationsLoading
     const isError = isRequestsError || isFundsError || isLocationsError
 
+    const requestNeedsQueries = useQueries({
+        queries: (requests || []).map((request) => ({
+            queryKey: ["supportNeeds", request.id],
+            queryFn: () => getSupportNeeds(request.id),
+            enabled: !!request.id,
+        })),
+    })
+
+    const requestAssignmentQueries = useQueries({
+        queries: (requests || []).map((request) => ({
+            queryKey: ["volunteerAssignments", "request", request.id],
+            queryFn: () => getAssignmentsBySupportRequest(request.id),
+            enabled: !!request.id,
+            retry: false,
+        })),
+    })
+
+    const requestNeedRefs = useMemo(() => {
+        const refs: {
+            requestId: string
+            needId: string
+            requiredQuantity: number
+        }[] = []
+
+        ;(requests || []).forEach((request, requestIndex) => {
+            const needs = requestNeedsQueries[requestIndex]?.data || []
+            needs.forEach((need) => {
+                refs.push({
+                    requestId: request.id,
+                    needId: need.id,
+                    requiredQuantity: Number(need.requiredQuantity || 0),
+                })
+            })
+        })
+
+        return refs
+    }, [requests, requestNeedsQueries])
+
+    const needContributionQueries = useQueries({
+        queries: requestNeedRefs.map((ref) => ({
+            queryKey: ["supportNeedContributions", ref.needId],
+            queryFn: () => getSupportNeedContributions(ref.needId),
+            enabled: !!ref.needId,
+            retry: false,
+        })),
+    })
+
+    const completionByRequest = useMemo(() => {
+        const result = new Map<string, number>()
+        ;(requests || []).forEach((request, index) => {
+            const needs = requestNeedsQueries[index]?.data || []
+            const assignments = requestAssignmentQueries[index]?.data || []
+            const required = needs.reduce((sum, need) => sum + Number(need.requiredQuantity || 0), 0)
+            const received = requestNeedRefs.reduce((sum, ref, refIndex) => {
+                if (ref.requestId !== request.id) return sum
+                const contributions = needContributionQueries[refIndex]?.data || []
+                const validQuantity = contributions.reduce((needSum, contribution) => {
+                    const assignment = assignments.find(
+                        (item) => item.volunteerId === contribution.contributorId,
+                    )
+
+                    if (!assignment || assignment.status === "COMPLETED") {
+                        return needSum + Number(contribution.quantity || 0)
+                    }
+
+                    return needSum
+                }, 0)
+
+                return sum + validQuantity
+            }, 0)
+            result.set(request.id, required > 0 ? Math.min(100, Math.round((received / required) * 100)) : 0)
+        })
+        return result
+    }, [
+        requests,
+        requestNeedsQueries,
+        requestAssignmentQueries,
+        requestNeedRefs,
+        needContributionQueries,
+    ])
+
     // Map datasets into a single unified format
     const unifiedItems = useMemo<UnifiedFeedItem[]>(() => {
         const items: UnifiedFeedItem[] = []
@@ -116,6 +202,7 @@ export default function HomeScreen() {
                     address: r.address,
                     latitude: r.latitude,
                     longitude: r.longitude,
+                    completionPercent: completionByRequest.get(r.id) || 0,
                     createdAt: r.createdAt,
                 })
             })
@@ -155,7 +242,7 @@ export default function HomeScreen() {
 
         // Sort chronologically in descending order
         return items.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
-    }, [requests, funds, locations, user, isStaff])
+    }, [requests, funds, locations, user, isStaff, completionByRequest])
 
     // Filter unified feed based on selector states
     const filteredFeed = useMemo(() => {
@@ -209,19 +296,6 @@ export default function HomeScreen() {
         return []
     }, [primaryFilter, isStaff])
 
-    // Simulated progress tracker helper for Help Request Cards
-    const getSimulatedProgress = (status?: string) => {
-        switch (status) {
-            case 'COMPLETED':
-                return 100
-            case 'IN_PROGRESS': return 65
-            case 'APPROVED':
-            case 'ACCEPTED':
-                return 30
-            default: return 0
-        }
-    }
-
     // Interactive Leaflet static mini preview map
     const getMiniMapHtml = (latitude?: number, longitude?: number) => {
         const lat = latitude || 21.028511
@@ -263,7 +337,7 @@ export default function HomeScreen() {
 
     // Render Help Request Card Component
     const renderRequestCard = (item: UnifiedFeedItem) => {
-        const progress = getSimulatedProgress(item.status)
+        const progress = item.status === 'COMPLETED' ? 100 : item.completionPercent || 0
         const isPending = item.status === 'PENDING'
         const isApproved = item.status === 'APPROVED' || item.status === 'ACCEPTED'
         const isInProgress = item.status === 'IN_PROGRESS'

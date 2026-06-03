@@ -188,6 +188,7 @@ export default function MapScreen() {
     "idle" | "requesting" | "granted" | "denied" | "unavailable"
   >("idle");
   const [filter, setFilter] = useState<"ALL" | "REQUEST" | "LOCATION">("ALL");
+  const [radiusFilterKm, setRadiusFilterKm] = useState<number | null>(null);
   const [userOrigin, setUserOrigin] = useState<Coordinates | null>(null);
   const [currentLocationOrigin, setCurrentLocationOrigin] =
     useState<Coordinates | null>(null);
@@ -425,9 +426,12 @@ export default function MapScreen() {
         !query ||
         item.title.toLowerCase().includes(query) ||
         item.subtitle.toLowerCase().includes(query);
-      return matchesType && matchesQuery;
+      const matchesRadius =
+        radiusFilterKm === null ||
+        (item.distanceKm !== undefined && item.distanceKm <= radiusFilterKm);
+      return matchesType && matchesQuery && matchesRadius;
     });
-  }, [filter, items, searchQuery]);
+  }, [filter, items, radiusFilterKm, searchQuery]);
 
   const mapSearchSuggestions = useMemo(() => {
     const query = searchQuery.trim().toLowerCase();
@@ -435,13 +439,16 @@ export default function MapScreen() {
     return items
       .filter((item) => {
         const matchesType = filter === "ALL" || item.type === filter;
+        const matchesRadius =
+          radiusFilterKm === null ||
+          (item.distanceKm !== undefined && item.distanceKm <= radiusFilterKm);
         const matchesQuery =
           item.title.toLowerCase().includes(query) ||
           item.subtitle.toLowerCase().includes(query);
-        return matchesType && matchesQuery;
+        return matchesType && matchesRadius && matchesQuery;
       })
       .slice(0, 6);
-  }, [filter, items, searchQuery]);
+  }, [filter, items, radiusFilterKm, searchQuery]);
 
   const htmlContent = useMemo(
     () =>
@@ -797,6 +804,47 @@ export default function MapScreen() {
             );
           })}
         </View>
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={styles.radiusFilters}
+        >
+          {[
+            { label: "Any distance", value: null },
+            { label: "2 km", value: 2 },
+            { label: "5 km", value: 5 },
+            { label: "10 km", value: 10 },
+            { label: "25 km", value: 25 },
+          ].map((option) => {
+            const selected = radiusFilterKm === option.value;
+            return (
+              <Pressable
+                key={option.label}
+                onPress={() => setRadiusFilterKm(option.value)}
+                disabled={option.value !== null && !userOrigin}
+                style={[
+                  styles.radiusButton,
+                  {
+                    backgroundColor: selected
+                      ? theme.primary
+                      : theme.highlightBG,
+                    opacity: option.value !== null && !userOrigin ? 0.45 : 1,
+                  },
+                ]}
+              >
+                <Text
+                  style={{
+                    color: selected ? theme.textLight : theme.textSupporting,
+                    fontSize: 12,
+                    fontWeight: "800",
+                  }}
+                >
+                  {option.label}
+                </Text>
+              </Pressable>
+            );
+          })}
+        </ScrollView>
       </View>
 
       {!(isMapSuggestionsVisible && mapSearchSuggestions.length > 0) &&
@@ -957,6 +1005,15 @@ const styles = StyleSheet.create({
     alignItems: "center",
     borderRadius: 8,
     paddingVertical: 8,
+  },
+  radiusFilters: {
+    gap: 8,
+    paddingRight: 2,
+  },
+  radiusButton: {
+    borderRadius: 999,
+    paddingHorizontal: 12,
+    paddingVertical: 7,
   },
   locationButton: {
     width: 30,

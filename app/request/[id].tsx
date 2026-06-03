@@ -1,10 +1,15 @@
 import { BottomSheet, Button } from "@/components/ui";
 import TextInput from "@/components/ui/TextInput";
 import { MaterialIcons } from "@expo/vector-icons";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import {
+  useMutation,
+  useQueries,
+  useQuery,
+  useQueryClient,
+} from "@tanstack/react-query";
 import * as Haptics from "expo-haptics";
 import { useLocalSearchParams, useRouter } from "expo-router";
-import React, { useEffect, useRef, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
@@ -30,6 +35,7 @@ import { UserRole } from "@/features/auth/types";
 import { geocodeAddress } from "@/features/maps/api/geocode-address";
 import { useSupportLocations } from "@/features/maps/hooks/useSupportLocations";
 import { assignSupportLocation } from "@/features/support/api/assign-support-location";
+import { api } from "@/lib/api-client";
 import {
   applyToSupportRequest,
   approveVolunteer,
@@ -47,13 +53,17 @@ import { useTheme } from "@/hooks/useTheme";
 
 // Hooks & API
 import { deleteSupportNeed } from "@/features/support/api/delete-support-need";
-import { getSupportNeedContributions } from "@/features/support/api/get-support-need-contributions";
+import {
+  getSupportNeedContributions,
+  type SupportNeedContributionResponse,
+} from "@/features/support/api/get-support-need-contributions";
 import { updateSupportRequest } from "@/features/support/api/update-support-request";
 import { ContributeItemModal } from "@/features/support/components/ContributeItemModal";
 import { SupportNeedModal } from "@/features/support/components/SupportNeedModal";
 import { useCategories } from "@/features/support/hooks/useCategories"; // Hook load categories động
 import { useSupportNeeds } from "@/features/support/hooks/useSupportNeeds";
 import { useSupportRequestById } from "@/features/support/hooks/useSupportRequestById";
+import { ReportModal, ReportTargetType } from "@/features/reports";
 
 export default function RequestDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -63,6 +73,8 @@ export default function RequestDetailScreen() {
   const { user } = useAuthStore();
 
   const [isNeedModalVisible, setIsNeedModalVisible] = useState(false);
+  const [isShareSheetVisible, setIsShareSheetVisible] = useState(false);
+  const [isReportModalVisible, setIsReportModalVisible] = useState(false);
   const [selectedNeed, setSelectedNeed] = useState<any>(null);
   const [contributeNeed, setContributeNeed] = useState<any>(null);
   const [historyNeed, setHistoryNeed] = useState<any>(null);
@@ -84,6 +96,8 @@ export default function RequestDetailScreen() {
   const [lngStr, setLngStr] = useState("106.6297");
   const [suggestions, setSuggestions] = useState<any[]>([]);
   const [isSearching, setIsSearching] = useState(false);
+  const [conversations, setConversations] = useState<any[]>([]);
+  const [isConversationsLoading, setIsConversationsLoading] = useState(false);
   const typingTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const webViewRef = useRef<any>(null);
 
@@ -124,6 +138,13 @@ export default function RequestDetailScreen() {
     queryFn: () => getSupportNeedContributions(historyNeed.id),
     enabled: !!historyNeed?.id,
   });
+  const needContributionQueries = useQueries({
+    queries: (needs || []).map((need: any) => ({
+      queryKey: ["supportNeedContributions", need.id],
+      queryFn: () => getSupportNeedContributions(need.id),
+      enabled: !!need.id,
+    })),
+  });
 
   // Quyền chỉnh sửa
   const isOwner = user?.id === request?.requesterId;
@@ -139,8 +160,7 @@ export default function RequestDetailScreen() {
     request?.status === SupportStatus.IN_PROGRESS;
   const canEditRequest =
     isRequesterOwner && request?.status === SupportStatus.PENDING;
-  const canManageNeeds =
-    isRequesterOwner && requestAllowsSupportNeedChanges;
+  const canManageNeeds = isRequesterOwner && requestAllowsSupportNeedChanges;
   const requestAllowsVolunteerApplication =
     request?.status === SupportStatus.APPROVED ||
     request?.status === SupportStatus.IN_PROGRESS;
@@ -164,11 +184,93 @@ export default function RequestDetailScreen() {
   const canContribute =
     !isOwner &&
     requestAllowsContributions &&
-    (user?.role === UserRole.COLLABORATOR ||
-      canContributeAsAcceptedVolunteer);
+    (user?.role === UserRole.COLLABORATOR || canContributeAsAcceptedVolunteer);
   const canReviewAssignments = !!request && (isOwner || isStaff);
   const canAssignSupportLocation =
     !!request && isStaff && request.status === SupportStatus.APPROVED;
+  const getContributorAssignment = (contributorId?: string) => {
+    if (!contributorId) return null;
+    return (
+      assignments.find((item) => item.volunteerId === contributorId) || null
+    );
+  };
+
+  const getContributionState = (contributorId?: string) => {
+    const assignment = getContributorAssignment(contributorId);
+    if (!assignment) {
+      return {
+        isCounted: true,
+        tone: "success" as const,
+        label: "Counted as collaborator/direct contribution.",
+      };
+    }
+    if (assignment.status === "COMPLETED") {
+      return {
+        isCounted: true,
+        tone: "success" as const,
+        label: "Counted: volunteer assignment completed.",
+      };
+    }
+    if (assignment.status === "CANCELLED") {
+      return {
+        isCounted: false,
+        tone: "danger" as const,
+        label: "Not counted: volunteer assignment cancelled.",
+      };
+    }
+    if (assignment.status === "REJECTED") {
+      return {
+        isCounted: false,
+        tone: "danger" as const,
+        label: "Not counted: volunteer assignment rejected.",
+      };
+    }
+    return {
+      isCounted: false,
+      tone: "pending" as const,
+      label: `Pending count: volunteer assignment ${assignment.status}.`,
+    };
+  };
+
+  const displayNeeds = useMemo(
+    () =>
+      (needs || []).map((need: any, index: number) => {
+        const contributions =
+          (needContributionQueries[index]?.data as
+            | SupportNeedContributionResponse[]
+            | undefined) || [];
+        const requiredQuantity = Number(
+          need.requiredQuantity || need.quantity || 0,
+        );
+        const effectiveReceivedQuantity = contributions.reduce(
+          (sum, contribution) => {
+            const assignment = assignments.find(
+              (item) => item.volunteerId === contribution.contributorId,
+            );
+            if (!assignment || assignment.status === "COMPLETED") {
+              return sum + Number(contribution.quantity || 0);
+            }
+            return sum;
+          },
+          0,
+        );
+        const effectiveRemainingQuantity = Math.max(
+          0,
+          requiredQuantity - effectiveReceivedQuantity,
+        );
+        return {
+          ...need,
+          effectiveReceivedQuantity,
+          effectiveRemainingQuantity,
+          effectiveIsFulfilled:
+            requiredQuantity > 0 &&
+            effectiveReceivedQuantity >= requiredQuantity,
+          backendReceivedQuantity: Number(need.receivedQuantity || 0),
+          backendRemainingQuantity: Number(need.remainingQuantity || 0),
+        };
+      }),
+    [needs, needContributionQueries, assignments],
+  );
 
   useEffect(() => {
     if (request) {
@@ -188,6 +290,32 @@ export default function RequestDetailScreen() {
       if (request.longitude) setLngStr(request.longitude.toString());
     }
   }, [request]);
+
+  useEffect(() => {
+    if (!isShareSheetVisible) return;
+    setIsConversationsLoading(true);
+    api
+      .get<any>("/api/v1/conversations/me")
+      .then((res) => setConversations(res || []))
+      .catch((error) => {
+        console.error("Failed to load conversations for sharing:", error);
+        setConversations([]);
+      })
+      .finally(() => setIsConversationsLoading(false));
+  }, [isShareSheetVisible]);
+
+  const handleShareRequest = async (conversationId: string) => {
+    await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    try {
+      await api.post(`/api/v1/conversations/${conversationId}/messages`, {
+        content: `[SHARED_ITEM:SUPPORT:${id}:${request?.title || "Support Request"}]`,
+      });
+      Alert.alert("Success", "Support request shared successfully.");
+      setIsShareSheetVisible(false);
+    } catch (error: any) {
+      Alert.alert("Error", error?.message || "Failed to share support request.");
+    }
+  };
 
   const updateRequestMutation = useMutation({
     mutationFn: (data: any) => updateSupportRequest(id as string, data),
@@ -479,7 +607,20 @@ export default function RequestDetailScreen() {
         <Text style={[localStyles.headerTitle, { color: theme.text }]}>
           Request Details
         </Text>
-        <View style={{ width: 48 }} />
+        <View style={{ flexDirection: "row", alignItems: "center", gap: 4 }}>
+          <Pressable
+            onPress={() => setIsReportModalVisible(true)}
+            style={localStyles.iconBtn}
+          >
+            <MaterialIcons name="flag" size={22} color={theme.textSupporting} />
+          </Pressable>
+          <Pressable
+            onPress={() => setIsShareSheetVisible(true)}
+            style={localStyles.iconBtn}
+          >
+            <MaterialIcons name="share" size={24} color={theme.primary} />
+          </Pressable>
+        </View>
       </View>
 
       <ScrollView
@@ -686,7 +827,9 @@ export default function RequestDetailScreen() {
 
         {(request.assignedSupportLocationName || canAssignSupportLocation) && (
           <View style={{ marginTop: 16, gap: 10 }}>
-            <Text style={[localStyles.sectionTitleSmall, { color: theme.text }]}>
+            <Text
+              style={[localStyles.sectionTitleSmall, { color: theme.text }]}
+            >
               Support location
             </Text>
             <View
@@ -698,11 +841,7 @@ export default function RequestDetailScreen() {
                 },
               ]}
             >
-              <MaterialIcons
-                name="home-work"
-                size={22}
-                color={theme.primary}
-              />
+              <MaterialIcons name="home-work" size={22} color={theme.primary} />
               <Text
                 style={[localStyles.addressText, { color: theme.text }]}
                 numberOfLines={2}
@@ -854,7 +993,7 @@ export default function RequestDetailScreen() {
             color={theme.primary}
             style={{ marginTop: 16 }}
           />
-        ) : !needs || needs.length === 0 ? (
+        ) : !displayNeeds || displayNeeds.length === 0 ? (
           <View style={localStyles.emptyContainer}>
             <MaterialIcons
               name="inventory-2"
@@ -872,7 +1011,7 @@ export default function RequestDetailScreen() {
           </View>
         ) : (
           <View style={localStyles.needsList}>
-            {needs.map((need: any, index: number) => (
+            {displayNeeds.map((need: any, index: number) => (
               <View
                 key={need.id}
                 style={[
@@ -891,12 +1030,16 @@ export default function RequestDetailScreen() {
                       { color: theme.textSupporting },
                     ]}
                   >
+                    {need.effectiveReceivedQuantity}/
                     {need.requiredQuantity || need.quantity || 0}{" "}
                     {need.unit || "pcs"} ·{" "}
                     {need.supportType === "MONEY" ? "Money" : "Goods"}
                   </Text>
                 </View>
-                {(canManageNeeds || canContribute || need.receivedQuantity > 0) && (
+                {(canManageNeeds ||
+                  canContribute ||
+                  need.backendReceivedQuantity > 0 ||
+                  need.effectiveReceivedQuantity > 0) && (
                   <View style={localStyles.needActions}>
                     <Pressable
                       onPress={() => setHistoryNeed(need)}
@@ -911,14 +1054,18 @@ export default function RequestDetailScreen() {
                     {canContribute && (
                       <Pressable
                         onPress={() => setContributeNeed(need)}
-                        disabled={need.isFulfilled || need.remainingQuantity === 0}
+                        disabled={
+                          need.effectiveIsFulfilled ||
+                          need.backendRemainingQuantity === 0
+                        }
                         style={localStyles.actionBtn}
                       >
                         <MaterialIcons
                           name="volunteer-activism"
                           size={20}
                           color={
-                            need.isFulfilled || need.remainingQuantity === 0
+                            need.effectiveIsFulfilled ||
+                            need.backendRemainingQuantity === 0
                               ? theme.textSupporting
                               : theme.success
                           }
@@ -999,6 +1146,93 @@ export default function RequestDetailScreen() {
         }
       />
 
+      <BottomSheet
+        isVisible={isShareSheetVisible}
+        onClose={() => setIsShareSheetVisible(false)}
+        title="Share Support Request"
+      >
+        <View style={{ paddingBottom: 24, maxHeight: 400, width: "100%" }}>
+          {isConversationsLoading ? (
+            <ActivityIndicator
+              size="large"
+              color={theme.primary}
+              style={{ marginVertical: 20 }}
+            />
+          ) : conversations.length === 0 ? (
+            <View style={{ padding: 20, alignItems: "center" }}>
+              <Text style={{ color: theme.textSupporting, textAlign: "center" }}>
+                No active chats found
+              </Text>
+            </View>
+          ) : (
+            <ScrollView style={{ width: "100%" }} showsVerticalScrollIndicator={false}>
+              {conversations.map((conversation: any) => {
+                const otherMember = conversation.members?.find(
+                  (member: any) => member.userId !== user?.id,
+                );
+                const chatName = otherMember?.fullName || "User";
+                return (
+                  <Pressable
+                    key={conversation.id}
+                    onPress={() => handleShareRequest(conversation.id)}
+                    style={({ pressed }) => ({
+                      flexDirection: "row",
+                      alignItems: "center",
+                      paddingVertical: 14,
+                      paddingHorizontal: 20,
+                      borderBottomWidth: StyleSheet.hairlineWidth,
+                      borderBottomColor: theme.border,
+                      backgroundColor: pressed
+                        ? theme.activeComponentBG
+                        : "transparent",
+                    })}
+                  >
+                    <View
+                      style={{
+                        width: 40,
+                        height: 40,
+                        borderRadius: 20,
+                        backgroundColor: theme.primary + "20",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        marginRight: 12,
+                      }}
+                    >
+                      <MaterialIcons name="person" size={20} color={theme.primary} />
+                    </View>
+                    <Text
+                      style={{
+                        flex: 1,
+                        color: theme.text,
+                        fontWeight: "600",
+                        fontSize: 15,
+                      }}
+                    >
+                      {chatName}
+                    </Text>
+                    <MaterialIcons name="send" size={18} color={theme.primary} />
+                  </Pressable>
+                );
+              })}
+            </ScrollView>
+          )}
+        </View>
+      </BottomSheet>
+
+      <ReportModal
+        visible={isReportModalVisible}
+        onClose={() => setIsReportModalVisible(false)}
+        targetType={ReportTargetType.SUPPORT_REQUEST}
+        targetId={id as string}
+        targetName={request?.title || "Support Request"}
+        onSuccessSubmit={() => {
+          Alert.alert(
+            "Report submitted",
+            "Your report has been submitted to administrators for review.",
+          );
+        }}
+      />
+
       <ContributeItemModal
         visible={!!contributeNeed}
         onClose={() => setContributeNeed(null)}
@@ -1012,9 +1246,16 @@ export default function RequestDetailScreen() {
                     : ItemCategory.GOODS,
                 name: contributeNeed.needName || "Support need",
                 neededQuantity: contributeNeed.requiredQuantity || 0,
-                receivedQuantity: contributeNeed.receivedQuantity || 0,
-                remainingQuantity: contributeNeed.remainingQuantity,
-                isFulfilled: contributeNeed.isFulfilled,
+                receivedQuantity:
+                  contributeNeed.effectiveReceivedQuantity ??
+                  contributeNeed.receivedQuantity ??
+                  0,
+                remainingQuantity:
+                  contributeNeed.effectiveRemainingQuantity ??
+                  contributeNeed.remainingQuantity,
+                isFulfilled:
+                  contributeNeed.effectiveIsFulfilled ??
+                  contributeNeed.isFulfilled,
                 unit: contributeNeed.unit,
               }
             : null
@@ -1031,6 +1272,9 @@ export default function RequestDetailScreen() {
             queryClient.invalidateQueries({ queryKey: ["supportRequests"] }),
             queryClient.invalidateQueries({ queryKey: ["supportRequest", id] }),
             queryClient.invalidateQueries({ queryKey: ["supportNeeds", id] }),
+            queryClient.invalidateQueries({
+              queryKey: ["supportNeedContributions"],
+            }),
           ]);
           await refetchRequest();
           setContributeNeed(null);
@@ -1113,7 +1357,10 @@ export default function RequestDetailScreen() {
                   {historyNeed?.needName || "Support need"}
                 </Text>
               </View>
-              <Pressable onPress={() => setHistoryNeed(null)} style={localStyles.actionBtn}>
+              <Pressable
+                onPress={() => setHistoryNeed(null)}
+                style={localStyles.actionBtn}
+              >
                 <MaterialIcons name="close" size={22} color={theme.text} />
               </Pressable>
             </View>
@@ -1125,33 +1372,67 @@ export default function RequestDetailScreen() {
                 No contributions recorded for this need yet.
               </Text>
             ) : (
-              <ScrollView style={{ maxHeight: 320 }} showsVerticalScrollIndicator={false}>
-                {contributionHistory.map((item) => (
-                  <View
-                    key={item.id}
-                    style={[
-                      localStyles.historyRow,
-                      { borderBottomColor: theme.border },
-                    ]}
-                  >
-                    <View style={{ flex: 1 }}>
-                      <Text style={{ color: theme.text, fontWeight: "700" }}>
-                        {item.contributorName || "Contributor"}
-                      </Text>
-                      <Text style={{ color: theme.textSupporting, fontSize: 12 }}>
-                        {item.createdAt ? new Date(item.createdAt).toLocaleString() : ""}
-                      </Text>
-                      {!!item.note && (
-                        <Text style={{ color: theme.textSupporting, fontSize: 12, marginTop: 4 }}>
-                          {item.note}
+              <ScrollView
+                style={{ maxHeight: 320 }}
+                showsVerticalScrollIndicator={false}
+              >
+                {contributionHistory.map((item) => {
+                  const contributionState = getContributionState(
+                    item.contributorId,
+                  );
+                  const contributionStateColor =
+                    contributionState.tone === "success"
+                      ? theme.success
+                      : contributionState.tone === "danger"
+                        ? theme.danger
+                        : theme.textSupporting;
+                  return (
+                    <View
+                      key={item.id}
+                      style={[
+                        localStyles.historyRow,
+                        { borderBottomColor: theme.border },
+                      ]}
+                    >
+                      <View style={{ flex: 1 }}>
+                        <Text style={{ color: theme.text, fontWeight: "700" }}>
+                          {item.contributorName || "Contributor"}
                         </Text>
-                      )}
+                        <Text
+                          style={{ color: theme.textSupporting, fontSize: 12 }}
+                        >
+                          {item.createdAt
+                            ? new Date(item.createdAt).toLocaleString()
+                            : ""}
+                        </Text>
+                        <Text
+                          style={{
+                            color: contributionStateColor,
+                            fontSize: 12,
+                            marginTop: 4,
+                            fontWeight: "700",
+                          }}
+                        >
+                          {contributionState.label}
+                        </Text>
+                        {!!item.note && (
+                          <Text
+                            style={{
+                              color: theme.textSupporting,
+                              fontSize: 12,
+                              marginTop: 4,
+                            }}
+                          >
+                            {item.note}
+                          </Text>
+                        )}
+                      </View>
+                      <Text style={{ color: theme.primary, fontWeight: "800" }}>
+                        +{item.quantity} {historyNeed?.unit || ""}
+                      </Text>
                     </View>
-                    <Text style={{ color: theme.primary, fontWeight: "800" }}>
-                      +{item.quantity} {historyNeed?.unit || ""}
-                    </Text>
-                  </View>
-                ))}
+                  );
+                })}
               </ScrollView>
             )}
           </View>

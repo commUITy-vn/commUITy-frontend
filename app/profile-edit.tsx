@@ -13,6 +13,7 @@ import {
 import { useRouter } from "expo-router"
 import { MaterialIcons } from "@expo/vector-icons"
 import * as Haptics from "expo-haptics"
+import * as ImagePicker from "expo-image-picker"
 import { useTheme } from "@/hooks/useTheme"
 import { useAuthStore } from "@/features/auth/stores/useAuthStore"
 import TextInput from "@/components/ui/TextInput"
@@ -21,10 +22,12 @@ import { updateMe } from "@/features/users/api/update-me"
 import { getUserProfile } from "@/features/auth/api/get-user-profile"
 import { api } from "@/lib/api-client"
 import { storage } from "@/lib/storage"
+import { useQueryClient } from "@tanstack/react-query"
 
 export default function ProfileEditScreen() {
     const router = useRouter()
     const theme = useTheme()
+    const queryClient = useQueryClient()
     const { user } = useAuthStore()
 
     const [displayName, setDisplayName] = useState(user?.fullName || "")
@@ -36,6 +39,52 @@ export default function ProfileEditScreen() {
     const [error, setError] = useState("")
 
     const fileInputRef = useRef<HTMLInputElement>(null)
+
+    const handlePickAvatar = async () => {
+        if (Platform.OS === 'web') {
+            fileInputRef.current?.click()
+            return
+        }
+
+        setError("")
+        const permission = await ImagePicker.requestMediaLibraryPermissionsAsync()
+        if (!permission.granted) {
+            setError("Photo access is required to choose an avatar.")
+            return
+        }
+
+        setIsUploading(true)
+        try {
+            await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light)
+            const result = await ImagePicker.launchImageLibraryAsync({
+                mediaTypes: ImagePicker.MediaTypeOptions.Images,
+                allowsEditing: true,
+                aspect: [1, 1],
+                quality: 0.8,
+            })
+            if (result.canceled || !result.assets?.[0]) return
+
+            const asset = result.assets[0]
+            const mimeType = asset.mimeType || "image/jpeg"
+            const fileUrl = asset.uri
+
+            const mediaRes = await api.post<any>('/api/v1/media', {
+                fileName: asset.fileName || `avatar-${Date.now()}.jpg`,
+                fileUrl,
+                fileType: 'IMAGE',
+                mimeType,
+                fileSize: asset.fileSize,
+                altText: displayName || user?.fullName || 'Avatar',
+                isPublic: true,
+            })
+            setAvatarUrl(mediaRes.fileUrl || fileUrl)
+        } catch (err: any) {
+            console.error("Failed to pick avatar image:", err)
+            setError(err?.message || "Failed to choose image.")
+        } finally {
+            setIsUploading(false)
+        }
+    }
 
     const handleFileChange = async (e: any) => {
         if (Platform.OS !== 'web') return;
@@ -88,6 +137,8 @@ export default function ProfileEditScreen() {
             await storage.setItemAsync(STORAGE_KEY_USER, JSON.stringify(freshUser));
             
             useAuthStore.setState({ user: freshUser });
+            queryClient.setQueryData(['users', 'me'], freshUser);
+            queryClient.invalidateQueries({ queryKey: ['users', 'me'] });
 
             await Haptics.notificationAsync(
                 Haptics.NotificationFeedbackType.Success,
@@ -170,11 +221,7 @@ export default function ProfileEditScreen() {
                 {/* Avatar */}
                 <View style={localStyles.avatarSection}>
                     <Pressable 
-                        onPress={() => {
-                            if (Platform.OS === 'web') {
-                                fileInputRef.current?.click();
-                            }
-                        }}
+                        onPress={handlePickAvatar}
                         style={[
                             localStyles.avatar,
                             { backgroundColor: theme.primary },
@@ -197,13 +244,7 @@ export default function ProfileEditScreen() {
                         )}
                     </Pressable>
                     <Pressable 
-                        onPress={() => {
-                            if (Platform.OS === 'web') {
-                                fileInputRef.current?.click();
-                            } else {
-                                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                            }
-                        }}
+                        onPress={handlePickAvatar}
                         style={localStyles.changePhotoBtn}
                     >
                         <Text

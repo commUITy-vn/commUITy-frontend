@@ -4,7 +4,6 @@ import { createSupportNeed } from "@/features/support/api/create-support-need";
 import { useCreateSupportRequest } from "@/features/support/hooks/useCreateSupportRequest";
 import {
     CATEGORY_LABELS,
-    URGENCY_LABELS,
 } from "@/features/support/types/support.types";
 import { useTheme } from "@/hooks/useTheme";
 import { useCreateRequestStore } from "@/stores/useCreateRequestStore";
@@ -24,7 +23,6 @@ export default function CreateRequestConfirmationScreen() {
     title,
     description,
     address,
-    urgency,
     items,
     latitude,
     longitude,
@@ -134,7 +132,7 @@ export default function CreateRequestConfirmationScreen() {
   };
 
   const handleEdit = (step: string) => {
-    router.push(`/create-request/${step}` as any);
+    router.push((step === "index" ? "/create-request" : `/create-request/${step}`) as any);
   };
 
   return (
@@ -293,40 +291,6 @@ export default function CreateRequestConfirmationScreen() {
             </Pressable>
           </View>
         ) : null}
-
-        {/* Urgency */}
-        <View style={localStyles.fieldRow}>
-          <View style={localStyles.fieldLeft}>
-            <MaterialIcons name="schedule" size={22} color={theme.icon} />
-            <Text
-              style={[localStyles.fieldLabel, { color: theme.textSupporting }]}
-            >
-              Urgency
-            </Text>
-          </View>
-          <Pressable
-            onPress={() => handleEdit("urgency")}
-            style={localStyles.fieldValue}
-          >
-            <Text
-              style={[
-                localStyles.fieldValueText,
-                {
-                  color:
-                    urgency === "HIGH"
-                      ? theme.danger
-                      : urgency === "MEDIUM"
-                        ? theme.warning
-                        : theme.success,
-                  fontWeight: "600",
-                },
-              ]}
-            >
-              {URGENCY_LABELS[urgency]}
-            </Text>
-            <MaterialIcons name="chevron-right" size={18} color={theme.icon} />
-          </Pressable>
-        </View>
 
         {/* Items */}
         <View style={localStyles.fieldRow}>

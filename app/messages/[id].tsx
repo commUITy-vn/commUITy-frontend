@@ -98,7 +98,7 @@ function SharedItemCard({ content, theme }: { content: string; theme: any }) {
 
   const handlePress = async () => {
     await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    if (type === 'SUPPORT') {
+    if (type === 'SUPPORT' || type === 'REQUEST') {
       router.push(`/request/${itemId}`);
     } else if (type === 'LOCATION') {
       router.push(`/location/${itemId}`);
@@ -110,7 +110,7 @@ function SharedItemCard({ content, theme }: { content: string; theme: any }) {
   let iconName = 'insert-drive-file';
   let displayType = 'Shared Item';
 
-  if (type === 'SUPPORT') {
+  if (type === 'SUPPORT' || type === 'REQUEST') {
     iconName = 'help-outline';
     displayType = 'Shared Help Request';
   } else if (type === 'LOCATION') {

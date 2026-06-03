@@ -45,10 +45,6 @@ export default function ProfileScreen() {
         message: "",
     })
 
-    const showAlert = (title: string, message: string) => {
-        setAlertModal({ visible: true, title, message })
-    }
-
     // Mock data for profile details (in real app, this would come from user object)
     const personalDetails = user
     const settingsItems = [
@@ -68,17 +64,8 @@ export default function ProfileScreen() {
             { key: "requester-dashboard", title: "Requester Panel", icon: "assignment" }
         ] : []),
         { key: "theme", title: "Appearance: " + (themeMode === 'light' ? 'Light Mode' : themeMode === 'dark' ? 'Dark Mode' : 'System Mode'), icon: themeMode === 'light' ? 'light-mode' : themeMode === 'dark' ? 'dark-mode' : 'brightness-auto' },
-        { key: "transaction-history", title: "Transaction History", icon: "history" },
         { key: "notifications", title: "Notifications", icon: "notifications" },
         { key: "my-reports", title: "My Reports", icon: "flag" },
-        { key: "rules", title: "Rules", icon: "rule" },
-        { key: "security", title: "Security", icon: "lock" },
-        { key: "backup-restore", title: "Backup & Restore", icon: "backup" },
-        { key: "help", title: "Help", icon: "help" },
-        { key: "whats-new", title: "What's New", icon: "campaign" },
-        { key: "about", title: "About", icon: "info" },
-        { key: "troubleshoot", title: "Troubleshoot", icon: "build" },
-        { key: "save-the-world", title: "Save the World", icon: "public" },
         { key: "sign-out", title: "Sign out", icon: "exit-to-app", isDanger: true },
     ]
 
@@ -108,46 +95,15 @@ export default function ProfileScreen() {
             case "my-reports":
                 router.push("/my-reports")
                 break
-
-            case "backup-restore":
-                showAlert(
-                    "Backup & Restore",
-                    "Backup & Restore screen coming soon!",
-                )
-                break
             case "theme":
                 await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light)
                 setThemeSheetVisible(true)
-                break
-            case "help":
-                showAlert("Help", "Help screen coming soon!")
-                break
-            case "whats-new":
-                showAlert("What's New", "What's New screen coming soon!")
-                break
-            case "about":
-                showAlert("About", "About screen coming soon!")
-                break
-            case "troubleshoot":
-                showAlert("Troubleshoot", "Troubleshoot screen coming soon!")
-                break
-            case "save-the-world":
-                showAlert(
-                    "Save the World",
-                    "Save the World screen coming soon!",
-                )
                 break
             case "profile":
                 router.push("/profile-edit")
                 break
             case "wallet":
                 router.push("/wallet")
-                break
-            case "rules":
-                showAlert("Rules", "Rules screen coming soon!")
-                break
-            case "security":
-                showAlert("Security", "Security screen coming soon!")
                 break
             default:
                 break

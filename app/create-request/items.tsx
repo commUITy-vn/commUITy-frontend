@@ -5,7 +5,7 @@ import { useCreateRequestStore } from "@/stores/useCreateRequestStore";
 import { MaterialIcons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
 import { useRouter } from "expo-router";
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import {
     KeyboardAvoidingView,
     Platform,
@@ -39,9 +39,21 @@ export default function CreateRequestItemsScreen() {
 
   const [showCategoryPicker, setShowCategoryPicker] = useState(false);
   const [showUnitPicker, setShowUnitPicker] = useState(false);
+  const availableUnits = Object.values(UnitOptions).filter((unit) =>
+    itemCategory === ItemCategory.MONEY ? unit === UnitOptions.VND : unit !== UnitOptions.VND,
+  );
+
+  useEffect(() => {
+    if (itemCategory === ItemCategory.MONEY) {
+      setItemUnit(UnitOptions.VND);
+    } else if (itemUnit === UnitOptions.VND) {
+      setItemUnit(UnitOptions.PIECE);
+    }
+  }, [itemCategory, itemUnit]);
 
   const handleAddItem = async () => {
-    if (!itemName.trim()) return;
+    const parsedQuantity = Number(itemQuantity.replace(/,/g, ""));
+    if (!itemName.trim() || !Number.isFinite(parsedQuantity) || parsedQuantity <= 0) return;
     await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
 
     const newItem: any = {
@@ -49,14 +61,15 @@ export default function CreateRequestItemsScreen() {
       id: `item-${Date.now()}`,
       category: itemCategory,
       name: itemName.trim(),
-      unit: itemUnit,
-      neededQuantity: parseInt(itemQuantity, 10) || 1,
+      unit: itemCategory === ItemCategory.MONEY ? UnitOptions.VND : itemUnit,
+      neededQuantity: parsedQuantity,
       receivedQuantity: 0,
     };
 
     addItem(newItem);
     setItemName("");
     setItemQuantity("1");
+    setItemCategory(ItemCategory.GOODS);
     setItemUnit(UnitOptions.PIECE);
     setShowAddForm(false);
   };
@@ -176,7 +189,11 @@ export default function CreateRequestItemsScreen() {
 
             {/* 3. Unit selector */}
             <Pressable
-              onPress={() => setShowUnitPicker(true)}
+              onPress={() => {
+                if (itemCategory !== ItemCategory.MONEY) {
+                  setShowUnitPicker(true);
+                }
+              }}
               style={[localStyles.pickerRow, { borderColor: theme.border }]}
             >
               <Text
@@ -199,45 +216,46 @@ export default function CreateRequestItemsScreen() {
               </View>
             </Pressable>
 
-            {/* 4. Quantity stepper */}
+            {/* 4. Quantity input */}
             <View style={localStyles.quantityRow}>
-              <Text
-                style={[
-                  localStyles.fieldLabel,
-                  { color: theme.textSupporting },
-                ]}
-              >
-                Quantity
-              </Text>
-              <View style={localStyles.stepper}>
-                <Pressable
-                  onPress={() =>
-                    setItemQuantity(
-                      Math.max(1, parseInt(itemQuantity) - 1).toString(),
-                    )
+              <View style={{ flex: 1 }}>
+                <TextInput
+                  label={itemCategory === ItemCategory.MONEY ? "Amount" : "Quantity"}
+                  value={itemQuantity}
+                  onChangeText={(text) =>
+                    setItemQuantity(text.replace(/[^\d.]/g, ""))
                   }
-                  style={[
-                    localStyles.stepperBtn,
-                    { borderColor: theme.border },
-                  ]}
-                >
-                  <Text style={{ color: theme.text, fontSize: 18 }}>−</Text>
-                </Pressable>
-                <Text style={[localStyles.stepperValue, { color: theme.text }]}>
-                  {itemQuantity}
-                </Text>
-                <Pressable
-                  onPress={() =>
-                    setItemQuantity((parseInt(itemQuantity) + 1).toString())
-                  }
-                  style={[
-                    localStyles.stepperBtn,
-                    { borderColor: theme.border },
-                  ]}
-                >
-                  <Text style={{ color: theme.text, fontSize: 18 }}>+</Text>
-                </Pressable>
+                  keyboardType={Platform.OS === "ios" ? "decimal-pad" : "numeric"}
+                />
               </View>
+              {itemCategory !== ItemCategory.MONEY && (
+                <View style={localStyles.stepper}>
+                  <Pressable
+                    onPress={() =>
+                      setItemQuantity(
+                        Math.max(1, Math.floor(Number(itemQuantity) || 1) - 1).toString(),
+                      )
+                    }
+                    style={[
+                      localStyles.stepperBtn,
+                      { borderColor: theme.border },
+                    ]}
+                  >
+                    <Text style={{ color: theme.text, fontSize: 18 }}>−</Text>
+                  </Pressable>
+                  <Pressable
+                    onPress={() =>
+                      setItemQuantity((Math.floor(Number(itemQuantity) || 0) + 1).toString())
+                    }
+                    style={[
+                      localStyles.stepperBtn,
+                      { borderColor: theme.border },
+                    ]}
+                  >
+                    <Text style={{ color: theme.text, fontSize: 18 }}>+</Text>
+                  </Pressable>
+                </View>
+              )}
             </View>
 
             <Button
@@ -245,7 +263,11 @@ export default function CreateRequestItemsScreen() {
               onPress={handleAddItem}
               size="medium"
               primary
-              isDisabled={!itemName.trim()}
+              isDisabled={
+                !itemName.trim() ||
+                !Number.isFinite(Number(itemQuantity)) ||
+                Number(itemQuantity) <= 0
+              }
             />
           </View>
         )}
@@ -339,7 +361,7 @@ export default function CreateRequestItemsScreen() {
       <BottomSheet
         isVisible={showUnitPicker}
         onClose={() => setShowUnitPicker(false)}
-        options={Object.values(UnitOptions).map((unit) => ({
+        options={availableUnits.map((unit) => ({
           key: unit,
           label: unit,
           onPress: () => {

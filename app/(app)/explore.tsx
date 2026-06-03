@@ -5,6 +5,8 @@ import { useThemeStyles } from '@/hooks/useThemeStyles';
 import { useRouter } from 'expo-router';
 import MaterialIcons from '@expo/vector-icons/MaterialIcons';
 import * as Haptics from 'expo-haptics';
+import * as DocumentPicker from 'expo-document-picker';
+import * as ImagePicker from 'expo-image-picker';
 import { BorderRadius, Spacing } from '@/constants/theme';
 import { usePosts, useCreatePost, usePostComments, useCreatePostComment } from '@/features/community/hooks/usePosts';
 import { TextInput as TextInputUI, BottomSheet, Button, ConfirmModal } from '@/components/ui';
@@ -482,7 +484,7 @@ const PostCard = ({ post, onAuthorPress }: { post: Post; onAuthorPress?: (author
       setSelectedCommentMedia({
         id: mediaRes.id || String(Math.random()),
         fileName: file.name,
-        fileUrl: localUrl,
+        fileUrl: mediaRes.fileUrl || localUrl,
         fileType,
         mimeType: file.type || 'application/octet-stream',
         fileSize: file.size,
@@ -1391,6 +1393,79 @@ export default function ExploreScreen() {
     if (postFileInputRef.current) postFileInputRef.current.value = '';
   };
 
+  const handlePickPostMedia = async () => {
+    if (Platform.OS === 'web') {
+      postFileInputRef.current?.click();
+      return;
+    }
+
+    if (selectedPostMedia.length >= 3) return;
+
+    const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (!permission.granted) {
+      console.warn('Photo access is required to attach post media.');
+      return;
+    }
+
+    await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      allowsMultipleSelection: true,
+      selectionLimit: Math.max(1, 3 - selectedPostMedia.length),
+      quality: 0.82,
+    });
+
+    if (result.canceled || !result.assets?.length) return;
+
+    const newItems = result.assets.slice(0, 3 - selectedPostMedia.length).map((asset) => {
+      const mimeType = asset.mimeType || 'image/jpeg';
+      const fileUrl = asset.uri;
+
+      return {
+        fileName: asset.fileName || `post-image-${Date.now()}.jpg`,
+        fileUrl,
+        fileType: 'IMAGE',
+        mimeType,
+        fileSize: asset.fileSize || 0,
+      };
+    });
+
+    setSelectedPostMedia(prev => [...prev, ...newItems].slice(0, 3));
+  };
+
+  const handlePickPostFile = async () => {
+    if (Platform.OS === 'web') {
+      postFileInputRef.current?.click();
+      return;
+    }
+    if (selectedPostMedia.length >= 3) return;
+
+    await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    const result = await DocumentPicker.getDocumentAsync({
+      multiple: true,
+      copyToCacheDirectory: true,
+    });
+    if (result.canceled || !result.assets?.length) return;
+
+    const newItems = result.assets.slice(0, 3 - selectedPostMedia.length).map((asset) => {
+      const mimeType = asset.mimeType || 'application/octet-stream';
+      let fileType = 'DOCUMENT';
+      if (mimeType.startsWith('image/')) fileType = 'IMAGE';
+      else if (mimeType.startsWith('video/')) fileType = 'VIDEO';
+      else if (mimeType.startsWith('audio/')) fileType = 'AUDIO';
+
+      return {
+        fileName: asset.name || `attachment-${Date.now()}`,
+        fileUrl: asset.uri,
+        fileType,
+        mimeType,
+        fileSize: asset.size || 0,
+      };
+    });
+
+    setSelectedPostMedia(prev => [...prev, ...newItems].slice(0, 3));
+  };
+
   // Profile bottom sheet states
   const [selectedAuthorId, setSelectedAuthorId] = useState<string | null>(null);
   const [isProfileVisible, setIsProfileVisible] = useState(false);
@@ -1742,10 +1817,10 @@ export default function ExploreScreen() {
             </Text>
             <Pressable
               onPress={handleCreatePost}
-              disabled={isCreating || isPostUploading || !newPostContent.trim()}
+              disabled={isCreating || isPostUploading || (!newPostContent.trim() && selectedPostMedia.length === 0)}
               style={({ pressed }) => [
                 {
-                  opacity: (isCreating || isPostUploading || !newPostContent.trim()) ? 0.5 : 1,
+                  opacity: (isCreating || isPostUploading || (!newPostContent.trim() && selectedPostMedia.length === 0)) ? 0.5 : 1,
                 },
                 pressed && { opacity: 0.7 },
               ]}
@@ -1815,7 +1890,7 @@ export default function ExploreScreen() {
               <Pressable
                 onPress={() => {
                   Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                  if (Platform.OS === 'web') postFileInputRef.current?.click();
+                  handlePickPostMedia();
                 }}
                 disabled={isPostUploading || selectedPostMedia.length >= 3}
                 style={({ pressed }) => [
@@ -1837,6 +1912,30 @@ export default function ExploreScreen() {
                 <MaterialIcons name="attach-file" size={20} color={theme.primary} />
                 <Text style={{ color: theme.text, fontWeight: '600', fontSize: 14 }}>
                   Attach Media ({selectedPostMedia.length}/3)
+                </Text>
+              </Pressable>
+              <Pressable
+                onPress={handlePickPostFile}
+                disabled={isPostUploading || selectedPostMedia.length >= 3}
+                style={({ pressed }) => [
+                  {
+                    flexDirection: 'row',
+                    alignItems: 'center',
+                    gap: 8,
+                    paddingVertical: 8,
+                    paddingHorizontal: 16,
+                    borderRadius: 20,
+                    backgroundColor: theme.highlightBG,
+                    borderWidth: 1,
+                    borderColor: theme.border,
+                    opacity: selectedPostMedia.length >= 3 ? 0.5 : 1,
+                  },
+                  pressed && { backgroundColor: theme.border }
+                ]}
+              >
+                <MaterialIcons name="insert-drive-file" size={20} color={theme.primary} />
+                <Text style={{ color: theme.text, fontWeight: '600', fontSize: 14 }}>
+                  File
                 </Text>
               </Pressable>
             </View>

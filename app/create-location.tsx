@@ -14,6 +14,7 @@ import * as Haptics from "expo-haptics"
 import { useTheme } from "@/hooks/useTheme"
 import { TextInput, Button } from "@/components/ui"
 import { useCreateSupportLocation } from "@/features/maps/hooks/useCreateSupportLocation"
+import { searchAddressSuggestions, type AddressSuggestion } from "@/features/maps/api/search-address-suggestions"
 
 // We use conditional import to avoid native package issues on web
 let WebView: any
@@ -34,6 +35,8 @@ export default function CreateLocationScreen() {
     const [contactPhone, setContactPhone] = useState("")
     const [lat, setLat] = useState("21.028511") // Default to Hanoi coordinates
     const [lng, setLng] = useState("105.804817")
+    const [addressSuggestions, setAddressSuggestions] = useState<AddressSuggestion[]>([])
+    const [isAddressSuggestionHidden, setIsAddressSuggestionHidden] = useState(false)
 
     // Errors
     const [errors, setErrors] = useState<Record<string, string>>({})
@@ -157,6 +160,37 @@ export default function CreateLocationScreen() {
         if (!isNaN(parsedLat) && !isNaN(parsedLng)) {
             updateMapCoords(parsedLat, parsedLng)
         }
+    }
+
+    useEffect(() => {
+        const query = address.trim()
+        if (isAddressSuggestionHidden || query.length < 2) {
+            setAddressSuggestions([])
+            return
+        }
+
+        const timeout = setTimeout(async () => {
+            try {
+                const suggestions = await searchAddressSuggestions(query, {
+                    latitude: Number(lat) || 21.028511,
+                    longitude: Number(lng) || 105.804817,
+                })
+                setAddressSuggestions(suggestions)
+            } catch {
+                setAddressSuggestions([])
+            }
+        }, 300)
+
+        return () => clearTimeout(timeout)
+    }, [address, lat, lng, isAddressSuggestionHidden])
+
+    const handleSelectAddress = (suggestion: AddressSuggestion) => {
+        setAddress(suggestion.address)
+        setLat(suggestion.latitude.toFixed(6))
+        setLng(suggestion.longitude.toFixed(6))
+        updateMapCoords(suggestion.latitude, suggestion.longitude)
+        setAddressSuggestions([])
+        setIsAddressSuggestionHidden(true)
     }
 
     const validateForm = () => {
@@ -288,9 +322,39 @@ export default function CreateLocationScreen() {
                 <TextInput
                     label="Address"
                     value={address}
-                    onChangeText={setAddress}
+                    onChangeText={(text) => {
+                        setAddress(text)
+                        setIsAddressSuggestionHidden(false)
+                    }}
                     errorText={errors.address}
                 />
+                {addressSuggestions.length > 0 && (
+                    <View style={[localStyles.suggestionBox, { borderColor: theme.border }]}>
+                        {addressSuggestions.map((item) => (
+                            <Pressable
+                                key={item.id}
+                                onPress={() => handleSelectAddress(item)}
+                                style={({ pressed }) => [
+                                    localStyles.suggestionRow,
+                                    {
+                                        borderBottomColor: theme.border,
+                                        backgroundColor: pressed ? theme.highlightBG : theme.componentBG,
+                                    },
+                                ]}
+                            >
+                                <MaterialIcons name="place" size={18} color={theme.primary} />
+                                <View style={{ flex: 1 }}>
+                                    <Text style={{ color: theme.text, fontWeight: "700" }} numberOfLines={1}>
+                                        {item.title}
+                                    </Text>
+                                    <Text style={{ color: theme.textSupporting, fontSize: 12 }} numberOfLines={2}>
+                                        {item.address}
+                                    </Text>
+                                </View>
+                            </Pressable>
+                        ))}
+                    </View>
+                )}
 
                 <TextInput
                     label="Contact Phone"
@@ -397,6 +461,22 @@ const localStyles = StyleSheet.create({
         marginBottom: 16,
     },
     buttonContainer: { marginTop: 24 },
+    suggestionBox: {
+        borderWidth: 1,
+        borderRadius: 10,
+        overflow: "hidden",
+        marginTop: -6,
+        marginBottom: 6,
+    },
+    suggestionRow: {
+        minHeight: 54,
+        paddingHorizontal: 10,
+        paddingVertical: 8,
+        flexDirection: "row",
+        alignItems: "center",
+        gap: 8,
+        borderBottomWidth: StyleSheet.hairlineWidth,
+    },
     errorBanner: {
         flexDirection: "row",
         alignItems: "center",

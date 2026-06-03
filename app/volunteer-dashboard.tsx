@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import { View, Text, FlatList, TouchableOpacity, StyleSheet, Pressable, ActivityIndicator, Platform } from 'react-native';
 import { useQueries } from '@tanstack/react-query';
 import { useRouter } from 'expo-router';
@@ -12,6 +12,8 @@ import type { VolunteerAssignment } from '@/features/support/api/volunteer-assig
 import { useVolunteerAssignments } from '@/features/support/hooks/useVolunteerAssignments';
 import { ConfirmModal } from '@/components/ui';
 import { getSupportRequestById, type SupportRequestDetailResponse } from '@/features/support/api/get-support-request-by-id';
+import { getSupportNeeds } from '@/features/support/api/get-support-needs';
+import { getSupportNeedContributions } from '@/features/support/api/get-support-need-contributions';
 
 const StatCard = ({ label, value }: { label: string; value: string }) => {
   const theme = useTheme();
@@ -56,6 +58,54 @@ export default function VolunteerDashboardScreen() {
       requestDetailById.set(assignment.supportRequestId, detail);
     }
   });
+
+  const supportNeedQueries = useQueries({
+    queries: assignments.map((assignment) => ({
+      queryKey: ['supportNeeds', assignment.supportRequestId],
+      queryFn: () => getSupportNeeds(assignment.supportRequestId),
+      enabled: !!assignment.supportRequestId,
+    })),
+  });
+
+  const needRefs = useMemo(() => {
+    const refs: { supportRequestId: string; needId: string }[] = [];
+    assignments.forEach((assignment, assignmentIndex) => {
+      const needs = supportNeedQueries[assignmentIndex]?.data || [];
+      needs.forEach((need) => {
+        refs.push({
+          supportRequestId: assignment.supportRequestId,
+          needId: need.id,
+        });
+      });
+    });
+    return refs;
+  }, [assignments, supportNeedQueries]);
+
+  const contributionQueries = useQueries({
+    queries: needRefs.map((ref) => ({
+      queryKey: ['supportNeedContributions', ref.needId],
+      queryFn: () => getSupportNeedContributions(ref.needId),
+      enabled: !!ref.needId,
+    })),
+  });
+
+  const volunteerContributionByRequest = useMemo(() => {
+    const result = new Map<string, number>();
+    needRefs.forEach((ref, index) => {
+      const contributions = contributionQueries[index]?.data || [];
+      const quantity = contributions.reduce((sum, contribution) => {
+        const assignment = assignments.find(
+          (item) =>
+            item.supportRequestId === ref.supportRequestId &&
+            item.volunteerId === contribution.contributorId,
+        );
+        if (!assignment) return sum;
+        return sum + Number(contribution.quantity || 0);
+      }, 0);
+      result.set(ref.supportRequestId, (result.get(ref.supportRequestId) || 0) + quantity);
+    });
+    return result;
+  }, [assignments, contributionQueries, needRefs]);
 
   const handleMarkComplete = async (supportRequestId: string) => {
     try {
@@ -143,8 +193,15 @@ export default function VolunteerDashboardScreen() {
       updatedAt: detail?.updatedAt || item.updatedAt || requestTimestamp,
     };
 
-    const canComplete = item.status === 'ACCEPTED';
-    const canWithdraw = item.status === 'PENDING' || item.status === 'ACCEPTED';
+    const requestIsCompleted = requestStatus === SupportStatus.COMPLETED;
+    const volunteerContributionQuantity =
+      volunteerContributionByRequest.get(item.supportRequestId) || 0;
+    const hasRecordedContribution = volunteerContributionQuantity > 0;
+    const canComplete =
+      item.status === 'ACCEPTED' && !requestIsCompleted && hasRecordedContribution;
+    const canWithdraw =
+      (item.status === 'PENDING' || item.status === 'ACCEPTED') &&
+      !requestIsCompleted;
 
     return (
       <View style={{ marginBottom: 16 }}>
@@ -160,8 +217,12 @@ export default function VolunteerDashboardScreen() {
             </Text>
           </View>
           <Text style={[styles.assignmentHint, { color: theme.textSupporting }]} numberOfLines={1}>
-            {item.status === 'ACCEPTED'
-              ? 'Accepted volunteers can contribute support needs.'
+            {requestIsCompleted && item.status === 'ACCEPTED'
+              ? 'This support request is already completed. No further VA action is needed.'
+              : item.status === 'ACCEPTED'
+              ? hasRecordedContribution
+                ? `Recorded contribution: ${volunteerContributionQuantity}. You can mark complete after delivery.`
+                : 'Contribute support needs first, then mark this assignment complete after delivery.'
               : item.status === 'COMPLETED'
                 ? 'You marked this assignment complete. SR status is managed separately.'
                 : item.status === 'CANCELLED'
@@ -171,14 +232,21 @@ export default function VolunteerDashboardScreen() {
                     : item.rejectionReason || 'Assignment is no longer active.'}
           </Text>
         </View>
-        {(canComplete || canWithdraw) && (
+        {(item.status === 'ACCEPTED' || canWithdraw) && !requestIsCompleted && (
           <View style={[styles.row, { paddingHorizontal: 0, marginTop: -4 }]}>
-            {canComplete && (
+            {item.status === 'ACCEPTED' && (
               <TouchableOpacity
                 style={[
                   styles.buttonPrimary,
-                  { backgroundColor: theme.primary, marginRight: 8 },
+                  {
+                    backgroundColor: canComplete
+                      ? theme.primary
+                      : theme.textSupporting,
+                    marginRight: 8,
+                    opacity: canComplete ? 1 : 0.65,
+                  },
                 ]}
+                disabled={!canComplete}
                 onPress={() =>
                   setPendingAction({
                     type: 'complete',
@@ -306,7 +374,7 @@ export default function VolunteerDashboardScreen() {
         }
         message={
           pendingAction?.type === 'complete'
-            ? `This will set your volunteer assignment for "${pendingAction?.title}" to COMPLETED. The support request status will not change.`
+            ? `Only confirm after your contribution has been recorded and delivered for "${pendingAction?.title}". This will set your volunteer assignment to COMPLETED.`
             : `This will cancel your volunteer assignment for "${pendingAction?.title}". If this is the last accepted volunteer, the support request may return to APPROVED.`
         }
         confirmText={pendingAction?.type === 'complete' ? 'Mark Complete' : 'Withdraw'}

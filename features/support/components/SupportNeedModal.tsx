@@ -62,14 +62,23 @@ export const SupportNeedModal = ({
 
   useEffect(() => {
     if (initialData) {
-      setCategory(initialData.supportType || "GOODS");
+      const supportType = initialData.supportType || "GOODS";
+      setCategory(supportType);
       setName(initialData.needName || "");
-      setUnit(initialData.unit || "PIECE");
+      setUnit(supportType === "MONEY" ? "VND" : initialData.unit || "PIECE");
       setQuantity(initialData.requiredQuantity?.toString() || "1");
     } else {
       resetForm();
     }
   }, [initialData, visible]);
+
+  useEffect(() => {
+    if (category === "MONEY") {
+      setUnit("VND");
+    } else if (unit === "VND") {
+      setUnit("PIECE");
+    }
+  }, [category, unit]);
 
   const resetForm = () => {
     setCategory("GOODS");
@@ -99,7 +108,8 @@ export const SupportNeedModal = ({
   });
 
   const handleSubmit = async () => {
-    if (!name.trim() || !quantity) return;
+    const parsedQuantity = Number(quantity.replace(/,/g, ""));
+    if (!name.trim() || !Number.isFinite(parsedQuantity) || parsedQuantity <= 0) return;
     await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
 
     const supportType = category.toUpperCase() === "MONEY" ? "MONEY" : "GOODS";
@@ -109,7 +119,7 @@ export const SupportNeedModal = ({
       supportType,
       needName: name.trim(),
       unit: supportType === "MONEY" ? "VND" : unit.toUpperCase(),
-      requiredQuantity: parseFloat(quantity) || 1, // Ép kiểu Float
+      requiredQuantity: parsedQuantity,
     };
 
     mutation.mutate(payload);
@@ -197,34 +207,36 @@ export const SupportNeedModal = ({
               </Pressable>
 
               <View style={styles.quantityRow}>
-                <Text
-                  style={[styles.fieldLabel, { color: theme.textSupporting }]}
-                >
-                  Quantity
-                </Text>
-                <View style={styles.stepper}>
-                  <Pressable
-                    onPress={() =>
-                      setQuantity(
-                        Math.max(1, parseInt(quantity) - 1).toString(),
-                      )
-                    }
-                    style={[styles.stepperBtn, { borderColor: theme.border }]}
-                  >
-                    <Text style={{ color: theme.text, fontSize: 18 }}>−</Text>
-                  </Pressable>
-                  <Text style={[styles.stepperValue, { color: theme.text }]}>
-                    {quantity}
-                  </Text>
-                  <Pressable
-                    onPress={() =>
-                      setQuantity((parseInt(quantity) + 1).toString())
-                    }
-                    style={[styles.stepperBtn, { borderColor: theme.border }]}
-                  >
-                    <Text style={{ color: theme.text, fontSize: 18 }}>+</Text>
-                  </Pressable>
+                <View style={{ flex: 1 }}>
+                  <TextInput
+                    label={category === "MONEY" ? "Amount" : "Quantity"}
+                    value={quantity}
+                    onChangeText={(text) => setQuantity(text.replace(/[^\d.]/g, ""))}
+                    keyboardType={Platform.OS === "ios" ? "decimal-pad" : "numeric"}
+                  />
                 </View>
+                {category !== "MONEY" && (
+                  <View style={styles.stepper}>
+                    <Pressable
+                      onPress={() =>
+                        setQuantity(
+                          Math.max(1, Math.floor(Number(quantity) || 1) - 1).toString(),
+                        )
+                      }
+                      style={[styles.stepperBtn, { borderColor: theme.border }]}
+                    >
+                      <Text style={{ color: theme.text, fontSize: 18 }}>−</Text>
+                    </Pressable>
+                    <Pressable
+                      onPress={() =>
+                        setQuantity((Math.floor(Number(quantity) || 0) + 1).toString())
+                      }
+                      style={[styles.stepperBtn, { borderColor: theme.border }]}
+                    >
+                      <Text style={{ color: theme.text, fontSize: 18 }}>+</Text>
+                    </Pressable>
+                  </View>
+                )}
               </View>
 
               <Button
@@ -233,7 +245,7 @@ export const SupportNeedModal = ({
                 size="medium"
                 primary
                 isLoading={mutation.isPending}
-                isDisabled={!name.trim()}
+                isDisabled={!name.trim() || !Number.isFinite(Number(quantity)) || Number(quantity) <= 0}
                 style={{ marginTop: 8 }}
               />
             </View>

@@ -17,7 +17,7 @@ export interface NotificationResponse {
   readAt?: string;
 }
 
-export const useNotifications = () => {
+export const useNotifications = (enabled = true) => {
   const queryClient = useQueryClient();
 
   const query = useQuery<any, Error>({
@@ -27,9 +27,11 @@ export const useNotifications = () => {
       // Since backend controller returns ApiResponse<List<NotificationResponse>>, we extract response.data
       return response?.data || response;
     },
+    enabled,
   });
 
   useEffect(() => {
+    if (!enabled) return;
     let subId: string | null = null;
 
     const setupWS = async () => {
@@ -63,7 +65,7 @@ export const useNotifications = () => {
         stompClient.unsubscribe(subId);
       }
     };
-  }, [queryClient]);
+  }, [enabled, queryClient]);
 
   return query;
 };

@@ -1,13 +1,15 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { View, Text, FlatList, Pressable, StyleSheet, TextInput, Platform, ActivityIndicator } from 'react-native';
+import { View, Text, FlatList, Pressable, StyleSheet, TextInput, Platform, ActivityIndicator, Alert } from 'react-native';
 import { useRouter } from 'expo-router';
 import * as Haptics from 'expo-haptics';
 import { MaterialIcons } from '@expo/vector-icons';
 import { useTheme } from '@/hooks/useTheme';
 import { useConversations } from '@/features/communication/hooks/useConversations';
 import { useAuthStore } from '@/features/auth/stores/useAuthStore';
-import { useQueryClient } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { getMessages } from '@/features/communication/api/get-messages';
+import { getUsers } from '@/features/users/api/get-users';
+import { createPrivateConversation } from '@/features/communication/api/create-private-conversation';
 
 const formatRelativeTime = (dateStr?: string) => {
   if (!dateStr) return '';
@@ -37,7 +39,13 @@ export default function MessageSearchScreen() {
   const { user } = useAuthStore();
   const { data: conversations, isLoading } = useConversations();
   const [searchQuery, setSearchQuery] = useState('');
+  const [creatingChatUserId, setCreatingChatUserId] = useState<string | null>(null);
   const inputRef = useRef<TextInput>(null);
+  const { data: users = [], isLoading: isUsersLoading } = useQuery({
+    queryKey: ['users', 'searchable'],
+    queryFn: getUsers,
+    enabled: searchQuery.trim().length >= 2,
+  });
 
   // Delayed autofocus to prevent transition lag/killing on Web (as mandated in CLAUDE.md)
   useEffect(() => {
@@ -89,6 +97,46 @@ export default function MessageSearchScreen() {
     c.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
     c.lastMessage.toLowerCase().includes(searchQuery.toLowerCase())
   );
+  const conversationUserIds = new Set(
+    (conversations && Array.isArray(conversations) ? conversations : [])
+      .flatMap((conversation: any) => conversation.members || [])
+      .map((member: any) => String(member.userId)),
+  );
+  const filteredUsers = Array.isArray(users)
+    ? users
+        .filter((candidate: any) => String(candidate.id) !== String(user?.id))
+        .filter((candidate: any) => {
+          const q = searchQuery.trim().toLowerCase();
+          return (
+            candidate.fullName?.toLowerCase().includes(q) ||
+            candidate.email?.toLowerCase().includes(q)
+          );
+        })
+        .filter((candidate: any) => !conversationUserIds.has(String(candidate.id)))
+        .slice(0, 8)
+    : [];
+  const results = [
+    ...filteredConversations.map((item) => ({ type: 'conversation' as const, item })),
+    ...filteredUsers.map((item: any) => ({ type: 'user' as const, item })),
+  ];
+
+  const handleStartChat = async (targetUser: any) => {
+    if (!targetUser?.id || creatingChatUserId) return;
+    setCreatingChatUserId(targetUser.id);
+    try {
+      await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+      const conversation: any = await createPrivateConversation({ receiverId: targetUser.id });
+      const conversationId = conversation?.id || conversation?.data?.id;
+      queryClient.invalidateQueries({ queryKey: ['conversations'] });
+      if (conversationId) {
+        router.push({ pathname: '/messages/[id]', params: { id: conversationId } } as any);
+      }
+    } catch (error: any) {
+      Alert.alert('Unable to start chat', error?.message || 'Please try again.');
+    } finally {
+      setCreatingChatUserId(null);
+    }
+  };
 
   return (
     <View style={{ flex: 1, backgroundColor: theme.appBG }}>
@@ -135,7 +183,7 @@ export default function MessageSearchScreen() {
           <MaterialIcons name="search" size={20} color={theme.textSupporting} style={{ marginRight: 6 }} />
           <TextInput
             ref={inputRef}
-            placeholder="Search conversations or messages..."
+            placeholder="Search chats, names, or email..."
             placeholderTextColor={theme.placeholderText || theme.textSupporting}
             value={searchQuery}
             onChangeText={setSearchQuery}
@@ -156,15 +204,63 @@ export default function MessageSearchScreen() {
       </View>
 
       {/* Results List */}
-      {isLoading ? (
+      {isLoading || isUsersLoading ? (
         <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
           <ActivityIndicator size="large" color={theme.primary} />
         </View>
       ) : (
         <FlatList
-          data={searchQuery.trim() ? filteredConversations : []}
-          keyExtractor={(item) => item.id}
-          renderItem={({ item }) => {
+          data={searchQuery.trim() ? results : []}
+          keyExtractor={(row) => `${row.type}-${row.item.id}`}
+          renderItem={({ item: row }) => {
+            const item = row.item;
+            if (row.type === 'user') {
+              const name = item.fullName || item.email || 'User';
+              const isCreating = creatingChatUserId === item.id;
+              return (
+                <Pressable
+                  onPress={() => handleStartChat(item)}
+                  disabled={isCreating}
+                  style={({ pressed }) => ({
+                    flexDirection: 'row',
+                    alignItems: 'center',
+                    paddingVertical: 12,
+                    paddingHorizontal: 16,
+                    backgroundColor: pressed ? theme.activeComponentBG : 'transparent',
+                  })}
+                >
+                  <View style={{ marginRight: 12 }}>
+                    <View
+                      style={{
+                        width: 40,
+                        height: 40,
+                        borderRadius: 20,
+                        backgroundColor: theme.primary + '18',
+                        justifyContent: 'center',
+                        alignItems: 'center',
+                      }}
+                    >
+                      <Text style={{ color: theme.primary, fontSize: 15, fontWeight: '700' }}>
+                        {name.charAt(0).toUpperCase()}
+                      </Text>
+                    </View>
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={{ color: theme.text, fontSize: 15, fontWeight: '700' }} numberOfLines={1}>
+                      {name}
+                    </Text>
+                    <Text style={{ color: theme.textSupporting, fontSize: 13 }} numberOfLines={1}>
+                      {item.email || 'Start a new private chat'}
+                    </Text>
+                  </View>
+                  {isCreating ? (
+                    <ActivityIndicator size="small" color={theme.primary} />
+                  ) : (
+                    <MaterialIcons name="chat" size={20} color={theme.primary} />
+                  )}
+                </Pressable>
+              );
+            }
             return (
               <Pressable
                 onPress={async () => {
@@ -219,7 +315,7 @@ export default function MessageSearchScreen() {
           ListEmptyComponent={() => (
             <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', marginTop: 80, paddingHorizontal: 20 }}>
               <Text style={{ color: theme.textSupporting, textAlign: 'center', fontSize: 14 }}>
-                {searchQuery.trim() ? "No matching conversations found" : "Type above to search your direct messages and groups"}
+                {searchQuery.trim() ? "No matching conversations or users found" : "Type above to search chats or start a new one"}
               </Text>
             </View>
           )}

@@ -6,6 +6,7 @@ import {
   ScrollView,
   ActivityIndicator,
   Platform,
+  Image,
 } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useTheme } from '@/hooks/useTheme';
@@ -66,9 +67,10 @@ export default function UserProfileScreen() {
     setChatLoading(true);
     try {
       await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-      const res: any = await createPrivateConversation({ recipientId: userId });
-      if (res && res.id) {
-        router.push({ pathname: '/messages/[id]', params: { id: res.id } } as any);
+      const res: any = await createPrivateConversation({ receiverId: userId });
+      const conversationId = res?.id || res?.data?.id;
+      if (conversationId) {
+        router.push({ pathname: '/messages/[id]', params: { id: conversationId } } as any);
       } else {
         router.push('/(app)/messages' as any);
       }
@@ -91,6 +93,7 @@ export default function UserProfileScreen() {
 
   const fullName = profileUser?.fullName || 'Community Member';
   const avatarLetter = fullName.charAt(0).toUpperCase();
+  const avatarUrl = profileUser?.avatarUrl || profileUser?.imageUrl;
 
   return (
     <View style={{ flex: 1, backgroundColor: theme.appBG }}>
@@ -164,9 +167,16 @@ export default function UserProfileScreen() {
             elevation: 4,
           }}
         >
-          <Text style={{ color: theme.primary, fontSize: 38, fontWeight: '700' }}>
-            {avatarLetter}
-          </Text>
+          {avatarUrl ? (
+            <Image
+              source={{ uri: avatarUrl }}
+              style={{ width: 96, height: 96, borderRadius: 48 }}
+            />
+          ) : (
+            <Text style={{ color: theme.primary, fontSize: 38, fontWeight: '700' }}>
+              {avatarLetter}
+            </Text>
+          )}
         </View>
 
         {/* User Name & Subtitle */}

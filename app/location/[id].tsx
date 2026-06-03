@@ -13,6 +13,7 @@ import TextInput from '@/components/ui/TextInput';
 import Button from '@/components/ui/Button';
 import { updateSupportLocation } from '@/features/maps/api/update-support-location';
 import { updateSupportLocationStatus } from '@/features/maps/api/update-support-location-status';
+import { searchAddressSuggestions, type AddressSuggestion } from '@/features/maps/api/search-address-suggestions';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 
 // Conditional imports for WebView
@@ -80,6 +81,8 @@ export default function LocationDetail() {
   const [editPhone, setEditPhone] = useState('');
   const [editLat, setEditLat] = useState('');
   const [editLng, setEditLng] = useState('');
+  const [editAddressSuggestions, setEditAddressSuggestions] = useState<AddressSuggestion[]>([]);
+  const [isEditAddressSuggestionHidden, setIsEditAddressSuggestionHidden] = useState(false);
   const [editBankName, setEditBankName] = useState('');
   const [editBankAccount, setEditBankAccount] = useState('');
 
@@ -97,6 +100,36 @@ export default function LocationDetail() {
     setEditBankName(location.bankName || '');
     setEditBankAccount(location.bankAccountNumber || '');
   }, [location]);
+
+  useEffect(() => {
+    const query = editAddress.trim();
+    if (!isEditVisible || isEditAddressSuggestionHidden || query.length < 2) {
+      setEditAddressSuggestions([]);
+      return;
+    }
+
+    const timeout = setTimeout(async () => {
+      try {
+        const suggestions = await searchAddressSuggestions(query, {
+          latitude: Number(editLat) || Number(location?.latitude) || 21.028511,
+          longitude: Number(editLng) || Number(location?.longitude) || 105.804817,
+        });
+        setEditAddressSuggestions(suggestions);
+      } catch {
+        setEditAddressSuggestions([]);
+      }
+    }, 300);
+
+    return () => clearTimeout(timeout);
+  }, [editAddress, editLat, editLng, isEditVisible, isEditAddressSuggestionHidden, location?.latitude, location?.longitude]);
+
+  const handleSelectEditAddress = (suggestion: AddressSuggestion) => {
+    setEditAddress(suggestion.address);
+    setEditLat(suggestion.latitude.toFixed(6));
+    setEditLng(suggestion.longitude.toFixed(6));
+    setEditAddressSuggestions([]);
+    setIsEditAddressSuggestionHidden(true);
+  };
 
   const updateLocationMutation = useMutation({
     mutationFn: () =>
@@ -463,7 +496,41 @@ export default function LocationDetail() {
               multiline
               height={90}
             />
-            <TextInput label="Address" value={editAddress} onChangeText={setEditAddress} />
+            <TextInput
+              label="Address"
+              value={editAddress}
+              onChangeText={(text) => {
+                setEditAddress(text);
+                setIsEditAddressSuggestionHidden(false);
+              }}
+            />
+            {editAddressSuggestions.length > 0 && (
+              <View style={[styles.suggestionBox, { borderColor: theme.border }]}>
+                {editAddressSuggestions.map((item) => (
+                  <Pressable
+                    key={item.id}
+                    onPress={() => handleSelectEditAddress(item)}
+                    style={({ pressed }) => [
+                      styles.suggestionRow,
+                      {
+                        borderBottomColor: theme.border,
+                        backgroundColor: pressed ? theme.highlightBG : theme.componentBG,
+                      },
+                    ]}
+                  >
+                    <MaterialIcons name="place" size={18} color={theme.primary} />
+                    <View style={{ flex: 1 }}>
+                      <Text style={{ color: theme.text, fontWeight: '700' }} numberOfLines={1}>
+                        {item.title}
+                      </Text>
+                      <Text style={{ color: theme.textSupporting, fontSize: 12 }} numberOfLines={2}>
+                        {item.address}
+                      </Text>
+                    </View>
+                  </Pressable>
+                ))}
+              </View>
+            )}
             <TextInput label="Contact Phone" value={editPhone} onChangeText={setEditPhone} />
             <View style={styles.editRow}>
               <View style={{ flex: 1 }}>
@@ -582,5 +649,21 @@ const styles = StyleSheet.create({
   editRow: {
     flexDirection: 'row',
     gap: 12,
+  },
+  suggestionBox: {
+    borderWidth: 1,
+    borderRadius: 10,
+    overflow: 'hidden',
+    marginTop: -6,
+    marginBottom: 4,
+  },
+  suggestionRow: {
+    minHeight: 54,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    borderBottomWidth: StyleSheet.hairlineWidth,
   },
 });

@@ -15,6 +15,7 @@ import { Pressable, Text } from "react-native"
 import { MaterialIcons } from "@expo/vector-icons"
 import * as Haptics from "expo-haptics"
 import { useGlobalWebSockets } from "@/features/communication/hooks/useGlobalWebSockets"
+import { useNotifications } from "@/features/communication/hooks/useNotifications"
 import { useToastStore } from "@/stores/useToastStore"
 
 import { useColorScheme } from "@/hooks/use-color-scheme"
@@ -131,6 +132,12 @@ export default function RootLayout() {
 
 function AppContent({ theme }: { theme: any }) {
     const { isAuthenticated, user } = useAuthStore()
+    const segments = useSegments()
+    const currentGroup = String(segments[0] || "")
+    const currentScreen = String(segments[1] || "index")
+    const canShowFloatingNotification =
+        currentGroup === "(app)" &&
+        ["index", "map", "messages", "profile"].includes(currentScreen)
 
     useGlobalWebSockets({
         isAuthenticated,
@@ -377,10 +384,78 @@ function AppContent({ theme }: { theme: any }) {
                 />
             </Stack>
 
+            <GlobalNotificationButton
+                theme={theme}
+                isVisible={isAuthenticated && canShowFloatingNotification}
+            />
+
             {/* Premium Global In-App Toast Notification Banner */}
             <ToastAlertOverlay theme={theme} />
         </View>
     );
+}
+
+function GlobalNotificationButton({
+    theme,
+    isVisible,
+}: {
+    theme: any
+    isVisible: boolean
+}) {
+    const router = useRouter()
+    const { data: notifications = [] } = useNotifications(isVisible)
+    const unreadCount = notifications.filter((item: any) => !item.isRead).length
+
+    if (!isVisible) return null
+
+    return (
+        <Pressable
+            onPress={async () => {
+                await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light)
+                router.push("/notifications" as any)
+            }}
+            style={{
+                position: "absolute",
+                top: Platform.OS === "ios" ? 12 : 10,
+                right: 14,
+                width: 42,
+                height: 42,
+                borderRadius: 21,
+                alignItems: "center",
+                justifyContent: "center",
+                backgroundColor: theme.componentBG,
+                borderWidth: 1,
+                borderColor: theme.border,
+                shadowColor: "#000",
+                shadowOpacity: 0.12,
+                shadowRadius: 8,
+                elevation: 6,
+                zIndex: 50,
+            }}
+        >
+            <MaterialIcons name="notifications" size={22} color={theme.primary} />
+            {unreadCount > 0 && (
+                <View
+                    style={{
+                        position: "absolute",
+                        top: -2,
+                        right: -2,
+                        minWidth: 18,
+                        height: 18,
+                        borderRadius: 9,
+                        paddingHorizontal: 4,
+                        alignItems: "center",
+                        justifyContent: "center",
+                        backgroundColor: theme.danger,
+                    }}
+                >
+                    <Text style={{ color: "#fff", fontSize: 10, fontWeight: "800" }}>
+                        {unreadCount > 9 ? "9+" : unreadCount}
+                    </Text>
+                </View>
+            )}
+        </Pressable>
+    )
 }
 
 function ToastAlertOverlay({ theme }: { theme: any }) {
