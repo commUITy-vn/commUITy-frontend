@@ -3,6 +3,7 @@ import { View, Text, ScrollView, Pressable, StyleSheet, ActivityIndicator, Modal
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { MaterialIcons, Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
+import * as WebBrowser from 'expo-web-browser';
 import { useQuery } from '@tanstack/react-query';
 import { useTheme } from '@/hooks/useTheme';
 import { useThemeStyles } from '@/hooks/useThemeStyles';
@@ -17,6 +18,7 @@ import {
   useFundExpenses,
   useFundDonations,
   useCreateDonation,
+  useCreatePayOsDonation,
   useCreateExpense,
   useCommunityFundMembers,
   useAddCommunityFundMember,
@@ -24,6 +26,7 @@ import {
   useRemoveCommunityFundMember,
   type CommunityFundMemberRole,
 } from '@/features/finance/hooks/useCommunityFunds';
+import { useCreateCommunityFundTransferTicket } from '@/features/money-transfer/hooks';
 
 const QUICK_AMOUNTS = [
   { label: '50.000đ', value: 50000 },
@@ -33,6 +36,7 @@ const QUICK_AMOUNTS = [
 ];
 
 const PAYMENT_METHODS = [
+  { id: 'PAYOS', label: 'PayOS' },
   { id: 'MOMO', label: 'MoMo' },
   { id: 'ZALOPAY', label: 'ZaloPay' },
   { id: 'BANK_TRANSFER', label: 'Bank Transfer' },
@@ -75,7 +79,9 @@ export default function FundDetailScreen() {
   });
 
   const createDonationMutation = useCreateDonation();
+  const createPayOsDonationMutation = useCreatePayOsDonation();
   const createExpenseMutation = useCreateExpense();
+  const createTransferTicketMutation = useCreateCommunityFundTransferTicket(fundId);
   const addMemberMutation = useAddCommunityFundMember(fundId);
   const updateMemberRoleMutation = useUpdateCommunityFundMemberRole(fundId);
   const removeMemberMutation = useRemoveCommunityFundMember(fundId);
@@ -83,6 +89,7 @@ export default function FundDetailScreen() {
   // Modals state
   const [donateModalVisible, setDonateModalVisible] = useState(false);
   const [expenseModalVisible, setExpenseModalVisible] = useState(false);
+  const [transferModalVisible, setTransferModalVisible] = useState(false);
   const [isOptionsVisible, setIsOptionsVisible] = useState(false);
   const [isShareSheetVisible, setIsShareSheetVisible] = useState(false);
   const [conversations, setConversations] = useState<any[]>([]);
@@ -100,6 +107,9 @@ export default function FundDetailScreen() {
   const [expenseAmount, setExpenseAmount] = useState('');
   const [expenseDescription, setExpenseDescription] = useState('');
   const [expenseError, setExpenseError] = useState('');
+  const [transferAmount, setTransferAmount] = useState('');
+  const [transferReason, setTransferReason] = useState('');
+  const [transferError, setTransferError] = useState('');
   const [memberSearchQuery, setMemberSearchQuery] = useState('');
   const [selectedFundUser, setSelectedFundUser] = useState<any>(null);
   const [memberRole, setMemberRole] = useState<CommunityFundMemberRole>('MEMBER');
@@ -154,6 +164,7 @@ export default function FundDetailScreen() {
           createdByName: d.createdByName || 'Anonymous',
           timestamp: new Date(d.createdAt).getTime(),
           method: d.paymentMethod,
+          status: d.status,
         });
       });
     }
@@ -222,6 +233,14 @@ export default function FundDetailScreen() {
     setExpenseModalVisible(true);
   };
 
+  const handleOpenTransferTicket = async () => {
+    await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    setTransferAmount('');
+    setTransferReason('');
+    setTransferError('');
+    setTransferModalVisible(true);
+  };
+
   const handleDonateConfirm = async () => {
     const finalAmount = isCustomAmount ? Number(customAmount) : selectedAmount;
     if (!finalAmount || finalAmount <= 0) {
@@ -236,17 +255,51 @@ export default function FundDetailScreen() {
 
     try {
       await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-      await createDonationMutation.mutateAsync({
-        fundId,
-        amount: finalAmount,
-        paymentMethod: selectedPayment,
-        note: donationNote.trim() || undefined,
-        transactionCode: `TXN-${Date.now().toString().slice(-6)}`,
-      });
+      if (selectedPayment === 'PAYOS') {
+        const checkout = await createPayOsDonationMutation.mutateAsync({
+          fundId,
+          amount: finalAmount,
+          note: donationNote.trim() || undefined,
+        });
+        await WebBrowser.openBrowserAsync(checkout.checkoutUrl);
+      } else {
+        await createDonationMutation.mutateAsync({
+          fundId,
+          amount: finalAmount,
+          paymentMethod: selectedPayment,
+          note: donationNote.trim() || undefined,
+          transactionCode: `TXN-${Date.now().toString().slice(-6)}`,
+        });
+      }
       await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       setDonateModalVisible(false);
     } catch (err: any) {
       setDonationError(err?.message || 'Failed to submit donation');
+    }
+  };
+
+  const handleTransferTicketConfirm = async () => {
+    const parsedAmount = Number(transferAmount);
+    if (isNaN(parsedAmount) || parsedAmount <= 0) {
+      setTransferError('Please enter a valid transfer amount');
+      return;
+    }
+    if (!transferReason.trim()) {
+      setTransferError('Transfer reason is required');
+      return;
+    }
+    setTransferError('');
+
+    try {
+      await createTransferTicketMutation.mutateAsync({
+        amount: parsedAmount,
+        reason: transferReason.trim(),
+      });
+      await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      setTransferModalVisible(false);
+      Alert.alert('Ticket submitted', 'Admins can now review this money transfer ticket.');
+    } catch (err: any) {
+      setTransferError(err?.message || 'Failed to create transfer ticket');
     }
   };
 
@@ -493,6 +546,20 @@ export default function FundDetailScreen() {
         </View>
 
         {isStaff && (
+          <Pressable
+            onPress={handleOpenTransferTicket}
+            style={({ pressed }) => [
+              styles.secondaryFullButton,
+              { backgroundColor: theme.highlightBG, borderColor: theme.border },
+              pressed && { backgroundColor: theme.border },
+            ]}
+          >
+            <Ionicons name="cash-outline" size={19} color={theme.text} />
+            <Text style={[styles.actionButtonText, { color: theme.text }]}>Request Transfer</Text>
+          </Pressable>
+        )}
+
+        {isStaff && (
           <View style={[styles.infoCard, { backgroundColor: theme.componentBG, borderColor: theme.border }]}>
             <Text style={[styles.sectionTitle, { color: theme.text, marginTop: 0 }]}>Fund Members</Text>
             <View style={{ gap: 10 }}>
@@ -648,7 +715,7 @@ export default function FundDetailScreen() {
                       {tx.title}
                     </Text>
                     <Text style={{ fontSize: 12, color: theme.textSupporting }}>
-                      {tx.date} • by {tx.createdByName}
+                      {tx.date} • {tx.method === 'PAYOS' && tx.status ? `${tx.status} • ` : ''}by {tx.createdByName}
                     </Text>
                   </View>
                   <Text style={[styles.txAmount, { color: amtColor }]}>{formattedAmt}</Text>
@@ -771,12 +838,61 @@ export default function FundDetailScreen() {
 
             <View style={{ marginTop: 8 }}>
               <Button
-                text={createDonationMutation.isPending ? 'Processing...' : 'Confirm Contribution'}
+                text={(createDonationMutation.isPending || createPayOsDonationMutation.isPending) ? 'Processing...' : 'Confirm Contribution'}
                 onPress={handleDonateConfirm}
                 primary
-                isDisabled={createDonationMutation.isPending}
+                isDisabled={createDonationMutation.isPending || createPayOsDonationMutation.isPending}
               />
             </View>
+          </View>
+        </View>
+      </Modal>
+
+      {/* 3. External Transfer Ticket Modal */}
+      <Modal
+        visible={transferModalVisible}
+        animationType="fade"
+        transparent
+        onRequestClose={() => setTransferModalVisible(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={[styles.modalBox, { backgroundColor: theme.componentBG, borderColor: theme.border }]}>
+            <View style={[styles.modalHeader, { borderBottomColor: theme.border }]}>
+              <Text style={[styles.modalTitle, { color: theme.text }]}>Request Money Transfer</Text>
+              <Pressable onPress={() => setTransferModalVisible(false)} style={styles.modalCloseButton}>
+                <MaterialIcons name="close" size={24} color={theme.textSupporting} />
+              </Pressable>
+            </View>
+
+            {transferError ? (
+              <View style={[styles.errorContainer, { backgroundColor: theme.danger + '15', borderColor: theme.danger }]}>
+                <Text style={{ color: theme.danger, fontSize: 13 }}>{transferError}</Text>
+              </View>
+            ) : null}
+
+            <View style={{ gap: 16, marginBottom: 20 }}>
+              <TextInput
+                label="Amount (VND)"
+                value={transferAmount}
+                onChangeText={(txt) => setTransferAmount(txt.replace(/[^0-9]/g, ''))}
+                keyboardType="numeric"
+              />
+
+              <TextInput
+                label="Reason"
+                value={transferReason}
+                onChangeText={setTransferReason}
+                multiline
+                height={100}
+              />
+            </View>
+
+            <Button
+              text={createTransferTicketMutation.isPending ? 'Submitting...' : 'Submit Ticket'}
+              onPress={handleTransferTicketConfirm}
+              primary
+              isDisabled={createTransferTicketMutation.isPending}
+            />
           </View>
         </View>
       </Modal>
@@ -965,6 +1081,16 @@ const styles = StyleSheet.create({
   actionButtonText: {
     fontSize: 15,
     fontWeight: '700',
+  },
+  secondaryFullButton: {
+    minHeight: 48,
+    borderRadius: 12,
+    borderWidth: 1.5,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    paddingVertical: 12,
   },
   memberRoleRow: {
     flexDirection: 'row',

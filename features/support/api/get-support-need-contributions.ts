@@ -7,7 +7,14 @@ export interface SupportNeedContributionResponse {
   contributorId: string;
   contributorName: string;
   quantity: number;
+  paymentMethod?: string;
+  status?: 'PENDING' | 'SUCCESS' | 'CANCELLED' | 'FAILED';
+  transactionCode?: string;
+  payosOrderCode?: number;
+  payosPaymentLinkId?: string;
+  checkoutUrl?: string;
   note?: string;
+  paidAt?: string;
   createdAt: string;
 }
 

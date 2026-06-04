@@ -8,6 +8,7 @@ import {
   useQueryClient,
 } from "@tanstack/react-query";
 import * as Haptics from "expo-haptics";
+import * as WebBrowser from "expo-web-browser";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
@@ -64,6 +65,7 @@ import { useCategories } from "@/features/support/hooks/useCategories"; // Hook 
 import { useSupportNeeds } from "@/features/support/hooks/useSupportNeeds";
 import { useSupportRequestById } from "@/features/support/hooks/useSupportRequestById";
 import { ReportModal, ReportTargetType } from "@/features/reports";
+import { useCreateSupportNeedTransferTicket } from "@/features/money-transfer/hooks";
 
 export default function RequestDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -77,10 +79,14 @@ export default function RequestDetailScreen() {
   const [isReportModalVisible, setIsReportModalVisible] = useState(false);
   const [selectedNeed, setSelectedNeed] = useState<any>(null);
   const [contributeNeed, setContributeNeed] = useState<any>(null);
+  const [transferNeed, setTransferNeed] = useState<any>(null);
   const [historyNeed, setHistoryNeed] = useState<any>(null);
   const [rejectAssignment, setRejectAssignment] =
     useState<VolunteerAssignment | null>(null);
   const [assignmentRejectReason, setAssignmentRejectReason] = useState("");
+  const [transferAmount, setTransferAmount] = useState("");
+  const [transferReason, setTransferReason] = useState("");
+  const [transferError, setTransferError] = useState("");
 
   // States for Editable Fields
   const [editTitle, setEditTitle] = useState("");
@@ -111,7 +117,12 @@ export default function RequestDetailScreen() {
     needs,
     isLoading: needsLoading,
     contribute,
+    createPayOsContribution,
   } = useSupportNeeds(id as string);
+  const createSupportNeedTransferTicketMutation = useCreateSupportNeedTransferTicket(
+    transferNeed?.id,
+    id as string,
+  );
   const { data: categories } = useCategories(true); // Fetch active categories from backend
   const { data: supportLocations = [] } = useSupportLocations();
   const { data: myVolunteerAssignments = [] } = useQuery<
@@ -244,6 +255,9 @@ export default function RequestDetailScreen() {
         );
         const effectiveReceivedQuantity = contributions.reduce(
           (sum, contribution) => {
+            if (contribution.status && contribution.status !== "SUCCESS") {
+              return sum;
+            }
             const assignment = assignments.find(
               (item) => item.volunteerId === contribution.contributorId,
             );
@@ -424,6 +438,41 @@ export default function RequestDetailScreen() {
       );
     },
   });
+
+  const handleOpenSupportNeedTransfer = (need: any) => {
+    setTransferNeed(need);
+    setTransferAmount('');
+    setTransferReason('');
+    setTransferError('');
+  };
+
+  const handleSubmitSupportNeedTransfer = async () => {
+    if (!transferNeed) return;
+    const parsedAmount = Number(transferAmount);
+    if (isNaN(parsedAmount) || parsedAmount <= 0) {
+      setTransferError('Please enter a valid transfer amount');
+      return;
+    }
+    if (!transferReason.trim()) {
+      setTransferError('Transfer reason is required');
+      return;
+    }
+
+    try {
+      await createSupportNeedTransferTicketMutation.mutateAsync({
+        amount: parsedAmount,
+        reason: transferReason.trim(),
+      });
+      await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      setTransferNeed(null);
+      setTransferAmount('');
+      setTransferReason('');
+      setTransferError('');
+      Alert.alert('Ticket submitted', 'Admins can now review this money transfer ticket.');
+    } catch (error: any) {
+      setTransferError(error?.message || 'Failed to create transfer ticket.');
+    }
+  };
 
   const fetchSuggestions = async (query: string) => {
     if (query.trim().length < 2) {
@@ -1072,6 +1121,18 @@ export default function RequestDetailScreen() {
                         />
                       </Pressable>
                     )}
+                    {isRequesterOwner && need.supportType === "MONEY" && need.backendReceivedQuantity > 0 && (
+                      <Pressable
+                        onPress={() => handleOpenSupportNeedTransfer(need)}
+                        style={localStyles.actionBtn}
+                      >
+                        <MaterialIcons
+                          name="payments"
+                          size={20}
+                          color={theme.primary}
+                        />
+                      </Pressable>
+                    )}
                     {canManageNeeds && (
                       <>
                         <Pressable
@@ -1261,13 +1322,24 @@ export default function RequestDetailScreen() {
             : null
         }
         onConfirm={async (needId, quantity, notes) => {
-          await contribute({
-            needId,
-            data: {
-              quantity,
-              note: notes || undefined,
-            },
-          });
+          if (contributeNeed?.supportType === "MONEY") {
+            const checkout = await createPayOsContribution({
+              needId,
+              data: {
+                quantity,
+                note: notes || undefined,
+              },
+            });
+            await WebBrowser.openBrowserAsync(checkout.checkoutUrl);
+          } else {
+            await contribute({
+              needId,
+              data: {
+                quantity,
+                note: notes || undefined,
+              },
+            });
+          }
           await Promise.all([
             queryClient.invalidateQueries({ queryKey: ["supportRequests"] }),
             queryClient.invalidateQueries({ queryKey: ["supportRequest", id] }),
@@ -1380,7 +1452,13 @@ export default function RequestDetailScreen() {
                   const contributionState = getContributionState(
                     item.contributorId,
                   );
+                  const paymentStatusLabel = item.status && item.status !== "SUCCESS"
+                    ? `Payment ${item.status.toLowerCase()}`
+                    : contributionState.label;
                   const contributionStateColor =
+                    item.status && item.status !== "SUCCESS"
+                      ? theme.textSupporting
+                      :
                     contributionState.tone === "success"
                       ? theme.success
                       : contributionState.tone === "danger"
@@ -1413,7 +1491,7 @@ export default function RequestDetailScreen() {
                             fontWeight: "700",
                           }}
                         >
-                          {contributionState.label}
+                          {paymentStatusLabel}
                         </Text>
                         {!!item.note && (
                           <Text
@@ -1435,6 +1513,73 @@ export default function RequestDetailScreen() {
                 })}
               </ScrollView>
             )}
+          </View>
+        </View>
+      </Modal>
+
+      <Modal
+        visible={!!transferNeed}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setTransferNeed(null)}
+      >
+        <View style={localStyles.modalOverlay}>
+          <View
+            style={[
+              localStyles.rejectModal,
+              { backgroundColor: theme.componentBG, borderColor: theme.border },
+            ]}
+          >
+            <View style={localStyles.modalHeaderRow}>
+              <View style={{ flex: 1 }}>
+                <Text style={[localStyles.modalTitle, { color: theme.text }]}>
+                  Request money transfer
+                </Text>
+                <Text style={{ color: theme.textSupporting, fontSize: 13 }}>
+                  {transferNeed?.needName || "Money support need"}
+                </Text>
+              </View>
+              <Pressable
+                onPress={() => setTransferNeed(null)}
+                style={localStyles.actionBtn}
+              >
+                <MaterialIcons name="close" size={22} color={theme.text} />
+              </Pressable>
+            </View>
+
+            {transferError ? (
+              <View style={{ backgroundColor: theme.danger + "15", borderColor: theme.danger, borderWidth: 1, borderRadius: 8, padding: 10 }}>
+                <Text style={{ color: theme.danger, fontSize: 13 }}>{transferError}</Text>
+              </View>
+            ) : null}
+
+            <TextInput
+              label="Amount (VND)"
+              value={transferAmount}
+              onChangeText={(text) => setTransferAmount(text.replace(/[^0-9]/g, ""))}
+              keyboardType="numeric"
+            />
+            <TextInput
+              label="Reason"
+              value={transferReason}
+              onChangeText={setTransferReason}
+              multiline
+              height={90}
+            />
+            <View style={{ flexDirection: "row", gap: 10 }}>
+              <Button
+                text="Submit Ticket"
+                primary
+                style={{ flex: 1 }}
+                isLoading={createSupportNeedTransferTicketMutation.isPending}
+                onPress={handleSubmitSupportNeedTransfer}
+              />
+              <Button
+                text="Cancel"
+                style={{ flex: 1, backgroundColor: theme.highlightBG }}
+                onPress={() => setTransferNeed(null)}
+              />
+            </View>
           </View>
         </View>
       </Modal>

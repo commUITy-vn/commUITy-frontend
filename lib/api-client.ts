@@ -91,6 +91,40 @@ async function fetchApi<T>(
   return json;
 }
 
+async function fetchFormApi<T>(
+  url: string,
+  options: RequestOptions & { method: string; body: FormData },
+): Promise<T> {
+  const { method, body, headers, params } = options;
+  const fullUrl = buildUrlWithParams(url, params);
+
+  const token = await getAccessToken();
+  const authHeaders: Record<string, string> = token
+    ? { Authorization: `Bearer ${token}` }
+    : {};
+
+  const res = await fetch(`${env.API_URL}${fullUrl}`, {
+    method,
+    headers: {
+      ...authHeaders,
+      ...headers,
+    },
+    body,
+  });
+
+  const json = await res.json().catch(() => null);
+
+  if (!res.ok) {
+    const message = json?.message || res.statusText || 'Request failed';
+    throw new Error(message);
+  }
+
+  if (json && typeof json === 'object' && 'success' in json && 'data' in json) {
+    return json.data;
+  }
+  return json;
+}
+
 export const api = {
   get<T>(url: string, options?: RequestOptions): Promise<T> {
     return fetchApi<T>(url, { ...options, method: 'GET' });
@@ -103,6 +137,12 @@ export const api = {
   },
   patch<T>(url: string, body?: any, options?: RequestOptions): Promise<T> {
     return fetchApi<T>(url, { ...options, method: 'PATCH', body });
+  },
+  postForm<T>(url: string, body: FormData, options?: RequestOptions): Promise<T> {
+    return fetchFormApi<T>(url, { ...options, method: 'POST', body });
+  },
+  patchForm<T>(url: string, body: FormData, options?: RequestOptions): Promise<T> {
+    return fetchFormApi<T>(url, { ...options, method: 'PATCH', body });
   },
   delete<T>(url: string, options?: RequestOptions): Promise<T> {
     return fetchApi<T>(url, { ...options, method: 'DELETE' });

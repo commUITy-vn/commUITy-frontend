@@ -44,8 +44,22 @@ export interface DonationResponse {
   paymentMethod: string;
   status: string;
   transactionCode?: string;
+  payosOrderCode?: number;
+  payosPaymentLinkId?: string;
+  checkoutUrl?: string;
   note?: string;
+  paidAt?: string;
   createdAt: string;
+}
+
+export interface PayOsCheckoutResponse {
+  id: string;
+  paymentType: 'COMMUNITY_FUND_DONATION' | 'SUPPORT_NEED_CONTRIBUTION';
+  amount: number;
+  orderCode: number;
+  paymentLinkId?: string;
+  checkoutUrl: string;
+  qrCode?: string;
 }
 
 export type CommunityFundMemberRole = 'MEMBER' | 'MANAGER';
@@ -249,6 +263,12 @@ export const createDonation = (payload: CreateDonationPayload): Promise<Donation
   return api.post('/api/v1/donations', payload);
 };
 
+export const createPayOsDonation = (
+  payload: Pick<CreateDonationPayload, 'fundId' | 'amount' | 'note'>,
+): Promise<PayOsCheckoutResponse> => {
+  return api.post('/api/v1/donations/payos', payload);
+};
+
 export const useCreateDonation = () => {
   const queryClient = useQueryClient();
   return useMutation({
@@ -258,6 +278,18 @@ export const useCreateDonation = () => {
       queryClient.invalidateQueries({ queryKey: ['fundDonations', variables.fundId] });
       queryClient.invalidateQueries({ queryKey: ['myFunds'] });
       queryClient.invalidateQueries({ queryKey: ['communityFunds'] });
+      queryClient.invalidateQueries({ queryKey: ['myDonations'] });
+    },
+  });
+};
+
+export const useCreatePayOsDonation = () => {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (payload: Pick<CreateDonationPayload, 'fundId' | 'amount' | 'note'>) =>
+      createPayOsDonation(payload),
+    onSuccess: (_, variables) => {
+      queryClient.invalidateQueries({ queryKey: ['fundDonations', variables.fundId] });
       queryClient.invalidateQueries({ queryKey: ['myDonations'] });
     },
   });

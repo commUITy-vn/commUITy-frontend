@@ -5,6 +5,7 @@ import { useThemeStyles } from '@/hooks/useThemeStyles';
 import { useRouter } from 'expo-router';
 import { MaterialIcons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
+import * as ImagePicker from 'expo-image-picker';
 import { BorderRadius, Spacing } from '@/constants/theme';
 import TextInput from '@/components/ui/TextInput';
 import Button from '@/components/ui/Button';
@@ -24,13 +25,19 @@ import { useResolveReport } from '@/features/reports/hooks/useResolveReport';
 import { useReportDetail } from '@/features/reports/hooks/useReportDetail';
 import { ReportTargetType } from '@/features/reports/types/reports.types';
 import { useQueryClient } from '@tanstack/react-query';
+import {
+  useAdminMoneyTransferTickets,
+  useRejectMoneyTransferTicket,
+  useResolveMoneyTransferTicket,
+} from '@/features/money-transfer/hooks';
+import type { MoneyTransferTicketResponse } from '@/features/money-transfer/types';
 
 export default function ModerationScreen() {
   const theme = useTheme();
   const styles = useThemeStyles();
   const router = useRouter();
   const queryClient = useQueryClient();
-  const [tab, setTab] = useState<'pending' | 'reports'>('pending');
+  const [tab, setTab] = useState<'pending' | 'reports' | 'transfers'>('pending');
 
   // Queries
   const { 
@@ -46,6 +53,12 @@ export default function ModerationScreen() {
     isError: isPendingReportsError, 
     refetch: refetchPendingReports 
   } = usePendingReports();
+  const {
+    data: pendingTransferTickets,
+    isLoading: isPendingTransfersLoading,
+    isError: isPendingTransfersError,
+    refetch: refetchPendingTransfers,
+  } = useAdminMoneyTransferTickets('PENDING');
 
   // Action mutations states
   const [actionLoadingId, setActionLoadingId] = useState<string | null>(null);
@@ -93,7 +106,22 @@ export default function ModerationScreen() {
 
   const [selectedReportId, setSelectedReportId] = useState<string | null>(null);
   const [isDetailModalVisible, setIsDetailModalVisible] = useState(false);
-  const [activeModal, setActiveModal] = useState<'detail' | 'resolve' | 'review' | 'reject_support_request' | null>(null);
+  const [activeModal, setActiveModal] = useState<'detail' | 'resolve' | 'review' | 'reject_support_request' | 'resolve_transfer' | 'reject_transfer' | null>(null);
+  const [transferModal, setTransferModal] = useState<{
+    ticket: MoneyTransferTicketResponse | null;
+    adminNote: string;
+    rejectionReason: string;
+    proofFile: ({ uri: string; name: string; type: string } | File) | null;
+    proofName: string;
+    errorText: string;
+  }>({
+    ticket: null,
+    adminNote: '',
+    rejectionReason: '',
+    proofFile: null,
+    proofName: '',
+    errorText: '',
+  });
 
   // Fetch report details
   const { 
@@ -230,6 +258,8 @@ export default function ModerationScreen() {
   // ----------------------------------------------------
   const reviewReportMutation = useReviewReport(reportModal.reportId);
   const resolveReportMutation = useResolveReport(reportModal.reportId);
+  const rejectTransferTicketMutation = useRejectMoneyTransferTicket();
+  const resolveTransferTicketMutation = useResolveMoneyTransferTicket();
 
   const handleOpenReportModal = (id: string, reporterName: string, targetType: ReportTargetType, actionType: 'resolve' | 'review') => {
     setReportModal({
@@ -282,6 +312,96 @@ export default function ModerationScreen() {
       refetchPendingReports();
     } catch (err: any) {
       showAlert('Error', err?.message || 'Failed to complete report action.');
+    } finally {
+      setActionLoadingId(null);
+    }
+  };
+
+  const handleOpenTransferModal = (ticket: MoneyTransferTicketResponse, action: 'resolve_transfer' | 'reject_transfer') => {
+    setTransferModal({
+      ticket,
+      adminNote: '',
+      rejectionReason: '',
+      proofFile: null,
+      proofName: '',
+      errorText: '',
+    });
+    setActiveModal(action);
+  };
+
+  const handlePickTransferProof = async () => {
+    const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (!permission.granted) {
+      setTransferModal(prev => ({ ...prev, errorText: 'Photo access is required to attach proof.' }));
+      return;
+    }
+
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      quality: 0.85,
+    });
+
+    if (result.canceled || !result.assets?.[0]) return;
+
+    const asset: any = result.assets[0];
+    const proofFile = asset.file || {
+      uri: asset.uri,
+      name: asset.fileName || `transfer-proof-${Date.now()}.jpg`,
+      type: asset.mimeType || 'image/jpeg',
+    };
+
+    setTransferModal(prev => ({
+      ...prev,
+      proofFile,
+      proofName: asset.fileName || proofFile.name || 'transfer-proof.jpg',
+      errorText: '',
+    }));
+  };
+
+  const handleConfirmTransferAction = async () => {
+    const ticket = transferModal.ticket;
+    if (!ticket) return;
+
+    if (activeModal === 'reject_transfer') {
+      if (!transferModal.rejectionReason.trim()) {
+        setTransferModal(prev => ({ ...prev, errorText: 'Rejection reason is required' }));
+        return;
+      }
+
+      setActionLoadingId(ticket.id);
+      try {
+        await rejectTransferTicketMutation.mutateAsync({
+          ticketId: ticket.id,
+          rejectionReason: transferModal.rejectionReason.trim(),
+        });
+        showAlert('Rejected', 'Money transfer ticket rejected.');
+        setActiveModal(null);
+        refetchPendingTransfers();
+      } catch (err: any) {
+        showAlert('Error', err?.message || 'Failed to reject transfer ticket.');
+      } finally {
+        setActionLoadingId(null);
+      }
+      return;
+    }
+
+    if (!transferModal.proofFile) {
+      setTransferModal(prev => ({ ...prev, errorText: 'Transfer proof image is required' }));
+      return;
+    }
+
+    setActionLoadingId(ticket.id);
+    try {
+      await resolveTransferTicketMutation.mutateAsync({
+        ticketId: ticket.id,
+        proofFile: transferModal.proofFile,
+        adminNote: transferModal.adminNote.trim() || undefined,
+      });
+      showAlert('Resolved', 'Money transfer ticket resolved with proof.');
+      setActiveModal(null);
+      refetchPendingTransfers();
+    } catch (err: any) {
+      showAlert('Error', err?.message || 'Failed to resolve transfer ticket.');
     } finally {
       setActionLoadingId(null);
     }
@@ -512,9 +632,97 @@ export default function ModerationScreen() {
     );
   };
 
-  const isDataLoading = tab === 'pending' ? isPendingRequestsLoading : isPendingReportsLoading;
-  const isDataError = tab === 'pending' ? isPendingRequestsError : isPendingReportsError;
-  const activeData = tab === 'pending' ? pendingRequests : pendingReports;
+  const renderTransferTicketItem = ({ item }: { item: MoneyTransferTicketResponse }) => {
+    const isLoading = actionLoadingId === item.id;
+    return (
+      <View style={[localStyles.itemCard, { backgroundColor: theme.componentBG, borderColor: theme.border }]}>
+        <View style={localStyles.cardHeader}>
+          <MaterialIcons name="payments" size={20} color={theme.primary} />
+          <Text style={[localStyles.itemTitle, { color: theme.text }]} numberOfLines={1}>
+            {item.sourceName || 'Money transfer request'}
+          </Text>
+          <View style={[localStyles.statusBadge, { backgroundColor: '#FFF4E5', borderColor: '#FFE6CC' }]}>
+            <Text style={[localStyles.statusText, { color: '#B35900' }]}>{item.status}</Text>
+          </View>
+        </View>
+
+        <Text style={[localStyles.itemDesc, { color: theme.text }]}>
+          ₫{Number(item.amount || 0).toLocaleString()} from {item.sourceType === 'COMMUNITY_FUND' ? 'community fund' : 'support need'}
+        </Text>
+        <Text style={[localStyles.itemDesc, { color: theme.textSupporting }]} numberOfLines={2}>
+          {item.reason || 'No reason provided'}
+        </Text>
+
+        <View style={[localStyles.metaInfo, { backgroundColor: theme.highlightBG }]}>
+          <Text style={{ fontSize: 12, color: theme.textSupporting }} numberOfLines={1}>
+            Requester: {item.requesterName} • {new Date(item.createdAt).toLocaleString()}
+          </Text>
+        </View>
+
+        <View style={[localStyles.actionsRow, { borderTopColor: theme.border, marginTop: 8 }]}>
+          <Pressable
+            disabled={isLoading}
+            onPress={() => handleOpenTransferModal(item, 'resolve_transfer')}
+            style={({ pressed }) => [
+              localStyles.actionBtn,
+              {
+                backgroundColor: '#E5F6EE',
+                borderColor: '#008040',
+                opacity: pressed || isLoading ? 0.8 : 1,
+              },
+            ]}
+          >
+            {isLoading ? (
+              <ActivityIndicator size="small" color="#008040" />
+            ) : (
+              <>
+                <MaterialIcons name="check" size={18} color="#008040" />
+                <Text style={{ fontSize: 13, fontWeight: '600', color: '#008040' }}>Resolve</Text>
+              </>
+            )}
+          </Pressable>
+
+          <Pressable
+            disabled={isLoading}
+            onPress={() => handleOpenTransferModal(item, 'reject_transfer')}
+            style={({ pressed }) => [
+              localStyles.actionBtn,
+              {
+                backgroundColor: '#FFE5E5',
+                borderColor: theme.danger,
+                opacity: pressed || isLoading ? 0.8 : 1,
+              },
+            ]}
+          >
+            {isLoading ? (
+              <ActivityIndicator size="small" color={theme.danger} />
+            ) : (
+              <>
+                <MaterialIcons name="close" size={18} color={theme.danger} />
+                <Text style={{ fontSize: 13, fontWeight: '600', color: theme.danger }}>Reject</Text>
+              </>
+            )}
+          </Pressable>
+        </View>
+      </View>
+    );
+  };
+
+  const isDataLoading = tab === 'pending'
+    ? isPendingRequestsLoading
+    : tab === 'reports'
+      ? isPendingReportsLoading
+      : isPendingTransfersLoading;
+  const isDataError = tab === 'pending'
+    ? isPendingRequestsError
+    : tab === 'reports'
+      ? isPendingReportsError
+      : isPendingTransfersError;
+  const activeData = tab === 'pending'
+    ? pendingRequests
+    : tab === 'reports'
+      ? pendingReports
+      : pendingTransferTickets;
 
   return (
     <View style={[localStyles.container, { backgroundColor: theme.appBG }]}>
@@ -552,6 +760,17 @@ export default function ModerationScreen() {
             User Reports ({(pendingReports || []).length})
           </Text>
         </Pressable>
+        <Pressable
+          onPress={async () => {
+            await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+            setTab('transfers');
+          }}
+          style={[localStyles.tab, tab === 'transfers' && { borderBottomColor: theme.primary }]}
+        >
+          <Text style={[localStyles.tabText, { color: tab === 'transfers' ? theme.primary : theme.textSupporting, fontWeight: tab === 'transfers' ? '700' : '500' }]}>
+            Transfers ({(pendingTransferTickets || []).length})
+          </Text>
+        </Pressable>
       </View>
 
       {isDataLoading ? (
@@ -566,10 +785,16 @@ export default function ModerationScreen() {
           </Text>
         </View>
       ) : (
-        <FlatList
-          data={activeData}
+        <FlatList<any>
+          data={activeData || []}
           keyExtractor={(item) => item.id}
-          renderItem={tab === 'pending' ? renderPendingRequestItem : renderReportItem}
+          renderItem={
+            tab === 'pending'
+              ? renderPendingRequestItem
+              : tab === 'reports'
+                ? renderReportItem
+                : renderTransferTicketItem
+          }
           contentContainerStyle={localStyles.list}
           showsVerticalScrollIndicator={false}
           ListEmptyComponent={() => (
@@ -667,6 +892,78 @@ export default function ModerationScreen() {
                   onPress={handleConfirmReportAction}
                   primary
                   style={{ flex: 1 }}
+                />
+                <Button
+                  text="Cancel"
+                  onPress={() => setActiveModal(null)}
+                  style={{ flex: 1, backgroundColor: theme.highlightBG }}
+                />
+              </View>
+            </View>
+          )}
+
+          {(activeModal === 'resolve_transfer' || activeModal === 'reject_transfer') && (
+            <View style={[localStyles.modalContent, { backgroundColor: theme.componentBG, borderColor: theme.border }]}>
+              <Text style={[localStyles.modalTitle, { color: theme.text }]}>
+                {activeModal === 'resolve_transfer' ? 'Resolve Transfer Ticket' : 'Reject Transfer Ticket'}
+              </Text>
+              <Text style={{ fontSize: 14, color: theme.textSupporting, marginBottom: 8 }}>
+                {transferModal.ticket?.sourceName || 'Money transfer'} • ₫{Number(transferModal.ticket?.amount || 0).toLocaleString()}
+              </Text>
+
+              {transferModal.errorText ? (
+                <View style={{ backgroundColor: theme.danger + '15', padding: 10, borderRadius: 8, borderWidth: 1, borderColor: theme.danger, marginBottom: 12 }}>
+                  <Text style={{ color: theme.danger, fontSize: 13 }}>{transferModal.errorText}</Text>
+                </View>
+              ) : null}
+
+              {activeModal === 'resolve_transfer' ? (
+                <>
+                  <Pressable
+                    onPress={handlePickTransferProof}
+                    style={({ pressed }) => [
+                      localStyles.targetInspectionBtn,
+                      {
+                        backgroundColor: pressed ? theme.border : theme.highlightBG,
+                        borderColor: theme.border,
+                      },
+                    ]}
+                  >
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, flex: 1 }}>
+                      <MaterialIcons name="image" size={20} color={theme.primary} />
+                      <Text style={{ color: theme.text, fontWeight: '700', flex: 1 }} numberOfLines={1}>
+                        {transferModal.proofName || 'Attach transfer proof image'}
+                      </Text>
+                    </View>
+                    <MaterialIcons name="chevron-right" size={18} color={theme.primary} />
+                  </Pressable>
+
+                  <TextInput
+                    label="Admin Note"
+                    value={transferModal.adminNote}
+                    onChangeText={(text) => setTransferModal(prev => ({ ...prev, adminNote: text, errorText: '' }))}
+                    multiline
+                    height={80}
+                  />
+                </>
+              ) : (
+                <TextInput
+                  label="Rejection Reason"
+                  value={transferModal.rejectionReason}
+                  onChangeText={(text) => setTransferModal(prev => ({ ...prev, rejectionReason: text, errorText: '' }))}
+                  multiline
+                  height={90}
+                />
+              )}
+
+              <View style={{ flexDirection: 'row', gap: 12, marginTop: 12 }}>
+                <Button
+                  text={activeModal === 'resolve_transfer' ? 'Confirm Resolve' : 'Confirm Reject'}
+                  onPress={handleConfirmTransferAction}
+                  primary={activeModal === 'resolve_transfer'}
+                  danger={activeModal === 'reject_transfer'}
+                  style={{ flex: 1 }}
+                  isLoading={resolveTransferTicketMutation.isPending || rejectTransferTicketMutation.isPending}
                 />
                 <Button
                   text="Cancel"

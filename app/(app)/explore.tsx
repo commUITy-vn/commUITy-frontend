@@ -7,8 +7,10 @@ import MaterialIcons from '@expo/vector-icons/MaterialIcons';
 import * as Haptics from 'expo-haptics';
 import * as DocumentPicker from 'expo-document-picker';
 import * as ImagePicker from 'expo-image-picker';
+import { useQueryClient } from '@tanstack/react-query';
 import { BorderRadius, Spacing } from '@/constants/theme';
 import { usePosts, useCreatePost, usePostComments, useCreatePostComment } from '@/features/community/hooks/usePosts';
+import { usePostMedia } from '@/features/media/hooks/useMedia';
 import { TextInput as TextInputUI, BottomSheet, Button, ConfirmModal } from '@/components/ui';
 import { ReportModal, ReportTargetType } from '@/features/reports';
 import { getUser } from '@/features/users/api/get-user';
@@ -97,17 +99,83 @@ function getRelativeTime(dateString: string): string {
 
 const DUMMY_COMMENTS: Record<string, any[]> = {};
 
-const Avatar = ({ uri, name, size = 44, theme }: { uri?: string; name?: string; size?: number; theme: any }) => {
-  let resolvedUri = uri;
-  if (uri && !uri.startsWith('http://') && !uri.startsWith('https://') && !uri.startsWith('file://') && !uri.startsWith('data:')) {
-    const apiBase = env.API_URL.endsWith('/api') ? env.API_URL.slice(0, -4) : env.API_URL;
-    const cleanUri = uri.startsWith('/') ? uri : '/' + uri;
-    resolvedUri = `${apiBase}${cleanUri}`;
+type PendingMedia = {
+  id?: string;
+  fileName: string;
+  fileUrl: string;
+  fileType: string;
+  mimeType?: string;
+  fileSize?: number;
+  file?: File;
+  uploadStatus?: 'queued' | 'uploading' | 'uploaded' | 'failed';
+  error?: string;
+};
+
+const resolveMediaUrl = (uri?: string) => {
+  if (!uri) return uri;
+  if (
+    uri.startsWith('http://') ||
+    uri.startsWith('https://') ||
+    uri.startsWith('file://') ||
+    uri.startsWith('data:') ||
+    uri.startsWith('blob:')
+  ) {
+    return uri;
   }
 
-  const isImageValid = resolvedUri && 
-    (resolvedUri.startsWith('http://') || resolvedUri.startsWith('https://') || resolvedUri.startsWith('file://') || resolvedUri.startsWith('data:')) &&
-    !resolvedUri.includes('pravatar.cc');
+  const apiBase = env.API_URL.endsWith('/api') ? env.API_URL.slice(0, -4) : env.API_URL;
+  const cleanUri = uri.startsWith('/') ? uri : '/' + uri;
+  return `${apiBase}${cleanUri}`;
+};
+
+const isRenderableImageUri = (uri?: string) => Boolean(
+  uri &&
+  (
+    uri.startsWith('http://') ||
+    uri.startsWith('https://') ||
+    uri.startsWith('file://') ||
+    uri.startsWith('data:') ||
+    uri.startsWith('blob:')
+  ) &&
+  !uri.includes('pravatar.cc')
+);
+
+const getProfileAvatarUrl = (profile: any) =>
+  profile?.avatarUrl ||
+  profile?.imageUrl ||
+  profile?.profileImageUrl ||
+  profile?.avatar ||
+  profile?.userAvatar;
+
+const uploadPendingMedia = async (item: PendingMedia, folderName: string) => {
+  const formData = new FormData();
+  const fileName = item.fileName || `media-${Date.now()}`;
+  const mimeType = item.mimeType || 'application/octet-stream';
+
+  if (Platform.OS === 'web') {
+    if (!item.file) {
+      throw new Error(`Missing local file for ${fileName}`);
+    }
+    formData.append('file', item.file, fileName);
+  } else {
+    formData.append('file', {
+      uri: item.fileUrl,
+      name: fileName,
+      type: mimeType,
+    } as any);
+  }
+
+  formData.append('folderName', folderName);
+  formData.append('altText', fileName);
+  formData.append('isPublic', 'true');
+
+  const mediaRes = await api.postForm<any>('/api/v1/media/upload', formData);
+  return mediaRes?.data || mediaRes;
+};
+
+const Avatar = ({ uri, name, size = 44, theme }: { uri?: string; name?: string; size?: number; theme: any }) => {
+  const resolvedUri = resolveMediaUrl(uri);
+  const isImageValid = isRenderableImageUri(resolvedUri);
   
   if (isImageValid) {
     return (
@@ -198,8 +266,6 @@ function ReactionPopup({
   );
 }
 
-import { usePostMedia } from '@/features/media/hooks/useMedia';
-
 function PostMediaContainer({ postId }: { postId: string }) {
   const { data: mediaItems, isLoading } = usePostMedia(postId);
   const theme = useTheme();
@@ -227,12 +293,7 @@ function PostMediaContainer({ postId }: { postId: string }) {
           contentContainerStyle={{ gap: 8 }}
         >
           {images.map((img, idx) => {
-            let resolvedUrl = img.fileUrl;
-            if (img.fileUrl && !img.fileUrl.startsWith('http://') && !img.fileUrl.startsWith('https://') && !img.fileUrl.startsWith('file://') && !img.fileUrl.startsWith('data:')) {
-              const apiBase = env.API_URL.endsWith('/api') ? env.API_URL.slice(0, -4) : env.API_URL;
-              const cleanUri = img.fileUrl.startsWith('/') ? img.fileUrl : '/' + img.fileUrl;
-              resolvedUrl = `${apiBase}${cleanUri}`;
-            }
+            const resolvedUrl = resolveMediaUrl(img.fileUrl);
 
             return (
               <View key={img.mediaId || idx} style={{ borderRadius: 8, borderWidth: 1, borderColor: theme.border, overflow: 'hidden' }}>
@@ -255,8 +316,9 @@ function PostMediaContainer({ postId }: { postId: string }) {
               key={doc.mediaId || idx}
               onPress={async () => {
                 await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                if (doc.fileUrl) {
-                  Linking.openURL(doc.fileUrl).catch(err => console.error("Couldn't open media URL:", err));
+                const resolvedUrl = resolveMediaUrl(doc.fileUrl);
+                if (resolvedUrl) {
+                  Linking.openURL(resolvedUrl).catch(err => console.error("Couldn't open media URL:", err));
                 }
               }}
               style={({ pressed }) => [
@@ -471,27 +533,24 @@ const PostCard = ({ post, onAuthorPress }: { post: Post; onAuthorPress?: (author
       const localUrl = URL.createObjectURL(file);
       const isImg = file.type.startsWith('image/');
       const fileType = isImg ? 'IMAGE' : 'DOCUMENT';
-      const createPayload = {
+      const uploadedMedia = await uploadPendingMedia({
         fileName: file.name,
         fileUrl: localUrl,
         fileType,
         mimeType: file.type || 'application/octet-stream',
         fileSize: file.size,
-        altText: file.name,
-        isPublic: true,
-      };
-      const mediaRes = await api.post<any>('/api/v1/media', createPayload);
+        file,
+      }, 'helphub/comments');
       setSelectedCommentMedia({
-        id: mediaRes.id || String(Math.random()),
+        id: uploadedMedia?.id || String(Math.random()),
         fileName: file.name,
-        fileUrl: mediaRes.fileUrl || localUrl,
+        fileUrl: uploadedMedia?.fileUrl || localUrl,
         fileType,
         mimeType: file.type || 'application/octet-stream',
         fileSize: file.size,
       });
     } catch (err) {
       console.error('Failed to upload comment file:', err);
-      // Fallback local media if upload fails
       setSelectedCommentMedia({
         id: String(Date.now()),
         fileName: file.name,
@@ -838,7 +897,7 @@ const PostCard = ({ post, onAuthorPress }: { post: Post; onAuthorPress?: (author
                           <View key={med.id} style={{ marginTop: 6 }}>
                             {med.fileType === 'IMAGE' ? (
                               <Image
-                                source={{ uri: med.fileUrl }}
+                                source={{ uri: resolveMediaUrl(med.fileUrl) }}
                                 style={{ width: 200, height: 120, borderRadius: 8, borderWidth: 1, borderColor: theme.border }}
                                 resizeMode="cover"
                               />
@@ -1088,7 +1147,7 @@ const PostCard = ({ post, onAuthorPress }: { post: Post; onAuthorPress?: (author
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
                 {selectedCommentMedia.fileType === 'IMAGE' ? (
                   <Image
-                    source={{ uri: selectedCommentMedia.fileUrl }}
+                    source={{ uri: resolveMediaUrl(selectedCommentMedia.fileUrl) }}
                     style={{ width: 44, height: 44, borderRadius: 6 }}
                   />
                 ) : (
@@ -1221,23 +1280,8 @@ const PostCard = ({ post, onAuthorPress }: { post: Post; onAuthorPress?: (author
               </View>
             ) : profileData ? (
               <View style={{ padding: 24, alignItems: 'center' }}>
-                {/* Avatar bubble */}
-                <View
-                  style={{
-                    width: 80,
-                    height: 80,
-                    borderRadius: 40,
-                    backgroundColor: theme.highlightBG,
-                    borderWidth: 2,
-                    borderColor: theme.border,
-                    justifyContent: 'center',
-                    alignItems: 'center',
-                    marginBottom: 16,
-                  }}
-                >
-                  <Text style={{ color: theme.text, fontSize: 32, fontWeight: '700' }}>
-                    {profileData.fullName?.charAt(0).toUpperCase() ?? '?'}
-                  </Text>
+                <View style={{ marginBottom: 16 }}>
+                  <Avatar uri={getProfileAvatarUrl(profileData)} name={profileData.fullName} size={80} theme={theme} />
                 </View>
 
                 {/* Name */}
@@ -1353,12 +1397,13 @@ const PostCard = ({ post, onAuthorPress }: { post: Post; onAuthorPress?: (author
 export default function ExploreScreen() {
   const theme = useTheme();
   const router = useRouter();
+  const queryClient = useQueryClient();
   const { data: posts, isLoading } = usePosts();
   const { mutateAsync: createPost, isPending: isCreating } = useCreatePost();
   
   const [showCreatePost, setShowCreatePost] = useState(false);
   const [newPostContent, setNewPostContent] = useState('');
-  const [selectedPostMedia, setSelectedPostMedia] = useState<any[]>([]);
+  const [selectedPostMedia, setSelectedPostMedia] = useState<PendingMedia[]>([]);
   const [isPostUploading, setIsPostUploading] = useState(false);
   const postFileInputRef = useRef<HTMLInputElement>(null);
 
@@ -1368,7 +1413,7 @@ export default function ExploreScreen() {
     if (!files || files.length === 0) return;
     
     await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-    const newItems: any[] = [];
+    const newItems: PendingMedia[] = [];
     
     for (let i = 0; i < files.length; i++) {
       const file = files[i];
@@ -1386,6 +1431,7 @@ export default function ExploreScreen() {
         mimeType: file.type || 'application/octet-stream',
         fileSize: file.size,
         file,
+        uploadStatus: 'queued' as const,
       });
     }
     
@@ -1427,6 +1473,7 @@ export default function ExploreScreen() {
         fileType: 'IMAGE',
         mimeType,
         fileSize: asset.fileSize || 0,
+        uploadStatus: 'queued' as const,
       };
     });
 
@@ -1460,6 +1507,7 @@ export default function ExploreScreen() {
         fileType,
         mimeType,
         fileSize: asset.size || 0,
+        uploadStatus: 'queued' as const,
       };
     });
 
@@ -1550,6 +1598,37 @@ export default function ExploreScreen() {
     await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     setIsPostUploading(true);
     try {
+      const uploadedMedia: any[] = [];
+
+      for (let index = 0; index < selectedPostMedia.length; index++) {
+        const item = selectedPostMedia[index];
+        setSelectedPostMedia(prev => prev.map((media, mediaIndex) =>
+          mediaIndex === index ? { ...media, uploadStatus: 'uploading', error: undefined } : media
+        ));
+
+        try {
+          const mediaRes = await uploadPendingMedia(item, 'helphub/posts');
+          const mediaId = mediaRes?.id || mediaRes?.mediaId || mediaRes?.data?.id;
+          if (!mediaId) {
+            throw new Error(`Uploaded media did not return an ID for ${item.fileName}`);
+          }
+
+          uploadedMedia.push({ ...mediaRes, id: mediaId });
+          setSelectedPostMedia(prev => prev.map((media, mediaIndex) =>
+            mediaIndex === index
+              ? { ...media, id: mediaId, fileUrl: mediaRes?.fileUrl || media.fileUrl, uploadStatus: 'uploaded' }
+              : media
+          ));
+        } catch (uploadError) {
+          setSelectedPostMedia(prev => prev.map((media, mediaIndex) =>
+            mediaIndex === index
+              ? { ...media, uploadStatus: 'failed', error: uploadError instanceof Error ? uploadError.message : 'Upload failed' }
+              : media
+          ));
+          throw uploadError;
+        }
+      }
+
       const postRes: any = await createPost({
         content: newPostContent,
         visibility: 'PUBLIC',
@@ -1559,26 +1638,17 @@ export default function ExploreScreen() {
         throw new Error("Created post does not have a valid ID");
       }
 
-      if (selectedPostMedia.length > 0) {
-        for (const item of selectedPostMedia) {
-          const mediaRes = await api.post<any>('/api/v1/media', {
-            fileName: item.fileName,
-            fileUrl: item.fileUrl,
-            fileType: item.fileType,
-            mimeType: item.mimeType,
-            fileSize: item.fileSize,
-            altText: item.fileName,
-            isPublic: true,
+      if (uploadedMedia.length > 0) {
+        for (let index = 0; index < uploadedMedia.length; index++) {
+          await api.post<any>(`/api/v1/posts/${createdPostId}/media`, {
+            mediaId: uploadedMedia[index].id,
+            displayOrder: index,
           });
-          const mediaId = mediaRes?.id || mediaRes?.data?.id;
-          if (mediaId) {
-            await api.post<any>(`/api/v1/posts/${createdPostId}/media`, {
-              mediaId,
-            });
-          }
         }
       }
 
+      await queryClient.invalidateQueries({ queryKey: ['posts'] });
+      await queryClient.invalidateQueries({ queryKey: ['post-media', createdPostId] });
       setNewPostContent('');
       setSelectedPostMedia([]);
       setShowCreatePost(false);
@@ -1649,17 +1719,8 @@ export default function ExploreScreen() {
           </View>
         ) : profileData ? (
           <View style={{ padding: 24, alignItems: 'center' }}>
-            {/* Avatar bubble */}
             <View
               style={{
-                width: 80,
-                height: 80,
-                borderRadius: 40,
-                backgroundColor: theme.highlightBG,
-                borderWidth: 2,
-                borderColor: theme.border,
-                justifyContent: 'center',
-                alignItems: 'center',
                 marginBottom: 16,
                 ...Platform.select({
                   ios: {
@@ -1675,9 +1736,7 @@ export default function ExploreScreen() {
                 }),
               }}
             >
-              <Text style={{ color: theme.text, fontSize: 32, fontWeight: '700' }}>
-                {profileData.fullName?.charAt(0).toUpperCase() ?? '?'}
-              </Text>
+              <Avatar uri={getProfileAvatarUrl(profileData)} name={profileData.fullName} size={80} theme={theme} />
             </View>
 
             {/* Name */}
@@ -1789,7 +1848,9 @@ export default function ExploreScreen() {
         visible={showCreatePost}
         animationType="slide"
         presentationStyle="pageSheet"
-        onRequestClose={() => setShowCreatePost(false)}
+        onRequestClose={() => {
+          if (!isCreating && !isPostUploading) setShowCreatePost(false);
+        }}
       >
         <View style={{ flex: 1, backgroundColor: theme.appBG }}>
           <View
@@ -1803,7 +1864,11 @@ export default function ExploreScreen() {
               borderBottomColor: theme.border,
             }}
           >
-            <Pressable onPress={() => setShowCreatePost(false)}>
+            <Pressable
+              onPress={() => setShowCreatePost(false)}
+              disabled={isCreating || isPostUploading}
+              style={{ opacity: isCreating || isPostUploading ? 0.4 : 1 }}
+            >
               <MaterialIcons name="close" size={24} color={theme.text} />
             </Pressable>
             <Text
@@ -1825,15 +1890,18 @@ export default function ExploreScreen() {
                 pressed && { opacity: 0.7 },
               ]}
             >
-              <Text
-                style={{
-                  color: theme.primary,
-                  fontSize: 16,
-                  fontWeight: '600',
-                }}
-              >
-                Post
-              </Text>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, minWidth: 82, justifyContent: 'flex-end' }}>
+                {(isCreating || isPostUploading) && <ActivityIndicator size="small" color={theme.primary} />}
+                <Text
+                  style={{
+                    color: theme.primary,
+                    fontSize: 16,
+                    fontWeight: '600',
+                  }}
+                >
+                  {isPostUploading ? 'Uploading' : isCreating ? 'Posting' : 'Post'}
+                </Text>
+              </View>
             </Pressable>
           </View>
 
@@ -1856,15 +1924,28 @@ export default function ExploreScreen() {
                 {selectedPostMedia.map((media, idx) => (
                   <View key={idx} style={{ position: 'relative', width: 80, height: 80, borderRadius: 8, borderWidth: 1, borderColor: theme.border, overflow: 'hidden' }}>
                     {media.fileType === 'IMAGE' ? (
-                      <Image source={{ uri: media.fileUrl }} style={{ width: '100%', height: '100%' }} />
+                      <Image source={{ uri: resolveMediaUrl(media.fileUrl) }} style={{ width: '100%', height: '100%' }} />
                     ) : (
                       <View style={{ flex: 1, backgroundColor: theme.highlightBG, justifyContent: 'center', alignItems: 'center', padding: 8 }}>
                         <MaterialIcons name={media.fileType === 'VIDEO' ? 'movie' : media.fileType === 'AUDIO' ? 'music-note' : 'insert-drive-file'} size={32} color={theme.primary} />
                         <Text style={{ fontSize: 9, color: theme.text, textAlign: 'center', marginTop: 4 }} numberOfLines={1}>{media.fileName}</Text>
                       </View>
                     )}
+                    {(media.uploadStatus === 'uploading' || (isPostUploading && media.uploadStatus !== 'uploaded' && media.uploadStatus !== 'failed')) && (
+                      <View style={{ position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, backgroundColor: 'rgba(0,0,0,0.55)', justifyContent: 'center', alignItems: 'center', gap: 4 }}>
+                        <ActivityIndicator size="small" color="#FFF" />
+                        <Text style={{ color: '#FFF', fontSize: 10, fontWeight: '600' }}>Uploading</Text>
+                      </View>
+                    )}
+                    {media.uploadStatus === 'failed' && (
+                      <View style={{ position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, backgroundColor: 'rgba(185,28,28,0.72)', justifyContent: 'center', alignItems: 'center', padding: 6 }}>
+                        <MaterialIcons name="error-outline" size={18} color="#FFF" />
+                        <Text style={{ color: '#FFF', fontSize: 9, fontWeight: '600', textAlign: 'center' }} numberOfLines={2}>Upload failed</Text>
+                      </View>
+                    )}
                     <Pressable
                       onPress={() => setSelectedPostMedia(prev => prev.filter((_, i) => i !== idx))}
+                      disabled={isPostUploading}
                       style={{ position: 'absolute', top: 4, right: 4, backgroundColor: 'rgba(0,0,0,0.6)', borderRadius: 12, width: 20, height: 20, justifyContent: 'center', alignItems: 'center' }}
                     >
                       <MaterialIcons name="close" size={14} color="#FFF" />
@@ -1882,6 +1963,7 @@ export default function ExploreScreen() {
                 style={{ display: 'none' }}
                 onChange={handlePostFileChange}
                 multiple
+                accept="image/*,video/*,audio/*,.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt"
               />
             )}
 

@@ -66,18 +66,18 @@ export default function ProfileEditScreen() {
 
             const asset = result.assets[0]
             const mimeType = asset.mimeType || "image/jpeg"
-            const fileUrl = asset.uri
+            const formData = new FormData()
+            formData.append('file', {
+                uri: asset.uri,
+                name: asset.fileName || `avatar-${Date.now()}.jpg`,
+                type: mimeType,
+            } as any)
+            formData.append('folderName', 'helphub/avatars')
+            formData.append('isPublic', 'true')
+            formData.append('altText', displayName || user?.fullName || 'Avatar')
 
-            const mediaRes = await api.post<any>('/api/v1/media', {
-                fileName: asset.fileName || `avatar-${Date.now()}.jpg`,
-                fileUrl,
-                fileType: 'IMAGE',
-                mimeType,
-                fileSize: asset.fileSize,
-                altText: displayName || user?.fullName || 'Avatar',
-                isPublic: true,
-            })
-            setAvatarUrl(mediaRes.fileUrl || fileUrl)
+            const mediaRes = await api.postForm<any>('/api/v1/media/upload', formData)
+            setAvatarUrl(mediaRes.fileUrl)
         } catch (err: any) {
             console.error("Failed to pick avatar image:", err)
             setError(err?.message || "Failed to choose image.")
@@ -94,18 +94,13 @@ export default function ProfileEditScreen() {
         setError("");
         try {
             await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-            const localUrl = URL.createObjectURL(file);
-            const createPayload = {
-                fileName: file.name,
-                fileUrl: localUrl,
-                fileType: 'IMAGE',
-                mimeType: file.type || 'image/jpeg',
-                fileSize: file.size,
-                altText: file.name,
-                isPublic: true,
-            };
-            const mediaRes = await api.post<any>('/api/v1/media', createPayload);
-            setAvatarUrl(mediaRes.fileUrl || localUrl);
+            const formData = new FormData();
+            formData.append('file', file);
+            formData.append('folderName', 'helphub/avatars');
+            formData.append('isPublic', 'true');
+            formData.append('altText', displayName || user?.fullName || file.name);
+            const mediaRes = await api.postForm<any>('/api/v1/media/upload', formData);
+            setAvatarUrl(mediaRes.fileUrl);
         } catch (err: any) {
             console.error("Failed to upload avatar image:", err);
             setError("Failed to upload image. Please try entering a URL instead.");

@@ -3,6 +3,7 @@ import { useTheme } from '@/hooks/useTheme';
 import * as Haptics from 'expo-haptics';
 import { useState } from 'react';
 import { SupportItem } from '@/features/support/types/support.types';
+import { ItemCategory } from '@/features/support/types/support.types';
 import TextInput from '@/components/ui/TextInput';
 import { MaterialIcons } from '@expo/vector-icons';
 
@@ -21,8 +22,10 @@ export const ContributeItemModal = ({
 }: ContributeItemModalProps) => {
   const theme = useTheme();
   const [quantity, setQuantity] = useState(1);
+  const [moneyAmount, setMoneyAmount] = useState('');
   const [notes, setNotes] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const isMoney = item?.category === ItemCategory.MONEY;
 
   const remainingQuantity = item
     ? Math.max(
@@ -41,11 +44,17 @@ export const ContributeItemModal = ({
 
   const handleConfirm = async () => {
     if (!item) return;
+    const finalQuantity = isMoney ? Number(moneyAmount) : quantity;
+    if (!finalQuantity || finalQuantity <= 0) {
+      Alert.alert('Unable to contribute', isMoney ? 'Enter a valid VND amount.' : 'Enter a valid quantity.');
+      return;
+    }
     setIsSubmitting(true);
     try {
-      await onConfirm(item.id, quantity, notes);
+      await onConfirm(item.id, finalQuantity, notes);
       await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       setQuantity(1);
+      setMoneyAmount('');
       setNotes('');
     } catch (error: any) {
       Alert.alert(
@@ -60,6 +69,7 @@ export const ContributeItemModal = ({
   const handleClose = async () => {
     await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     setQuantity(1);
+    setMoneyAmount('');
     setNotes('');
     onClose();
   };
@@ -88,8 +98,8 @@ export const ContributeItemModal = ({
         >
           {/* Header */}
           <View style={[styles.header, { borderBottomColor: theme.border }]}>
-            <Text style={[styles.title, { color: theme.text }]}>
-              Contribute Item
+              <Text style={[styles.title, { color: theme.text }]}>
+              {isMoney ? 'Contribute Money' : 'Contribute Item'}
             </Text>
             <Pressable onPress={handleClose} style={styles.closeBtn}>
               <MaterialIcons name="close" size={20} color={theme.textSupporting} />
@@ -115,45 +125,56 @@ export const ContributeItemModal = ({
 
             {/* Quantity Selector Section */}
             <View style={styles.section}>
-              <Text style={[styles.label, { color: theme.text }]}>Quantity to Contribute</Text>
-              <View style={[styles.quantityContainer, { borderColor: theme.border, backgroundColor: theme.highlightBG }]}>
-                <Pressable
-                  style={({ pressed }) => [
-                    styles.quantityButton,
-                    {
-                      backgroundColor: pressed ? theme.border : theme.componentBG,
-                      borderColor: theme.border,
-                    },
-                  ]}
-                  onPress={() => handleQuantityChange(-1)}
-                >
-                  <MaterialIcons name="remove" size={18} color={theme.text} />
-                </Pressable>
-                
-                <View style={styles.quantityValueContainer}>
-                  <Text style={[styles.quantityValue, { color: theme.text }]}>
-                    {quantity}
-                  </Text>
-                  {item?.unit ? (
-                    <Text style={{ fontSize: 12, color: theme.textSupporting, fontWeight: '600', textTransform: 'uppercase' }}>
-                      {item.unit}
+              <Text style={[styles.label, { color: theme.text }]}>
+                {isMoney ? 'Amount to Contribute' : 'Quantity to Contribute'}
+              </Text>
+              {isMoney ? (
+                <TextInput
+                  label="Amount (VND)"
+                  value={moneyAmount}
+                  onChangeText={(text) => setMoneyAmount(text.replace(/[^0-9]/g, ''))}
+                  keyboardType="numeric"
+                />
+              ) : (
+                <View style={[styles.quantityContainer, { borderColor: theme.border, backgroundColor: theme.highlightBG }]}>
+                  <Pressable
+                    style={({ pressed }) => [
+                      styles.quantityButton,
+                      {
+                        backgroundColor: pressed ? theme.border : theme.componentBG,
+                        borderColor: theme.border,
+                      },
+                    ]}
+                    onPress={() => handleQuantityChange(-1)}
+                  >
+                    <MaterialIcons name="remove" size={18} color={theme.text} />
+                  </Pressable>
+                  
+                  <View style={styles.quantityValueContainer}>
+                    <Text style={[styles.quantityValue, { color: theme.text }]}>
+                      {quantity}
                     </Text>
-                  ) : null}
-                </View>
+                    {item?.unit ? (
+                      <Text style={{ fontSize: 12, color: theme.textSupporting, fontWeight: '600', textTransform: 'uppercase' }}>
+                        {item.unit}
+                      </Text>
+                    ) : null}
+                  </View>
 
-                <Pressable
-                  style={({ pressed }) => [
-                    styles.quantityButton,
-                    {
-                      backgroundColor: pressed ? theme.border : theme.componentBG,
-                      borderColor: theme.border,
-                    },
-                  ]}
-                  onPress={() => handleQuantityChange(1)}
-                >
-                  <MaterialIcons name="add" size={18} color={theme.text} />
-                </Pressable>
-              </View>
+                  <Pressable
+                    style={({ pressed }) => [
+                      styles.quantityButton,
+                      {
+                        backgroundColor: pressed ? theme.border : theme.componentBG,
+                        borderColor: theme.border,
+                      },
+                    ]}
+                    onPress={() => handleQuantityChange(1)}
+                  >
+                    <MaterialIcons name="add" size={18} color={theme.text} />
+                  </Pressable>
+                </View>
+              )}
             </View>
 
             {/* Notes Section (using custom TextInput with floating label, no placeholder) */}
@@ -197,7 +218,7 @@ export const ContributeItemModal = ({
               onPress={handleConfirm}
             >
               <Text style={[styles.confirmButtonText, { color: theme.textLight }]}>
-                {isSubmitting ? 'Sending...' : 'Confirm Help'}
+                {isSubmitting ? 'Sending...' : isMoney ? 'Open PayOS' : 'Confirm Help'}
               </Text>
             </Pressable>
           </View>
