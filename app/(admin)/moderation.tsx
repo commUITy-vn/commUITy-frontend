@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useMemo, useState, useEffect } from 'react';
 import { View, Text, Pressable, FlatList, StyleSheet, Platform, ActivityIndicator, Modal } from 'react-native';
 import { useTheme } from '@/hooks/useTheme';
 import { useThemeStyles } from '@/hooks/useThemeStyles';
@@ -12,11 +12,13 @@ import Button from '@/components/ui/Button';
 import { ConfirmModal, BottomSheet } from '@/components/ui';
 import { getUser } from '@/features/users/api/get-user';
 import { createPrivateConversation } from '@/features/communication/api/create-private-conversation';
+import { usePosts } from '@/features/community/hooks/usePosts';
 
 // Support requests hooks & api
 import { useSupportRequests } from '@/features/support/hooks/useSupportRequests';
 import { approveSupportRequest } from '@/features/support/api/approve-support-request';
 import { rejectSupportRequest } from '@/features/support/api/reject-support-request';
+import { getSupportRequestById } from '@/features/support/api/get-support-request-by-id';
 
 // Reports hooks & api
 import { usePendingReports } from '@/features/reports/hooks/usePendingReports';
@@ -24,19 +26,39 @@ import { useReviewReport } from '@/features/reports/hooks/useReviewReport';
 import { useResolveReport } from '@/features/reports/hooks/useResolveReport';
 import { useReportDetail } from '@/features/reports/hooks/useReportDetail';
 import { ReportTargetType } from '@/features/reports/types/reports.types';
-import { useQueryClient } from '@tanstack/react-query';
+import { useQueries, useQueryClient } from '@tanstack/react-query';
 import {
   useAdminMoneyTransferTickets,
   useRejectMoneyTransferTicket,
   useResolveMoneyTransferTicket,
 } from '@/features/money-transfer/hooks';
 import type { MoneyTransferTicketResponse } from '@/features/money-transfer/types';
+import { useAuthStore } from '@/features/auth/stores/useAuthStore';
+
+const formatQueueDateTime = (value?: string) => {
+  if (!value) return 'Unknown time';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return 'Unknown time';
+  return date.toLocaleString([], {
+    year: 'numeric',
+    month: 'short',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+  });
+};
 
 export default function ModerationScreen() {
   const theme = useTheme();
   const styles = useThemeStyles();
   const router = useRouter();
   const queryClient = useQueryClient();
+  const { user } = useAuthStore();
+  const { data: postsData } = usePosts();
+  const posts = useMemo(
+    () => (Array.isArray(postsData) ? postsData : []),
+    [postsData],
+  );
   const [tab, setTab] = useState<'pending' | 'reports' | 'transfers'>('pending');
 
   // Queries
@@ -59,6 +81,73 @@ export default function ModerationScreen() {
     isError: isPendingTransfersError,
     refetch: refetchPendingTransfers,
   } = useAdminMoneyTransferTickets('PENDING');
+
+  const pendingRequestDetailQueries = useQueries({
+    queries: (pendingRequests || []).map((request: any) => ({
+      queryKey: ['supportRequest', request.id],
+      queryFn: () => getSupportRequestById(request.id),
+      enabled: !!request.id,
+      retry: false,
+    })),
+  });
+
+  const pendingRequestDetailById = useMemo(() => {
+    const details = new Map<string, any>();
+    (pendingRequests || []).forEach((request: any, index: number) => {
+      const detail = pendingRequestDetailQueries[index]?.data;
+      if (detail) details.set(request.id, detail);
+    });
+    return details;
+  }, [pendingRequests, pendingRequestDetailQueries]);
+
+  const reportTargetQueries = useQueries({
+    queries: (pendingReports || [])
+      .filter((report: any) => report.targetType !== ReportTargetType.POST)
+      .map((report: any) => ({
+        queryKey: ['reportTarget', report.targetType, report.targetId],
+        queryFn: () => {
+          if (report.targetType === ReportTargetType.USER) {
+            return getUser(report.targetId);
+          }
+          if (report.targetType === ReportTargetType.SUPPORT_REQUEST) {
+            return getSupportRequestById(report.targetId);
+          }
+          return Promise.resolve(null);
+        },
+        enabled: !!report.targetId,
+        retry: false,
+      })),
+  });
+
+  const reportTargetLabelById = useMemo(() => {
+    const labels = new Map<string, string>();
+    let queryIndex = 0;
+
+    (pendingReports || []).forEach((report: any) => {
+      if (report.targetType === ReportTargetType.POST) {
+        const post = (posts || []).find((item: any) => item.id === report.targetId);
+        const postContent = post?.content ? String(post.content) : '';
+        const content = postContent ? `"${postContent.slice(0, 60)}${postContent.length > 60 ? '...' : ''}"` : 'Community post';
+        const author = post?.author || post?.authorName || post?.userName;
+        labels.set(report.id, author ? `Post: ${content} by ${author}` : `Post: ${content}`);
+        return;
+      }
+
+      const target = reportTargetQueries[queryIndex]?.data as any;
+      queryIndex += 1;
+      if (report.targetType === ReportTargetType.USER) {
+        labels.set(report.id, `User: ${target?.fullName || target?.email || 'Unknown user'}`);
+        return;
+      }
+      if (report.targetType === ReportTargetType.SUPPORT_REQUEST) {
+        labels.set(report.id, `Support request: ${target?.title || 'Unknown request'}`);
+        return;
+      }
+      labels.set(report.id, `Target: ${String(report.targetId).slice(0, 8)}`);
+    });
+
+    return labels;
+  }, [pendingReports, posts, reportTargetQueries]);
 
   // Action mutations states
   const [actionLoadingId, setActionLoadingId] = useState<string | null>(null);
@@ -154,6 +243,10 @@ export default function ModerationScreen() {
 
   const handleDirectMessage = async () => {
     if (!selectedProfileUserId) return;
+    if (String(selectedProfileUserId) === String(user?.id)) {
+      showAlert('Direct message unavailable', 'You cannot create a direct message with yourself.');
+      return;
+    }
     setChatLoading(true);
     await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     setIsProfileSheetVisible(false);
@@ -344,16 +437,21 @@ export default function ModerationScreen() {
     if (result.canceled || !result.assets?.[0]) return;
 
     const asset: any = result.assets[0];
-    const proofFile = asset.file || {
-      uri: asset.uri,
-      name: asset.fileName || `transfer-proof-${Date.now()}.jpg`,
-      type: asset.mimeType || 'image/jpeg',
-    };
+    const proofName = asset.fileName || `transfer-proof-${Date.now()}.jpg`;
+    const proofType = asset.mimeType || 'image/jpeg';
+    const proofFile =
+      Platform.OS === 'web' && asset.file
+        ? asset.file
+        : {
+            uri: asset.uri,
+            name: proofName,
+            type: proofType,
+          };
 
     setTransferModal(prev => ({
       ...prev,
       proofFile,
-      proofName: asset.fileName || proofFile.name || 'transfer-proof.jpg',
+      proofName,
       errorText: '',
     }));
   };
@@ -401,7 +499,13 @@ export default function ModerationScreen() {
       setActiveModal(null);
       refetchPendingTransfers();
     } catch (err: any) {
-      showAlert('Error', err?.message || 'Failed to resolve transfer ticket.');
+      const message = String(err?.message || '');
+      showAlert(
+        'Error',
+        message.includes('Cloudinary') || message.includes('Failed to upload file')
+          ? 'Transfer proof upload failed on the backend Cloudinary service. Please check backend Cloudinary credentials/API secret or Cloudinary URL, then try again.'
+          : message || 'Failed to resolve transfer ticket.',
+      );
     } finally {
       setActionLoadingId(null);
     }
@@ -410,6 +514,7 @@ export default function ModerationScreen() {
   // Render items based on active tab
   const renderPendingRequestItem = ({ item }: { item: any }) => {
     const isLoading = actionLoadingId === item.id;
+    const detail = pendingRequestDetailById.get(item.id);
     return (
       <View style={[localStyles.itemCard, { backgroundColor: theme.componentBG, borderColor: theme.border }]}>
         <View style={localStyles.cardHeader}>
@@ -421,11 +526,19 @@ export default function ModerationScreen() {
           <Text style={[localStyles.itemTitle, { color: theme.text }]} numberOfLines={1}>{item.title}</Text>
         </View>
         
-        <Text style={[localStyles.itemDesc, { color: theme.textSupporting }]}>{item.description || 'No description provided'}</Text>
+        <Text style={[localStyles.itemDesc, { color: theme.textSupporting }]}>
+          {detail?.description || item.description || 'No description provided'}
+        </Text>
 
         <View style={[localStyles.metaInfo, { backgroundColor: theme.highlightBG }]}>
-          <Text style={{ fontSize: 12, color: theme.textSupporting }} numberOfLines={1}>
-            Requester: {item.requesterName} | Category: {item.categoryName}
+          <Text style={localStyles.metaLine} numberOfLines={1}>
+            Requester: {detail?.requesterName || item.requesterName || 'Unknown'}
+          </Text>
+          <Text style={localStyles.metaLine} numberOfLines={1}>
+            Category: {detail?.categoryName || item.categoryName || 'Uncategorized'}
+          </Text>
+          <Text style={[localStyles.metaLine, { fontWeight: '700' }]} numberOfLines={1}>
+            Submitted: {formatQueueDateTime(detail?.createdAt || item.createdAt)}
           </Text>
         </View>
 
@@ -551,6 +664,10 @@ export default function ModerationScreen() {
           {item.reason || 'No reason provided'}
         </Text>
 
+        <Text style={[localStyles.itemDesc, { color: theme.textSupporting }]} numberOfLines={2}>
+          {reportTargetLabelById.get(item.id) || `Target: ${String(item.targetId).slice(0, 8)}`}
+        </Text>
+
         {/* Reporter clickable profile link */}
         <Pressable
           onPress={(e) => {
@@ -574,6 +691,9 @@ export default function ModerationScreen() {
               <MaterialIcons name="chevron-right" size={16} color={theme.primary} />
             </View>
           </View>
+          <Text style={[localStyles.metaLine, { marginTop: 6, fontWeight: '700' }]} numberOfLines={1}>
+            Submitted: {formatQueueDateTime(item.createdAt)}
+          </Text>
         </Pressable>
 
         {/* Quick action buttons directly on card */}
@@ -654,8 +774,11 @@ export default function ModerationScreen() {
         </Text>
 
         <View style={[localStyles.metaInfo, { backgroundColor: theme.highlightBG }]}>
-          <Text style={{ fontSize: 12, color: theme.textSupporting }} numberOfLines={1}>
-            Requester: {item.requesterName} • {new Date(item.createdAt).toLocaleString()}
+          <Text style={localStyles.metaLine} numberOfLines={1}>
+            Requester: {item.requesterName || 'Unknown'}
+          </Text>
+          <Text style={[localStyles.metaLine, { fontWeight: '700' }]} numberOfLines={1}>
+            Submitted: {formatQueueDateTime(item.createdAt)}
           </Text>
         </View>
 
@@ -738,39 +861,38 @@ export default function ModerationScreen() {
 
       {/* Modern Tabs */}
       <View style={[localStyles.tabBar, { borderBottomColor: theme.border, backgroundColor: theme.componentBG }]}>
-        <Pressable
-          onPress={async () => {
-            await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-            setTab('pending');
-          }}
-          style={[localStyles.tab, tab === 'pending' && { borderBottomColor: theme.primary }]}
-        >
-          <Text style={[localStyles.tabText, { color: tab === 'pending' ? theme.primary : theme.textSupporting, fontWeight: tab === 'pending' ? '700' : '500' }]}>
-            Pending Requests ({(pendingRequests || []).length})
-          </Text>
-        </Pressable>
-        <Pressable
-          onPress={async () => {
-            await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-            setTab('reports');
-          }}
-          style={[localStyles.tab, tab === 'reports' && { borderBottomColor: theme.primary }]}
-        >
-          <Text style={[localStyles.tabText, { color: tab === 'reports' ? theme.primary : theme.textSupporting, fontWeight: tab === 'reports' ? '700' : '500' }]}>
-            User Reports ({(pendingReports || []).length})
-          </Text>
-        </Pressable>
-        <Pressable
-          onPress={async () => {
-            await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-            setTab('transfers');
-          }}
-          style={[localStyles.tab, tab === 'transfers' && { borderBottomColor: theme.primary }]}
-        >
-          <Text style={[localStyles.tabText, { color: tab === 'transfers' ? theme.primary : theme.textSupporting, fontWeight: tab === 'transfers' ? '700' : '500' }]}>
-            Transfers ({(pendingTransferTickets || []).length})
-          </Text>
-        </Pressable>
+        {[
+          { key: 'pending' as const, label: 'Requests', count: (pendingRequests || []).length },
+          { key: 'reports' as const, label: 'Reports', count: (pendingReports || []).length },
+          { key: 'transfers' as const, label: 'Transfers', count: (pendingTransferTickets || []).length },
+        ].map((item) => {
+          const active = tab === item.key;
+          return (
+            <Pressable
+              key={item.key}
+              onPress={async () => {
+                await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                setTab(item.key);
+              }}
+              style={[
+                localStyles.tab,
+                {
+                  backgroundColor: active ? theme.primary : 'transparent',
+                  borderColor: active ? theme.primary : theme.border,
+                },
+              ]}
+            >
+              <Text style={[localStyles.tabText, { color: active ? '#FFFFFF' : theme.textSupporting }]}>
+                {item.label}
+              </Text>
+              <View style={[localStyles.tabCountBadge, { backgroundColor: active ? 'rgba(255,255,255,0.22)' : theme.highlightBG }]}>
+                <Text style={[localStyles.tabCountText, { color: active ? '#FFFFFF' : theme.text }]}>
+                  {item.count}
+                </Text>
+              </View>
+            </Pressable>
+          );
+        })}
       </View>
 
       {isDataLoading ? (
@@ -1078,7 +1200,7 @@ export default function ModerationScreen() {
                           Target: {getTargetTypeLabel(reportDetail.targetType)}
                         </Text>
                         <Text style={{ fontSize: 13, color: theme.text, marginTop: 2 }} numberOfLines={1}>
-                          {reportDetail.targetId}
+                          {reportTargetLabelById.get(reportDetail.id) || String(reportDetail.targetId).slice(0, 8)}
                         </Text>
                       </View>
                     </View>
@@ -1248,13 +1370,15 @@ export default function ModerationScreen() {
             </View>
 
             {/* DM Button */}
-            <Button
-              text="Direct Message"
-              primary
-              onPress={handleDirectMessage}
-              style={{ width: '100%', borderRadius: 100 }}
-              isLoading={chatLoading}
-            />
+            {String(selectedProfileUserId) !== String(user?.id) && (
+              <Button
+                text="Direct Message"
+                primary
+                onPress={handleDirectMessage}
+                style={{ width: '100%', borderRadius: 100 }}
+                isLoading={chatLoading}
+              />
+            )}
           </View>
         ) : (
           <View style={{ padding: 40, justifyContent: 'center', alignItems: 'center' }}>
@@ -1293,17 +1417,38 @@ const localStyles = StyleSheet.create({
   },
   tabBar: {
     flexDirection: 'row',
+    gap: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
     borderBottomWidth: 1,
   },
   tab: {
     flex: 1,
-    paddingVertical: 14,
+    minWidth: 0,
+    minHeight: 42,
+    paddingVertical: 7,
+    paddingHorizontal: 8,
     alignItems: 'center',
-    borderBottomWidth: 2,
-    borderBottomColor: 'transparent',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderRadius: 999,
+    gap: 4,
   },
   tabText: {
-    fontSize: 13,
+    fontSize: 12,
+    fontWeight: '800',
+  },
+  tabCountBadge: {
+    minWidth: 22,
+    height: 20,
+    paddingHorizontal: 6,
+    borderRadius: 999,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  tabCountText: {
+    fontSize: 11,
+    fontWeight: '800',
   },
   list: {
     padding: Spacing.base,
@@ -1346,6 +1491,11 @@ const localStyles = StyleSheet.create({
     paddingHorizontal: 12,
     paddingVertical: 8,
     borderRadius: 8,
+    gap: 3,
+  },
+  metaLine: {
+    fontSize: 12,
+    color: '#64748B',
   },
   actionsRow: {
     flexDirection: 'row',

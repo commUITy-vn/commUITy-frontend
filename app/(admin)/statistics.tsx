@@ -2,6 +2,7 @@ import React from "react";
 import {
   ActivityIndicator,
   Pressable,
+  RefreshControl,
   ScrollView,
   StyleSheet,
   Text,
@@ -11,6 +12,7 @@ import { MaterialIcons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
 import { useQueries } from "@tanstack/react-query";
 import { useRouter } from "expo-router";
+import Svg, { Circle, G } from "react-native-svg";
 
 import { BorderRadius, Spacing } from "@/constants/theme";
 import {
@@ -64,9 +66,86 @@ const Section = ({
   );
 };
 
+const CHART_COLORS = ["#2563EB", "#16A34A", "#F59E0B", "#DC2626", "#7C3AED", "#0891B2", "#DB2777", "#475569"];
+
+const DonutChart = ({
+  data,
+}: {
+  data: { label: string; value: number; color?: string }[];
+}) => {
+  const theme = useTheme();
+  const size = 148;
+  const strokeWidth = 24;
+  const radius = (size - strokeWidth) / 2;
+  const circumference = 2 * Math.PI * radius;
+  const total = data.reduce((sum, item) => sum + Math.max(0, Number(item.value || 0)), 0);
+  let offset = 0;
+
+  return (
+    <View style={styles.chartWrap}>
+      <View style={styles.chartBox}>
+        <Svg width={size} height={size}>
+          <G rotation="-90" origin={`${size / 2}, ${size / 2}`}>
+            <Circle
+              cx={size / 2}
+              cy={size / 2}
+              r={radius}
+              stroke={theme.highlightBG}
+              strokeWidth={strokeWidth}
+              fill="none"
+            />
+            {total > 0 &&
+              data.map((item, index) => {
+                const value = Math.max(0, Number(item.value || 0));
+                const dash = (value / total) * circumference;
+                const segment = (
+                  <Circle
+                    key={`${item.label}-${index}`}
+                    cx={size / 2}
+                    cy={size / 2}
+                    r={radius}
+                    stroke={item.color || CHART_COLORS[index % CHART_COLORS.length]}
+                    strokeWidth={strokeWidth}
+                    strokeDasharray={`${dash} ${circumference - dash}`}
+                    strokeDashoffset={-offset}
+                    strokeLinecap="round"
+                    fill="none"
+                  />
+                );
+                offset += dash;
+                return segment;
+              })}
+          </G>
+        </Svg>
+        <View style={styles.chartCenter}>
+          <Text style={[styles.chartTotal, { color: theme.text }]}>{total}</Text>
+          <Text style={[styles.chartTotalLabel, { color: theme.textSupporting }]}>total</Text>
+        </View>
+      </View>
+      <View style={styles.legendList}>
+        {data.map((item, index) => (
+          <View key={item.label} style={styles.legendRow}>
+            <View
+              style={[
+                styles.legendDot,
+                { backgroundColor: item.color || CHART_COLORS[index % CHART_COLORS.length] },
+              ]}
+            />
+            <Text style={[styles.legendText, { color: theme.text }]} numberOfLines={1}>
+              {item.label}
+            </Text>
+            <Text style={[styles.legendValue, { color: theme.textSupporting }]}>{item.value}</Text>
+          </View>
+        ))}
+      </View>
+    </View>
+  );
+};
+
 export default function AdminStatistics() {
   const theme = useTheme();
   const router = useRouter();
+  const [isRefreshing, setIsRefreshing] = React.useState(false);
 
   const [
     usersQuery,
@@ -77,12 +156,12 @@ export default function AdminStatistics() {
     fundsQuery,
   ] = useQueries({
     queries: [
-      { queryKey: ["adminDashboard", "users"], queryFn: getUserStatistics },
-      { queryKey: ["adminDashboard", "supportRequests"], queryFn: getSupportRequestStatistics },
-      { queryKey: ["adminDashboard", "categories"], queryFn: getCategoryStatistics },
-      { queryKey: ["adminDashboard", "reports"], queryFn: getReportStatistics },
-      { queryKey: ["adminDashboard", "posts"], queryFn: getPostStatistics },
-      { queryKey: ["adminStats", "communityFunds"], queryFn: () => getCommunityFunds(false) },
+      { queryKey: ["adminDashboard", "users"], queryFn: getUserStatistics, refetchInterval: 30000 },
+      { queryKey: ["adminDashboard", "supportRequests"], queryFn: getSupportRequestStatistics, refetchInterval: 30000 },
+      { queryKey: ["adminDashboard", "categories"], queryFn: getCategoryStatistics, refetchInterval: 30000 },
+      { queryKey: ["adminDashboard", "reports"], queryFn: getReportStatistics, refetchInterval: 30000 },
+      { queryKey: ["adminDashboard", "posts"], queryFn: getPostStatistics, refetchInterval: 30000 },
+      { queryKey: ["adminStats", "communityFunds"], queryFn: () => getCommunityFunds(false), refetchInterval: 30000 },
     ],
   });
 
@@ -110,6 +189,22 @@ export default function AdminStatistics() {
     postsQuery.isError ||
     fundsQuery.isError;
 
+  const handleRefresh = React.useCallback(async () => {
+    setIsRefreshing(true);
+    try {
+      await Promise.allSettled([
+        usersQuery.refetch(),
+        requestsQuery.refetch(),
+        categoriesQuery.refetch(),
+        reportsQuery.refetch(),
+        postsQuery.refetch(),
+        fundsQuery.refetch(),
+      ]);
+    } finally {
+      setIsRefreshing(false);
+    }
+  }, [usersQuery, requestsQuery, categoriesQuery, reportsQuery, postsQuery, fundsQuery]);
+
   const handleBack = async () => {
     await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     router.back();
@@ -129,35 +224,58 @@ export default function AdminStatistics() {
         <View style={styles.center}>
           <ActivityIndicator size="large" color={theme.primary} />
         </View>
-      ) : hasError ? (
-        <View style={styles.center}>
-          <MaterialIcons name="error-outline" size={42} color={theme.danger} />
-          <Text style={[styles.emptyText, { color: theme.text }]}>Some statistics could not be loaded.</Text>
-        </View>
       ) : (
-        <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
+        <ScrollView
+          contentContainerStyle={styles.content}
+          showsVerticalScrollIndicator={false}
+          refreshControl={
+            <RefreshControl refreshing={isRefreshing} onRefresh={handleRefresh} tintColor={theme.primary} />
+          }
+        >
+          {hasError ? (
+            <View style={[styles.warningBox, { backgroundColor: theme.danger + "12", borderColor: theme.danger }]}>
+              <MaterialIcons name="error-outline" size={18} color={theme.danger} />
+              <Text style={{ color: theme.danger, flex: 1, fontSize: 13 }}>
+                Some statistics could not be refreshed. Showing available data.
+              </Text>
+              <Pressable onPress={handleRefresh}>
+                <Text style={{ color: theme.primary, fontWeight: "800" }}>Retry</Text>
+              </Pressable>
+            </View>
+          ) : null}
           <Section title="User Statistics" icon="people">
             <View style={styles.grid}>
               <StatPill label="Total Users" value={userStats?.totalUsers || 0} />
               <StatPill label="Active" value={userStats?.activeUsers || 0} />
               <StatPill label="Inactive" value={userStats?.inactiveUsers || 0} />
-              <StatPill label="Requester" value={userStats?.requesters || 0} />
-              <StatPill label="Volunteer" value={userStats?.volunteers || 0} />
-              <StatPill label="Collaborator" value={userStats?.collaborators || 0} />
-              <StatPill label="Admin" value={userStats?.admins || 0} />
             </View>
+            <DonutChart
+              data={[
+                { label: "Requester", value: userStats?.requesters || 0 },
+                { label: "Volunteer", value: userStats?.volunteers || 0 },
+                { label: "Collaborator", value: userStats?.collaborators || 0 },
+                { label: "Admin", value: userStats?.admins || 0 },
+              ]}
+            />
           </Section>
 
           <Section title="Support Request Statistics" icon="volunteer-activism">
             <View style={styles.grid}>
               <StatPill label="Total SR" value={requestStats?.totalSupportRequests || 0} />
-              <StatPill label="Pending" value={requestStats?.pending || 0} />
               <StatPill label="Approved" value={requestStats?.approved || 0} />
               <StatPill label="In Progress" value={requestStats?.inProgress || 0} />
-              <StatPill label="Rejected" value={requestStats?.rejected || 0} />
               <StatPill label="Completed" value={requestStats?.completed || 0} />
-              <StatPill label="Cancelled" value={requestStats?.cancelled || 0} />
             </View>
+            <DonutChart
+              data={[
+                { label: "Pending", value: requestStats?.pending || 0 },
+                { label: "Approved", value: requestStats?.approved || 0 },
+                { label: "In Progress", value: requestStats?.inProgress || 0 },
+                { label: "Rejected", value: requestStats?.rejected || 0 },
+                { label: "Completed", value: requestStats?.completed || 0 },
+                { label: "Cancelled", value: requestStats?.cancelled || 0 },
+              ]}
+            />
           </Section>
 
           <Section title="Category Statistics" icon="category">
@@ -166,12 +284,13 @@ export default function AdminStatistics() {
               <StatPill label="Active Categories" value={categoryStats?.activeCategories || 0} />
             </View>
             <View style={styles.list}>
-              {(categoryStats?.categories || []).map((category) => (
-                <View key={category.categoryId} style={[styles.row, { borderBottomColor: theme.border }]}>
-                  <Text style={[styles.rowLabel, { color: theme.text }]}>{category.categoryName}</Text>
-                  <Text style={[styles.rowValue, { color: theme.textSupporting }]}>{category.supportRequestCount}</Text>
-                </View>
-              ))}
+              <DonutChart
+                data={(categoryStats?.categories || []).map((category, index) => ({
+                  label: category.categoryName,
+                  value: category.supportRequestCount,
+                  color: CHART_COLORS[index % CHART_COLORS.length],
+                }))}
+              />
             </View>
           </Section>
 
@@ -185,6 +304,20 @@ export default function AdminStatistics() {
               <StatPill label="Post Target" value={reportStats?.postReports || 0} />
               <StatPill label="User Target" value={reportStats?.userReports || 0} />
             </View>
+            <DonutChart
+              data={[
+                { label: "Pending", value: reportStats?.pending || 0 },
+                { label: "Reviewed", value: reportStats?.reviewed || 0 },
+                { label: "Resolved", value: reportStats?.resolved || 0 },
+              ]}
+            />
+            <DonutChart
+              data={[
+                { label: "Support Request", value: reportStats?.supportRequestReports || 0 },
+                { label: "Post", value: reportStats?.postReports || 0 },
+                { label: "User", value: reportStats?.userReports || 0 },
+              ]}
+            />
           </Section>
 
           <Section title="Post Statistics" icon="article">
@@ -195,6 +328,14 @@ export default function AdminStatistics() {
               <StatPill label="Hidden" value={postStats?.hidden || 0} />
               <StatPill label="Removed" value={postStats?.removed || 0} />
             </View>
+            <DonutChart
+              data={[
+                { label: "Active", value: postStats?.active || 0 },
+                { label: "Under Review", value: postStats?.underReview || 0 },
+                { label: "Hidden", value: postStats?.hidden || 0 },
+                { label: "Removed", value: postStats?.removed || 0 },
+              ]}
+            />
           </Section>
 
           <Section title="Fund Statistics" icon="account-balance-wallet">
@@ -242,6 +383,14 @@ const styles = StyleSheet.create({
     flexWrap: "wrap",
     gap: 8,
   },
+  warningBox: {
+    borderWidth: 1,
+    borderRadius: 10,
+    padding: 10,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+  },
   pill: {
     minWidth: "31%",
     flexGrow: 1,
@@ -252,6 +401,30 @@ const styles = StyleSheet.create({
   pillValue: { fontSize: 18, fontWeight: "800" },
   pillLabel: { marginTop: 2, fontSize: 11, fontWeight: "600" },
   list: { marginTop: 2 },
+  chartWrap: {
+    flexDirection: "row",
+    gap: 14,
+    alignItems: "center",
+    marginTop: 6,
+  },
+  chartBox: {
+    width: 148,
+    height: 148,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  chartCenter: {
+    position: "absolute",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  chartTotal: { fontSize: 20, fontWeight: "900" },
+  chartTotalLabel: { fontSize: 10, fontWeight: "700", textTransform: "uppercase" },
+  legendList: { flex: 1, gap: 7 },
+  legendRow: { flexDirection: "row", alignItems: "center", gap: 8 },
+  legendDot: { width: 10, height: 10, borderRadius: 5 },
+  legendText: { flex: 1, fontSize: 12, fontWeight: "700" },
+  legendValue: { fontSize: 12, fontWeight: "800" },
   row: {
     flexDirection: "row",
     justifyContent: "space-between",

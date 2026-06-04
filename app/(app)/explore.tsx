@@ -1,5 +1,5 @@
-import { View, Text, FlatList, Image, Pressable, StyleSheet, Modal, ActivityIndicator, Platform, ScrollView, Linking } from 'react-native';
-import { useState, useRef, useEffect } from 'react';
+import { View, Text, FlatList, Image, Pressable, StyleSheet, Modal, ActivityIndicator, Platform, ScrollView, Linking, Alert } from 'react-native';
+import { useState, useRef, useEffect, useMemo } from 'react';
 import { useTheme } from '@/hooks/useTheme';
 import { useThemeStyles } from '@/hooks/useThemeStyles';
 import { useRouter } from 'expo-router';
@@ -16,9 +16,15 @@ import { ReportModal, ReportTargetType } from '@/features/reports';
 import { getUser } from '@/features/users/api/get-user';
 import { createPrivateConversation } from '@/features/communication/api/create-private-conversation';
 import { api } from '@/lib/api-client';
+import { uploadMedia } from '@/features/media/api/upload-media';
 import { storage } from '@/lib/storage';
 import { env } from '@/config/env';
 import { useAuthStore } from '@/features/auth/stores/useAuthStore';
+import { reactToPost } from '@/features/community/api/react-to-post';
+import { removeReaction } from '@/features/community/api/remove-reaction';
+import { getPostReactionsCount } from '@/features/community/api/get-post-reactions';
+import { deletePost } from '@/features/community/api/delete-post';
+import { deleteComment } from '@/features/community/api/delete-comment';
 
 interface Post {
   id: string;
@@ -26,6 +32,7 @@ interface Post {
   author: string;
   avatar: string;
   timestamp: string;
+  rawCreatedAt?: string | null;
   content: string;
   tags: string[];
   likes: number;
@@ -64,10 +71,8 @@ function getRelativeTime(dateString: string): string {
     let clean = dateString;
     // Normalize fractional seconds (e.g. .85436 -> .854)
     clean = clean.replace(/(\.\d{3})\d+/, '$1');
-    // Ensure UTC Z if no timezone is specified and it has a 'T'
-    if (clean.includes('T') && !clean.endsWith('Z') && !clean.match(/[+-]\d{2}:?\d{2}$/)) {
-      clean = clean + 'Z';
-    }
+    // Backend local timestamps have no timezone. Parsing them as UTC makes old posts look like "Just now".
+    clean = clean.replace(' ', 'T');
     const date = new Date(clean);
     if (isNaN(date.getTime())) return dateString;
     const now = new Date();
@@ -96,6 +101,17 @@ function getRelativeTime(dateString: string): string {
     return dateString;
   }
 }
+
+const POST_REACTIONS = [
+  { type: 'LIKE', emoji: '👍', label: 'Like' },
+  { type: 'LOVE', emoji: '❤️', label: 'Love' },
+  { type: 'CARE', emoji: '🤗', label: 'Care' },
+  { type: 'WOW', emoji: '😮', label: 'Wow' },
+  { type: 'SAD', emoji: '😢', label: 'Sad' },
+] as const;
+
+const reactionByType = (type?: string | null) =>
+  POST_REACTIONS.find((reaction) => reaction.type === type);
 
 const DUMMY_COMMENTS: Record<string, any[]> = {};
 
@@ -148,29 +164,18 @@ const getProfileAvatarUrl = (profile: any) =>
   profile?.userAvatar;
 
 const uploadPendingMedia = async (item: PendingMedia, folderName: string) => {
-  const formData = new FormData();
   const fileName = item.fileName || `media-${Date.now()}`;
   const mimeType = item.mimeType || 'application/octet-stream';
 
-  if (Platform.OS === 'web') {
-    if (!item.file) {
-      throw new Error(`Missing local file for ${fileName}`);
-    }
-    formData.append('file', item.file, fileName);
-  } else {
-    formData.append('file', {
-      uri: item.fileUrl,
-      name: fileName,
-      type: mimeType,
-    } as any);
-  }
-
-  formData.append('folderName', folderName);
-  formData.append('altText', fileName);
-  formData.append('isPublic', 'true');
-
-  const mediaRes = await api.postForm<any>('/api/v1/media/upload', formData);
-  return mediaRes?.data || mediaRes;
+  return uploadMedia({
+    file: item.file,
+    uri: item.fileUrl,
+    fileName,
+    mimeType,
+    fileSize: item.fileSize,
+    folderName,
+    altText: fileName,
+  });
 };
 
 const Avatar = ({ uri, name, size = 44, theme }: { uri?: string; name?: string; size?: number; theme: any }) => {
@@ -222,7 +227,6 @@ function ReactionPopup({
   theme: any;
   style?: any;
 }) {
-  const quickEmojis = ['👍', '❤️', '😂', '🎉', '😮', '😢'];
   return (
     <View
       style={[
@@ -242,16 +246,16 @@ function ReactionPopup({
           shadowOffset: { width: 0, height: 4 },
           shadowOpacity: 0.15,
           shadowRadius: 8,
-          elevation: 8,
           zIndex: 100,
+          elevation: 20,
         },
         style,
       ]}
     >
-      {quickEmojis.map((emoji) => (
+      {POST_REACTIONS.map((reaction) => (
         <Pressable
-          key={emoji}
-          onPress={() => onSelect(emoji)}
+          key={reaction.type}
+          onPress={() => onSelect(reaction.emoji)}
           style={({ pressed }) => ({
             paddingHorizontal: 4,
             paddingVertical: 2,
@@ -259,7 +263,7 @@ function ReactionPopup({
             backgroundColor: pressed ? theme.highlightBG : 'transparent',
           })}
         >
-          <Text style={{ fontSize: 20 }}>{emoji}</Text>
+          <Text style={{ fontSize: 20 }}>{reaction.emoji}</Text>
         </Pressable>
       ))}
     </View>
@@ -362,9 +366,14 @@ const PostCard = ({ post, onAuthorPress }: { post: Post; onAuthorPress?: (author
   const themeStyles = useThemeStyles();
   const router = useRouter();
   const { user } = useAuthStore();
+  const queryClient = useQueryClient();
   const [isLiked, setIsLiked] = useState(post.isLiked);
   const [likeCount, setLikeCount] = useState(post.likes);
   const [showComments, setShowComments] = useState(false);
+  const [commentSort, setCommentSort] = useState<'all' | 'best' | 'recent'>('all');
+  const [myReaction, setMyReaction] = useState<string | null>(null);
+  const [reactionCounts, setReactionCounts] = useState<Record<string, number>>({});
+  const [showPostReactionPicker, setShowPostReactionPicker] = useState(false);
   const [commentText, setCommentText] = useState('');
   const [isMenuSheetVisible, setIsMenuSheetVisible] = useState(false);
   const [isReportModalVisible, setIsReportModalVisible] = useState(false);
@@ -405,6 +414,14 @@ const PostCard = ({ post, onAuthorPress }: { post: Post; onAuthorPress?: (author
 
   const handleDirectMessage = async () => {
     if (!selectedAuthorId) return;
+    if (selectedAuthorId === user?.id) {
+      setAlertModal({
+        visible: true,
+        title: 'Direct message unavailable',
+        message: 'You cannot create a direct message with yourself.',
+      });
+      return;
+    }
     setChatLoading(true);
     await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     setIsProfileVisible(false);
@@ -421,18 +438,21 @@ const PostCard = ({ post, onAuthorPress }: { post: Post; onAuthorPress?: (author
         console.error('No conversation ID returned', res);
       }
     } catch (err) {
-      console.error('Failed to create private conversation, navigating to mock chat:', err);
-      requestAnimationFrame(() => {
-        router.push({ pathname: '/messages/[id]', params: { id: selectedAuthorId } } as any);
+      console.error('Failed to create private conversation:', err);
+      setAlertModal({
+        visible: true,
+        title: 'Could not start chat',
+        message: 'Please try again in a moment.',
       });
     } finally {
       setChatLoading(false);
     }
   };
 
-  const { data: serverComments } = usePostComments(post.id);
+  const { data: serverComments, refetch: refetchComments } = usePostComments(post.id);
   const { mutateAsync: addServerComment } = useCreatePostComment();
   const [localComments, setLocalComments] = useState<any[]>(DUMMY_COMMENTS[post.id] || []);
+  const [, setTimeTick] = useState(0);
 
   // Comments Reactions Local State
   const [commentReactions, setCommentReactions] = useState<Record<string, Record<string, string[]>>>({});
@@ -444,24 +464,65 @@ const PostCard = ({ post, onAuthorPress }: { post: Post; onAuthorPress?: (author
   const commentFileInputRef = useRef<HTMLInputElement>(null);
   const [replyingToComment, setReplyingToComment] = useState<{ id: string; authorName: string } | null>(null);
 
-  const commentsList = [
-    ...localComments.map((c: any) => ({
-      ...c,
-      authorId: c.authorId || user?.id || 'me-id',
-    })),
-    ...(serverComments && Array.isArray(serverComments)
-      ? serverComments.map((c: any) => ({
-          id: c.id || String(Math.random()),
-          authorId: c.authorId || c.userId || (c.user && c.user.id) || c.creatorId || c.createdBy || 'unknown',
-          authorName: c.author || c.authorName || c.userName || 'User',
-          avatar: c.avatar || c.authorAvatarUrl || c.userAvatarUrl || 'https://i.pravatar.cc/150',
-          content: c.content,
-          timestamp: getRelativeTime(c.timestamp || c.createdAt || 'Just now'),
-          media: c.media || undefined,
-          parentCommentId: c.parentCommentId || undefined,
-        }))
-      : []),
-  ];
+  useEffect(() => {
+    const timer = setInterval(() => setTimeTick((tick) => tick + 1), 1000);
+    return () => clearInterval(timer);
+  }, []);
+
+  useEffect(() => {
+    const timer = setInterval(() => {
+      if (showComments) {
+        refetchComments();
+      }
+    }, 10000);
+    return () => clearInterval(timer);
+  }, [showComments, refetchComments]);
+
+  const commentsList = useMemo(
+    () => [
+      ...localComments.map((c: any) => ({
+        ...c,
+        authorId: c.authorId || user?.id || 'me-id',
+      })),
+      ...(serverComments && Array.isArray(serverComments)
+        ? serverComments.map((c: any) => ({
+            id: c.id || String(Math.random()),
+            authorId: c.authorId || c.userId || (c.user && c.user.id) || c.creatorId || c.createdBy || 'unknown',
+            authorName: c.author || c.authorName || c.userName || 'User',
+            avatar: c.avatar || c.authorAvatarUrl || c.userAvatarUrl || 'https://i.pravatar.cc/150',
+            content: c.content,
+            timestamp: getRelativeTime(c.createdAt || c.timestamp || 'Just now'),
+            createdAt: c.createdAt || c.timestamp || new Date().toISOString(),
+            media: c.media || undefined,
+            parentCommentId: c.parentCommentId || undefined,
+          }))
+        : []),
+    ],
+    [localComments, serverComments, user?.id],
+  );
+
+  const mentionableAuthors = useMemo(() => {
+    const seen = new Set<string>();
+    return commentsList
+      .map((comment: any) => ({
+        id: comment.authorId,
+        name: comment.authorName,
+      }))
+      .filter((author: { id: string; name: string }) => {
+        if (!author.id || !author.name || seen.has(author.name)) return false;
+        seen.add(author.name);
+        return true;
+      })
+      .slice(0, 5);
+  }, [commentsList]);
+  const mentionQuery = useMemo(() => {
+    const match = commentText.match(/(?:^|\s)@([^\s@]*)$/);
+    return match ? match[1].toLowerCase() : null;
+  }, [commentText]);
+  const mentionSuggestions = useMemo(() => {
+    if (mentionQuery === null) return [];
+    return mentionableAuthors.filter((author: { id: string; name: string }) => author.name.toLowerCase().includes(mentionQuery));
+  }, [mentionQuery, mentionableAuthors]);
 
   const commentsCount = serverComments !== undefined
     ? commentsList.length
@@ -471,16 +532,6 @@ const PostCard = ({ post, onAuthorPress }: { post: Post; onAuthorPress?: (author
   useEffect(() => {
     const loadPersistedData = async () => {
       try {
-        const likesDataStr = await storage.getItemAsync(`explore_likes_${post.id}`);
-        if (likesDataStr) {
-          const likesData = JSON.parse(likesDataStr);
-          setIsLiked(likesData.isLiked);
-          setLikeCount(likesData.likes);
-        } else {
-          setIsLiked(post.isLiked);
-          setLikeCount(post.likes);
-        }
-
         const localCommentsStr = await storage.getItemAsync(`explore_comments_${post.id}`);
         if (localCommentsStr) {
           setLocalComments(JSON.parse(localCommentsStr));
@@ -501,21 +552,78 @@ const PostCard = ({ post, onAuthorPress }: { post: Post; onAuthorPress?: (author
     loadPersistedData();
   }, [post.id, post.isLiked, post.likes]);
 
-  const handleLike = async () => {
-    await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    const newIsLiked = !isLiked;
-    const newLikeCount = newIsLiked ? likeCount + 1 : likeCount - 1;
-    setIsLiked(newIsLiked);
-    setLikeCount(newLikeCount);
+  useEffect(() => {
+    let isMounted = true;
+    const loadReactions = async () => {
+      try {
+        const [countRes, myRes] = await Promise.all([
+          getPostReactionsCount(post.id),
+          api.get<any>(`/api/v1/posts/${post.id}/reactions/me`).catch(() => null),
+        ]);
+        if (!isMounted) return;
+        const countData: any = (countRes as any)?.data || countRes || {};
+        const counts = countData.countByType || {};
+        const total = Number(countData.totalCount || Object.values(counts).reduce((sum: number, value: any) => sum + Number(value || 0), 0));
+        setReactionCounts(counts);
+        setLikeCount(total);
+        const current = (myRes as any)?.data || myRes;
+        const currentType = current?.type || null;
+        setMyReaction(currentType);
+        setIsLiked(!!currentType);
+      } catch (err) {
+        setLikeCount(post.likes || 0);
+        setIsLiked(post.isLiked || false);
+      }
+    };
+    loadReactions();
+    return () => {
+      isMounted = false;
+    };
+  }, [post.id, post.isLiked, post.likes]);
 
-    try {
-      await storage.setItemAsync(
-        `explore_likes_${post.id}`,
-        JSON.stringify({ isLiked: newIsLiked, likes: newLikeCount })
-      );
-    } catch (err) {
-      console.error('Failed to persist like state:', err);
+  const handleReaction = async (type: string) => {
+    await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    const previousReaction = myReaction;
+    const previousCounts = reactionCounts;
+    const previousTotal = likeCount;
+    const nextReaction = previousReaction === type ? null : type;
+
+    const nextCounts = { ...reactionCounts };
+    if (previousReaction) {
+      nextCounts[previousReaction] = Math.max(0, Number(nextCounts[previousReaction] || 0) - 1);
     }
+    if (nextReaction) {
+      nextCounts[nextReaction] = Number(nextCounts[nextReaction] || 0) + 1;
+    }
+    setMyReaction(nextReaction);
+    setReactionCounts(nextCounts);
+    setLikeCount(Object.values(nextCounts).reduce((sum, value) => sum + Number(value || 0), 0));
+    setIsLiked(!!nextReaction);
+    try {
+      if (!nextReaction) {
+        await removeReaction(post.id);
+      } else if (previousReaction) {
+        await api.patch(`/api/v1/posts/${post.id}/reactions`, { type: nextReaction });
+      } else {
+        await reactToPost(post.id, { type: nextReaction });
+      }
+      queryClient.invalidateQueries({ queryKey: ['posts'] });
+    } catch (err) {
+      console.error('Failed to update post reaction:', err);
+      setMyReaction(previousReaction);
+      setReactionCounts(previousCounts);
+      setLikeCount(previousTotal);
+      setIsLiked(!!previousReaction);
+      Alert.alert('Unable to react', (err as any)?.message || 'Please try again.');
+    }
+  };
+
+  const handleShowReactionSummary = async () => {
+    await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    const rows = POST_REACTIONS
+      .map((reaction) => `${reaction.emoji} ${reaction.label}: ${reactionCounts[reaction.type] || 0}`)
+      .join('\n');
+    Alert.alert('Post reactions', rows || 'No reactions yet.');
   };
 
   const handleComment = async () => {
@@ -527,16 +635,18 @@ const PostCard = ({ post, onAuthorPress }: { post: Post; onAuthorPress?: (author
     if (Platform.OS !== 'web') return;
     const file = e.target.files?.[0];
     if (!file) return;
+    if (!file.type.startsWith('image/')) {
+      Alert.alert('Images only', 'Comments only support image attachments.');
+      if (commentFileInputRef.current) commentFileInputRef.current.value = '';
+      return;
+    }
     setIsCommentUploading(true);
     try {
       await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-      const localUrl = URL.createObjectURL(file);
-      const isImg = file.type.startsWith('image/');
-      const fileType = isImg ? 'IMAGE' : 'DOCUMENT';
       const uploadedMedia = await uploadPendingMedia({
         fileName: file.name,
-        fileUrl: localUrl,
-        fileType,
+        fileUrl: URL.createObjectURL(file),
+        fileType: 'IMAGE',
         mimeType: file.type || 'application/octet-stream',
         fileSize: file.size,
         file,
@@ -544,8 +654,8 @@ const PostCard = ({ post, onAuthorPress }: { post: Post; onAuthorPress?: (author
       setSelectedCommentMedia({
         id: uploadedMedia?.id || String(Math.random()),
         fileName: file.name,
-        fileUrl: uploadedMedia?.fileUrl || localUrl,
-        fileType,
+        fileUrl: uploadedMedia?.fileUrl || URL.createObjectURL(file),
+        fileType: 'IMAGE',
         mimeType: file.type || 'application/octet-stream',
         fileSize: file.size,
       });
@@ -555,13 +665,67 @@ const PostCard = ({ post, onAuthorPress }: { post: Post; onAuthorPress?: (author
         id: String(Date.now()),
         fileName: file.name,
         fileUrl: URL.createObjectURL(file),
-        fileType: file.type.startsWith('image/') ? 'IMAGE' : 'DOCUMENT',
+        fileType: 'IMAGE',
         mimeType: file.type,
         fileSize: file.size,
       });
     } finally {
       setIsCommentUploading(false);
       if (commentFileInputRef.current) commentFileInputRef.current.value = '';
+    }
+  };
+
+  const handlePickCommentImage = async () => {
+    if (Platform.OS === 'web') {
+      commentFileInputRef.current?.click();
+      return;
+    }
+
+    const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (!permission.granted) {
+      Alert.alert('Photo permission needed', 'Please allow photo access to attach an image.');
+      return;
+    }
+
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      quality: 0.75,
+    });
+    if (result.canceled || !result.assets?.[0]) return;
+
+    const asset = result.assets[0];
+    const fileName = asset.fileName || `comment-image-${Date.now()}.jpg`;
+    const mimeType = asset.mimeType || 'image/jpeg';
+    setIsCommentUploading(true);
+    try {
+      await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+      const uploadedMedia = await uploadPendingMedia({
+        fileName,
+        fileUrl: asset.uri,
+        fileType: 'IMAGE',
+        mimeType,
+        fileSize: asset.fileSize || 0,
+      }, 'helphub/comments');
+      setSelectedCommentMedia({
+        id: uploadedMedia?.id || String(Date.now()),
+        fileName,
+        fileUrl: uploadedMedia?.fileUrl || asset.uri,
+        fileType: 'IMAGE',
+        mimeType,
+        fileSize: asset.fileSize || 0,
+      });
+    } catch (err) {
+      console.error('Failed to upload comment image:', err);
+      setSelectedCommentMedia({
+        id: String(Date.now()),
+        fileName,
+        fileUrl: asset.uri,
+        fileType: 'IMAGE',
+        mimeType,
+        fileSize: asset.fileSize || 0,
+      });
+    } finally {
+      setIsCommentUploading(false);
     }
   };
 
@@ -598,6 +762,7 @@ const PostCard = ({ post, onAuthorPress }: { post: Post; onAuthorPress?: (author
             avatar: 'https://i.pravatar.cc/150?img=8',
             content,
             timestamp: 'Just now',
+            createdAt: new Date().toISOString(),
             media: mediaItem ? [mediaItem] : undefined,
             parentCommentId,
           },
@@ -605,7 +770,13 @@ const PostCard = ({ post, onAuthorPress }: { post: Post; onAuthorPress?: (author
         setLocalComments(newComments);
         await persistComments(newComments);
       } else {
-        await addServerComment({ postId: post.id, content, parentCommentId });
+        await addServerComment({
+          postId: post.id,
+          content,
+          parentCommentId,
+          mediaIds: mediaItem?.id ? [mediaItem.id] : undefined,
+        });
+        queryClient.invalidateQueries({ queryKey: ['notifications'] });
         // Server might not support comments media, so we save locally for display
         if (mediaItem) {
           const newComments = [
@@ -617,6 +788,7 @@ const PostCard = ({ post, onAuthorPress }: { post: Post; onAuthorPress?: (author
               avatar: 'https://i.pravatar.cc/150?img=8',
               content,
               timestamp: 'Just now',
+              createdAt: new Date().toISOString(),
               media: [mediaItem],
               parentCommentId,
             },
@@ -635,12 +807,49 @@ const PostCard = ({ post, onAuthorPress }: { post: Post; onAuthorPress?: (author
           avatar: 'https://i.pravatar.cc/150?img=8',
           content,
           timestamp: 'Just now',
+          createdAt: new Date().toISOString(),
           media: mediaItem ? [mediaItem] : undefined,
+          parentCommentId,
         },
       ];
       setLocalComments(newComments);
       await persistComments(newComments);
+      queryClient.invalidateQueries({ queryKey: ['notifications'] });
     }
+    await refetchComments();
+    await queryClient.invalidateQueries({ queryKey: ['posts'] });
+  };
+
+  const handleDeleteComment = async (comment: any) => {
+    const childReplies = commentsList.filter((item: any) => item.parentCommentId === comment.id);
+    Alert.alert(
+      'Delete comment?',
+      childReplies.length > 0
+        ? `This will delete the comment and ${childReplies.length} repl${childReplies.length === 1 ? 'y' : 'ies'}.`
+        : 'This will delete this comment.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: async () => {
+            const deleteIds = [comment.id, ...childReplies.map((reply: any) => reply.id)];
+            try {
+              await Promise.allSettled(
+                deleteIds.map((commentId) => deleteComment(commentId)),
+              );
+              const nextLocalComments = localComments.filter((item: any) => !deleteIds.includes(item.id));
+              setLocalComments(nextLocalComments);
+              await persistComments(nextLocalComments);
+              await refetchComments();
+              await queryClient.invalidateQueries({ queryKey: ['posts'] });
+            } catch (error: any) {
+              Alert.alert('Unable to delete comment', error?.message || 'Please try again.');
+            }
+          },
+        },
+      ],
+    );
   };
 
   const toggleCommentReaction = async (commentId: string, emoji: string) => {
@@ -648,13 +857,18 @@ const PostCard = ({ post, onAuthorPress }: { post: Post; onAuthorPress?: (author
     const userName = 'Me';
     setCommentReactions((prev) => {
       const msgReactions = prev[commentId] || {};
-      const usersList = msgReactions[emoji] || [];
-      const newUsersList = usersList.includes(userName)
-        ? usersList.filter((u) => u !== userName)
-        : [...usersList, userName];
-      const newMsgReactions = { ...msgReactions };
-      if (newUsersList.length === 0) delete newMsgReactions[emoji];
-      else newMsgReactions[emoji] = newUsersList;
+      const newMsgReactions: Record<string, string[]> = {};
+      let hadSameReaction = false;
+      Object.entries(msgReactions).forEach(([reactionEmoji, users]) => {
+        const cleanUsers = (users as string[]).filter((u) => u !== userName);
+        if (reactionEmoji === emoji && (users as string[]).includes(userName)) {
+          hadSameReaction = true;
+        }
+        if (cleanUsers.length > 0) newMsgReactions[reactionEmoji] = cleanUsers;
+      });
+      if (!hadSameReaction) {
+        newMsgReactions[emoji] = [...(newMsgReactions[emoji] || []), userName];
+      }
       const updated = { ...prev, [commentId]: newMsgReactions };
 
       storage.setItemAsync(`explore_comment_reactions_${post.id}`, JSON.stringify(updated))
@@ -663,6 +877,22 @@ const PostCard = ({ post, onAuthorPress }: { post: Post; onAuthorPress?: (author
       return updated;
     });
     setShowCommentReactionPickerId(null);
+  };
+
+  const applyMentionSuggestion = (name: string) => {
+    setCommentText((current) => {
+      if (!current.match(/(?:^|\s)@[^\s@]*$/)) return current;
+      return current.replace(/(^|\s)@[^\s@]*$/, `$1@${name} `);
+    });
+  };
+
+  const showCommentReactionSummary = async (commentId: string) => {
+    await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    const msgReactions = commentReactions[commentId] || {};
+    const rows = POST_REACTIONS
+      .map((reaction) => `${reaction.emoji} ${reaction.label}: ${(msgReactions[reaction.emoji] || []).length}`)
+      .join('\n');
+    Alert.alert('Comment reactions', rows || 'No reactions yet.');
   };
 
   return (
@@ -693,28 +923,32 @@ const PostCard = ({ post, onAuthorPress }: { post: Post; onAuthorPress?: (author
             <Avatar uri={post.avatar} name={post.author} size={44} theme={theme} />
             <View style={styles.authorInfo}>
               <Text style={[styles.authorName, { color: theme.text }]}>{post.author}</Text>
-              <Text style={[styles.timestamp, { color: theme.textSupporting }]}>{post.timestamp}</Text>
+              <Text style={[styles.timestamp, { color: theme.textSupporting }]}>
+                {getRelativeTime(post.rawCreatedAt || post.timestamp)}
+              </Text>
             </View>
           </Pressable>
-          {post.authorId !== user?.id && (
-            <Pressable
-              onPress={async () => {
-                await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                setIsMenuSheetVisible(true);
-              }}
-              style={({ pressed }) => [
-                { padding: 8, borderRadius: 8 },
-                pressed && { backgroundColor: theme.highlightBG }
-              ]}
-            >
-              <MaterialIcons name="more-vert" size={22} color={theme.textSupporting} />
-            </Pressable>
-          )}
+          <Pressable
+            onPress={async () => {
+              await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+              setIsMenuSheetVisible(true);
+            }}
+            style={({ pressed }) => [
+              { padding: 8, borderRadius: 8 },
+              pressed && { backgroundColor: theme.highlightBG }
+            ]}
+          >
+            <MaterialIcons name="more-vert" size={22} color={theme.textSupporting} />
+          </Pressable>
         </View>
 
-        <Text style={[styles.content, { color: theme.text }]}>{post.content}</Text>
+        <Pressable onPress={handleComment}>
+          <Text style={[styles.content, { color: theme.text }]}>{post.content}</Text>
+        </Pressable>
 
-        <PostMediaContainer postId={post.id} />
+        <Pressable onPress={handleComment}>
+          <PostMediaContainer postId={post.id} />
+        </Pressable>
 
         {post.tags.length > 0 && (
           <View style={styles.tagsContainer}>
@@ -727,17 +961,42 @@ const PostCard = ({ post, onAuthorPress }: { post: Post; onAuthorPress?: (author
         )}
 
         <View style={[styles.actions, { borderTopColor: theme.border }]}>
-          <Pressable
-            style={({ pressed }) => [styles.actionButton, pressed && { opacity: 0.7 }]}
-            onPress={handleLike}
-          >
-            <MaterialIcons
-              name={isLiked ? 'favorite' : 'favorite-border'}
-              size={20}
-              color={isLiked ? theme.danger : theme.icon}
-            />
-            <Text style={[styles.actionText, { color: theme.textSupporting }]}>{likeCount}</Text>
-          </Pressable>
+          <View style={{ position: 'relative' }}>
+            <Pressable
+              style={({ pressed }) => [styles.actionButton, pressed && { opacity: 0.7 }]}
+              onPress={() => setShowPostReactionPicker((value) => !value)}
+              onLongPress={handleShowReactionSummary}
+            >
+              <Text style={{ fontSize: 18 }}>
+                {reactionByType(myReaction)?.emoji || '👍'}
+              </Text>
+              <Text style={[styles.actionText, { color: isLiked ? theme.primary : theme.textSupporting }]}>
+                {reactionByType(myReaction)?.label || 'React'} {likeCount > 0 ? likeCount : ''}
+              </Text>
+            </Pressable>
+            {showPostReactionPicker && (
+              <View style={[styles.postReactionPicker, { backgroundColor: theme.componentBG, borderColor: theme.border }]}>
+                {POST_REACTIONS.map((reaction) => (
+                  <Pressable
+                    key={reaction.type}
+                    onPress={() => {
+                      setShowPostReactionPicker(false);
+                      handleReaction(reaction.type);
+                    }}
+                    style={({ pressed }) => [
+                      styles.postReactionOption,
+                      {
+                        backgroundColor: myReaction === reaction.type ? theme.activeComponentBG || theme.highlightBG : 'transparent',
+                        opacity: pressed ? 0.8 : 1,
+                      },
+                    ]}
+                  >
+                    <Text style={{ fontSize: 22 }}>{reaction.emoji}</Text>
+                  </Pressable>
+                ))}
+              </View>
+            )}
+          </View>
 
           <Pressable
             style={({ pressed }) => [
@@ -761,6 +1020,33 @@ const PostCard = ({ post, onAuthorPress }: { post: Post; onAuthorPress?: (author
         onClose={() => setIsMenuSheetVisible(false)}
         title="Options"
         options={[
+          ...(post.authorId === user?.id ? [{
+            key: 'delete',
+            label: 'Delete Post',
+            icon: 'delete-outline' as any,
+            onPress: () => {
+              setIsMenuSheetVisible(false);
+              Alert.alert(
+                'Delete post?',
+                'This will remove your post from the community feed.',
+                [
+                  { text: 'Cancel', style: 'cancel' },
+                  {
+                    text: 'Delete',
+                    style: 'destructive',
+                    onPress: async () => {
+                      try {
+                        await deletePost(post.id);
+                        await queryClient.invalidateQueries({ queryKey: ['posts'] });
+                      } catch (err) {
+                        Alert.alert('Unable to delete post', (err as any)?.message || 'Please try again.');
+                      }
+                    },
+                  },
+                ],
+              );
+            },
+          }] : []),
           ...(!post.authorId || post.authorId !== user?.id ? [{
             key: 'report',
             label: 'Report Post',
@@ -828,8 +1114,45 @@ const PostCard = ({ post, onAuthorPress }: { post: Post; onAuthorPress?: (author
             <Pressable onPress={() => setShowComments(false)} style={styles.modalCloseBtn}>
               <MaterialIcons name="close" size={24} color={theme.text} />
             </Pressable>
-            <Text style={[styles.modalTitle, { color: theme.text }]}>Comments</Text>
+            <Text style={[styles.modalTitle, { color: theme.text }]}>Post Details</Text>
             <View style={{ width: 24 }} />
+          </View>
+          <View style={[styles.detailPostPreview, { borderBottomColor: theme.border }]}>
+            <Text style={{ color: theme.text, fontSize: 15, lineHeight: 21 }}>{post.content}</Text>
+            <PostMediaContainer postId={post.id} />
+            <Text style={{ color: theme.textSupporting, fontSize: 12, marginTop: 6 }}>
+              {post.author} • {getRelativeTime(post.rawCreatedAt || post.timestamp)}
+            </Text>
+          </View>
+          <View style={styles.commentFilters}>
+            {[
+              { key: 'all', label: 'All' },
+              { key: 'best', label: 'Best' },
+              { key: 'recent', label: 'Recent' },
+            ].map((option) => (
+              <Pressable
+                key={option.key}
+                onPress={() => setCommentSort(option.key as any)}
+                style={({ pressed }) => [
+                  styles.commentFilterButton,
+                  {
+                    backgroundColor: commentSort === option.key ? theme.primary : theme.highlightBG,
+                    borderColor: commentSort === option.key ? theme.primary : theme.border,
+                    opacity: pressed ? 0.85 : 1,
+                  },
+                ]}
+              >
+                <Text
+                  style={{
+                    color: commentSort === option.key ? '#FFFFFF' : theme.text,
+                    fontSize: 12,
+                    fontWeight: '700',
+                  }}
+                >
+                  {option.label}
+                </Text>
+              </Pressable>
+            ))}
           </View>
           
           <ScrollView 
@@ -837,7 +1160,23 @@ const PostCard = ({ post, onAuthorPress }: { post: Post; onAuthorPress?: (author
             contentContainerStyle={{ gap: 16, paddingBottom: 32 }}
           >
             {(() => {
-              const rootComments = commentsList.filter((c: any) => !c.parentCommentId);
+              const rootComments = commentsList
+                .filter((c: any) => !c.parentCommentId)
+                .sort((a: any, b: any) => {
+                  if (commentSort === 'recent') {
+                    const bTime = new Date(b.createdAt || 0).getTime() || 0;
+                    const aTime = new Date(a.createdAt || 0).getTime() || 0;
+                    return bTime - aTime;
+                  }
+                  if (commentSort === 'best') {
+                    const aScore = Object.values(commentReactions[a.id] || {}).reduce((sum: number, users: any) => sum + (Array.isArray(users) ? users.length : 0), 0);
+                    const bScore = Object.values(commentReactions[b.id] || {}).reduce((sum: number, users: any) => sum + (Array.isArray(users) ? users.length : 0), 0);
+                    const aReplies = commentsList.filter((c: any) => c.parentCommentId === a.id).length;
+                    const bReplies = commentsList.filter((c: any) => c.parentCommentId === b.id).length;
+                    return (bScore + bReplies) - (aScore + aReplies);
+                  }
+                  return 0;
+                });
               const replies = commentsList.filter((c: any) => c.parentCommentId);
 
               if (rootComments.length === 0) {
@@ -915,6 +1254,7 @@ const PostCard = ({ post, onAuthorPress }: { post: Post; onAuthorPress?: (author
                           <View style={{ position: 'relative' }}>
                             <Pressable
                               onPress={() => setShowCommentReactionPickerId(showPicker ? null : item.id)}
+                              onLongPress={() => showCommentReactionSummary(item.id)}
                               style={({ pressed }) => ({
                                 flexDirection: 'row',
                                 alignItems: 'center',
@@ -942,6 +1282,10 @@ const PostCard = ({ post, onAuthorPress }: { post: Post; onAuthorPress?: (author
                             onPress={async () => {
                               await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
                               setReplyingToComment({ id: item.id, authorName: item.authorName });
+                              setCommentText((current) => {
+                                const mention = `@${item.authorName} `;
+                                return current.trim() ? current : mention;
+                              });
                             }}
                             style={({ pressed }) => ({
                               flexDirection: 'row',
@@ -956,6 +1300,24 @@ const PostCard = ({ post, onAuthorPress }: { post: Post; onAuthorPress?: (author
                             <MaterialIcons name="reply" size={13} color={theme.textSupporting} />
                             <Text style={{ fontSize: 11, color: theme.textSupporting, fontWeight: '600' }}>Reply</Text>
                           </Pressable>
+
+                          {(item.authorId === user?.id || user?.role === 'ADMIN') && (
+                            <Pressable
+                              onPress={() => handleDeleteComment(item)}
+                              style={({ pressed }) => ({
+                                flexDirection: 'row',
+                                alignItems: 'center',
+                                gap: 4,
+                                paddingVertical: 2,
+                                paddingHorizontal: 6,
+                                borderRadius: 4,
+                                backgroundColor: pressed ? theme.border : 'transparent',
+                              })}
+                            >
+                              <MaterialIcons name="delete-outline" size={13} color={theme.danger} />
+                              <Text style={{ fontSize: 11, color: theme.danger, fontWeight: '600' }}>Delete</Text>
+                            </Pressable>
+                          )}
                         </View>
 
                         {/* Display comment reactions count badges */}
@@ -965,6 +1327,7 @@ const PostCard = ({ post, onAuthorPress }: { post: Post; onAuthorPress?: (author
                               <Pressable
                                 key={emoji}
                                 onPress={() => toggleCommentReaction(item.id, emoji)}
+                                onLongPress={() => showCommentReactionSummary(item.id)}
                                 style={{
                                   flexDirection: 'row',
                                   alignItems: 'center',
@@ -1042,9 +1405,10 @@ const PostCard = ({ post, onAuthorPress }: { post: Post; onAuthorPress?: (author
 
                                 {/* Child actions (React only) */}
                                 <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 4, position: 'relative', zIndex: 10 }}>
-                                  <View style={{ position: 'relative' }}>
+                                  <View style={{ position: 'relative', flexDirection: 'row', alignItems: 'center', gap: 12 }}>
                                     <Pressable
                                       onPress={() => setShowCommentReactionPickerId(showReplyPicker ? null : reply.id)}
+                                      onLongPress={() => showCommentReactionSummary(reply.id)}
                                       style={({ pressed }) => ({
                                         flexDirection: 'row',
                                         alignItems: 'center',
@@ -1066,6 +1430,23 @@ const PostCard = ({ post, onAuthorPress }: { post: Post; onAuthorPress?: (author
                                         style={{ bottom: 24, left: 0 }}
                                       />
                                     )}
+                                    {(reply.authorId === user?.id || user?.role === 'ADMIN') && (
+                                      <Pressable
+                                        onPress={() => handleDeleteComment(reply)}
+                                        style={({ pressed }) => ({
+                                          flexDirection: 'row',
+                                          alignItems: 'center',
+                                          gap: 4,
+                                          paddingVertical: 2,
+                                          paddingHorizontal: 6,
+                                          borderRadius: 4,
+                                          backgroundColor: pressed ? theme.border : 'transparent',
+                                        })}
+                                      >
+                                        <MaterialIcons name="delete-outline" size={12} color={theme.danger} />
+                                        <Text style={{ fontSize: 10, color: theme.danger, fontWeight: '600' }}>Delete</Text>
+                                      </Pressable>
+                                    )}
                                   </View>
                                 </View>
 
@@ -1076,6 +1457,7 @@ const PostCard = ({ post, onAuthorPress }: { post: Post; onAuthorPress?: (author
                                       <Pressable
                                         key={emoji}
                                         onPress={() => toggleCommentReaction(reply.id, emoji)}
+                                        onLongPress={() => showCommentReactionSummary(reply.id)}
                                         style={{
                                           flexDirection: 'row',
                                           alignItems: 'center',
@@ -1127,6 +1509,7 @@ const PostCard = ({ post, onAuthorPress }: { post: Post; onAuthorPress?: (author
               ref={commentFileInputRef}
               style={{ display: 'none' }}
               onChange={handleCommentFileChange}
+              accept="image/*"
             />
           )}
 
@@ -1212,12 +1595,44 @@ const PostCard = ({ post, onAuthorPress }: { post: Post; onAuthorPress?: (author
             </View>
           )}
 
+          {mentionSuggestions.length > 0 && (
+            <View
+              style={{
+                marginHorizontal: 16,
+                marginBottom: 8,
+                borderWidth: 1,
+                borderColor: theme.border,
+                borderRadius: 12,
+                backgroundColor: theme.componentBG,
+                overflow: 'hidden',
+              }}
+            >
+              {mentionSuggestions.map((author: { id: string; name: string }) => (
+                <Pressable
+                  key={`${author.id}-${author.name}`}
+                  onPress={() => applyMentionSuggestion(author.name)}
+                  style={({ pressed }) => ({
+                    paddingHorizontal: 12,
+                    paddingVertical: 9,
+                    backgroundColor: pressed ? theme.highlightBG : theme.componentBG,
+                    borderBottomWidth: StyleSheet.hairlineWidth,
+                    borderBottomColor: theme.border,
+                  })}
+                >
+                  <Text style={{ color: theme.text, fontSize: 13, fontWeight: '700' }}>
+                    @{author.name}
+                  </Text>
+                </Pressable>
+              ))}
+            </View>
+          )}
+
           <View style={[styles.modalInputBar, { borderTopColor: theme.border, backgroundColor: theme.appBG, paddingBottom: Platform.OS === 'ios' ? 24 : 12 }]}>
             {/* Attachment Button */}
             <Pressable
-              onPress={() => {
+              onPress={async () => {
                 Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                if (Platform.OS === 'web') commentFileInputRef.current?.click();
+                await handlePickCommentImage();
               }}
               disabled={isCommentUploading}
               style={({ pressed }) => ({
@@ -1357,14 +1772,16 @@ const PostCard = ({ post, onAuthorPress }: { post: Post; onAuthorPress?: (author
                   </View>
                 </View>
 
-                {/* DM Button */}
-                <Button
-                  text="Direct Message"
-                  primary
-                  onPress={handleDirectMessage}
-                  style={{ width: '100%', borderRadius: 100 }}
-                  isLoading={chatLoading}
-                />
+            {/* DM Button */}
+            {selectedAuthorId !== user?.id && (
+              <Button
+                text="Direct Message"
+                primary
+                onPress={handleDirectMessage}
+                style={{ width: '100%', borderRadius: 100 }}
+                isLoading={chatLoading}
+              />
+            )}
 
                 {/* Report Profile Button */}
                 {selectedAuthorId !== user?.id && (
@@ -1398,6 +1815,7 @@ export default function ExploreScreen() {
   const theme = useTheme();
   const router = useRouter();
   const queryClient = useQueryClient();
+  const { user } = useAuthStore();
   const { data: posts, isLoading } = usePosts();
   const { mutateAsync: createPost, isPending: isCreating } = useCreatePost();
   
@@ -1405,7 +1823,16 @@ export default function ExploreScreen() {
   const [newPostContent, setNewPostContent] = useState('');
   const [selectedPostMedia, setSelectedPostMedia] = useState<PendingMedia[]>([]);
   const [isPostUploading, setIsPostUploading] = useState(false);
+  const [authorFilter, setAuthorFilter] = useState('');
+  const [timeFilter, setTimeFilter] = useState<'all' | 'today' | 'week' | 'month'>('all');
   const postFileInputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    const timer = setInterval(() => {
+      queryClient.invalidateQueries({ queryKey: ['posts'] });
+    }, 10000);
+    return () => clearInterval(timer);
+  }, [queryClient]);
 
   const handlePostFileChange = async (e: any) => {
     if (Platform.OS !== 'web') return;
@@ -1520,7 +1947,6 @@ export default function ExploreScreen() {
   const [profileData, setProfileData] = useState<any>(null);
   const [isProfileLoading, setIsProfileLoading] = useState(false);
   const [chatLoading, setChatLoading] = useState(false);
-  const { user } = useAuthStore();
   const [isReportUserModalVisible, setIsReportUserModalVisible] = useState(false);
   const [alertModal, setAlertModal] = useState<{ visible: boolean; title: string; message: string }>({
     visible: false,
@@ -1556,6 +1982,7 @@ export default function ExploreScreen() {
         authorId: p.authorId || p.userId || (p.user && p.user.id) || p.creatorId || p.createdBy,
         author: p.author || p.authorName || p.userName || 'Unknown User',
         avatar: p.avatar || p.authorAvatarUrl || p.userAvatar || 'https://i.pravatar.cc/150',
+        rawCreatedAt: p.createdAt || p.timestamp || null,
         timestamp: getRelativeTime(p.createdAt || p.timestamp || 'Just now'),
         content: p.content || '',
         tags: p.tags || [],
@@ -1565,10 +1992,34 @@ export default function ExploreScreen() {
       }))
     : DUMMY_POSTS;
 
+  const filteredPosts = displayPosts.filter((post: any) => {
+    const authorMatch = !authorFilter.trim()
+      || post.author?.toLowerCase().includes(authorFilter.trim().toLowerCase())
+      || post.authorId?.toLowerCase?.().includes(authorFilter.trim().toLowerCase());
+    if (!authorMatch) return false;
+    if (timeFilter === 'all') return true;
+    const created = post.rawCreatedAt ? new Date(post.rawCreatedAt) : null;
+    if (!created || Number.isNaN(created.getTime())) return true;
+    const diffMs = Date.now() - created.getTime();
+    const dayMs = 24 * 60 * 60 * 1000;
+    if (timeFilter === 'today') return diffMs <= dayMs;
+    if (timeFilter === 'week') return diffMs <= 7 * dayMs;
+    if (timeFilter === 'month') return diffMs <= 30 * dayMs;
+    return true;
+  });
+
 
 
   const handleDirectMessage = async () => {
     if (!selectedAuthorId) return;
+    if (selectedAuthorId === user?.id) {
+      setAlertModal({
+        visible: true,
+        title: 'Direct message unavailable',
+        message: 'You cannot create a direct message with yourself.',
+      });
+      return;
+    }
     await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     
     // Close bottom sheet first
@@ -1585,10 +2036,11 @@ export default function ExploreScreen() {
         console.error('No conversation ID returned', res);
       }
     } catch (err) {
-      console.error('Failed to create private conversation, navigating to mock chat:', err);
-      // Fallback: Navigate to the mock chat room with the author id
-      requestAnimationFrame(() => {
-        router.push({ pathname: '/messages/[id]', params: { id: selectedAuthorId } } as any);
+      console.error('Failed to create private conversation:', err);
+      setAlertModal({
+        visible: true,
+        title: 'Could not start chat',
+        message: 'Please try again in a moment.',
       });
     }
   };
@@ -1652,9 +2104,15 @@ export default function ExploreScreen() {
       setNewPostContent('');
       setSelectedPostMedia([]);
       setShowCreatePost(false);
+      await queryClient.invalidateQueries({ queryKey: ['posts'] });
+      await queryClient.refetchQueries({ queryKey: ['posts'] });
       await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     } catch (err) {
       console.error('Failed to create post with media:', err);
+      Alert.alert(
+        'Unable to create post',
+        (err as any)?.message || 'Please check the media upload configuration and try again.',
+      );
     } finally {
       setIsPostUploading(false);
     }
@@ -1679,22 +2137,7 @@ export default function ExploreScreen() {
         <Text style={{ color: theme.text, fontSize: 28, fontWeight: '700' }}>
           Explore
         </Text>
-        <Pressable
-          onPress={async () => {
-            await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-            setShowCreatePost(true);
-          }}
-          style={({ pressed }) => [
-            {
-              padding: 8,
-              borderRadius: 20,
-              backgroundColor: theme.highlightBG,
-            },
-            pressed && { opacity: 0.7 },
-          ]}
-        >
-          <MaterialIcons name="add" size={24} color={theme.primary} />
-        </Pressable>
+        <View style={{ width: 44 }} />
       </View>
 
       {isLoading ? (
@@ -1703,13 +2146,72 @@ export default function ExploreScreen() {
         </View>
       ) : (
         <FlatList
-          data={displayPosts}
+          data={filteredPosts}
           keyExtractor={(item) => item.id}
           renderItem={({ item }) => <PostCard post={item} onAuthorPress={handleAuthorPress} />}
+          ListHeaderComponent={
+            <View style={[styles.feedFilters, { backgroundColor: theme.componentBG, borderColor: theme.border }]}>
+              <TextInputUI
+                placeholder="Filter by author name or ID..."
+                value={authorFilter}
+                onChangeText={setAuthorFilter}
+                disableFloatingLabel
+                height={40}
+                containerStyle={{ marginBottom: 0 }}
+              />
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8 }}>
+                {[
+                  { key: 'all', label: 'All time' },
+                  { key: 'today', label: 'Today' },
+                  { key: 'week', label: 'This week' },
+                  { key: 'month', label: 'This month' },
+                ].map((option) => (
+                  <Pressable
+                    key={option.key}
+                    onPress={() => setTimeFilter(option.key as any)}
+                    style={({ pressed }) => [
+                      styles.feedFilterChip,
+                      {
+                        backgroundColor: timeFilter === option.key ? theme.primary : theme.highlightBG,
+                        borderColor: timeFilter === option.key ? theme.primary : theme.border,
+                        opacity: pressed ? 0.85 : 1,
+                      },
+                    ]}
+                  >
+                    <Text style={{ color: timeFilter === option.key ? '#FFFFFF' : theme.text, fontWeight: '700', fontSize: 12 }}>
+                      {option.label}
+                    </Text>
+                  </Pressable>
+                ))}
+              </ScrollView>
+            </View>
+          }
+          ListEmptyComponent={
+            <View style={{ padding: 32, alignItems: 'center' }}>
+              <Text style={{ color: theme.textSupporting, fontWeight: '600' }}>No posts match these filters.</Text>
+            </View>
+          }
           contentContainerStyle={styles.listContent}
           showsVerticalScrollIndicator={false}
         />
       )}
+
+      <Pressable
+        onPress={async () => {
+          await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+          setShowCreatePost(true);
+        }}
+        style={({ pressed }) => [
+          styles.fab,
+          {
+            backgroundColor: theme.primary,
+            shadowColor: theme.inverse,
+            opacity: pressed ? 0.85 : 1,
+          },
+        ]}
+      >
+        <MaterialIcons name="edit" size={26} color="#FFFFFF" />
+      </Pressable>
 
       {/* Profile Details Bottom Sheet */}
       <BottomSheet isVisible={isProfileVisible} onClose={() => setIsProfileVisible(false)}>
@@ -1813,12 +2315,14 @@ export default function ExploreScreen() {
             </View>
 
             {/* DM Button */}
-            <Button
-              text="Direct Message"
-              primary
-              onPress={handleDirectMessage}
-              style={{ width: '100%', borderRadius: 100 }}
-            />
+            {selectedAuthorId !== user?.id && (
+              <Button
+                text="Direct Message"
+                primary
+                onPress={handleDirectMessage}
+                style={{ width: '100%', borderRadius: 100 }}
+              />
+            )}
 
             {/* Report Profile Button */}
             {selectedAuthorId !== user?.id && (
@@ -2111,9 +2615,11 @@ const styles = StyleSheet.create({
   },
   actions: {
     flexDirection: 'row',
+    flexWrap: 'wrap',
     borderTopWidth: 1,
     paddingTop: Spacing.base,
-    gap: Spacing.lg,
+    gap: Spacing.sm,
+    alignItems: 'center',
   },
   actionButton: {
     flexDirection: 'row',
@@ -2124,6 +2630,76 @@ const styles = StyleSheet.create({
   },
   actionText: {
     fontSize: 14,
+  },
+  reactionStrip: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 5,
+    flex: 1,
+  },
+  reactionChip: {
+    minHeight: 28,
+    minWidth: 34,
+    borderRadius: 14,
+    borderWidth: 1,
+    paddingHorizontal: 7,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 3,
+  },
+  postReactionPicker: {
+    position: 'absolute',
+    bottom: 34,
+    left: 0,
+    flexDirection: 'row',
+    gap: 4,
+    borderRadius: 22,
+    borderWidth: 1,
+    paddingHorizontal: 8,
+    paddingVertical: 6,
+    zIndex: 40,
+    elevation: 8,
+  },
+  postReactionOption: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  detailPostPreview: {
+    paddingHorizontal: Spacing.base,
+    paddingVertical: Spacing.sm,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+  },
+  commentFilters: {
+    flexDirection: 'row',
+    gap: 8,
+    paddingHorizontal: Spacing.base,
+    paddingVertical: Spacing.sm,
+  },
+  commentFilterButton: {
+    flex: 1,
+    minHeight: 34,
+    borderRadius: 17,
+    borderWidth: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  feedFilters: {
+    borderRadius: BorderRadius.lg,
+    borderWidth: 1,
+    padding: Spacing.sm,
+    gap: Spacing.sm,
+  },
+  feedFilterChip: {
+    minHeight: 34,
+    borderRadius: 17,
+    borderWidth: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 12,
   },
   modalContainer: {
     flex: 1,
@@ -2159,5 +2735,19 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     fontSize: 15,
     paddingVertical: 0,
+  },
+  fab: {
+    position: 'absolute',
+    right: 22,
+    bottom: 28,
+    width: 58,
+    height: 58,
+    borderRadius: 29,
+    justifyContent: 'center',
+    alignItems: 'center',
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.18,
+    shadowRadius: 10,
+    elevation: 6,
   },
 });

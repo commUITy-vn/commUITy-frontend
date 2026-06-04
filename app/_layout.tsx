@@ -137,7 +137,7 @@ function AppContent({ theme }: { theme: any }) {
     const currentScreen = String(segments[1] || "index")
     const canShowFloatingNotification =
         currentGroup === "(app)" &&
-        ["index", "map", "messages", "profile"].includes(currentScreen)
+        ["index", "map", "messages", "profile", "explore"].includes(currentScreen)
 
     useGlobalWebSockets({
         isAuthenticated,

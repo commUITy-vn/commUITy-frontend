@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { View, Text, FlatList, Pressable, StyleSheet, ActivityIndicator } from 'react-native';
+import { View, Text, FlatList, Pressable, StyleSheet, ActivityIndicator, Image } from 'react-native';
 import * as Haptics from 'expo-haptics';
 import { useTheme } from '@/hooks/useTheme';
 import { useRouter } from 'expo-router';
@@ -13,6 +13,7 @@ type Conversation = {
   id: string;
   name: string;
   avatarLetter: string;
+  avatarUrl?: string;
   lastMessage: string;
   timestamp: string;
   unreadCount: number;
@@ -40,6 +41,22 @@ const formatRelativeTime = (dateStr?: string) => {
 };
 
 const CONVERSATIONS: Conversation[] = [];
+
+const getConversationPreview = (conversation: any) => {
+  const content = conversation.lastMessageContent;
+  if (!content && conversation.lastMessageId) return 'Received an attachment';
+  if (!content) return 'No messages yet';
+  if (content.startsWith('[SHARED_ITEM:SUPPORT:') || content.startsWith('[SHARED_ITEM:REQUEST:')) {
+    return 'Shared a support request';
+  }
+  if (content.startsWith('[SHARED_ITEM:LOCATION:')) return 'Shared a support location';
+  if (content.startsWith('[SHARED_ITEM:FUND:')) return 'Shared a community fund';
+  if (content.startsWith('[SYSTEM:')) {
+    const systemMatch = content.match(/^\[SYSTEM:[^\]]*\]\s*(.*)$/);
+    return systemMatch ? systemMatch[1] : content;
+  }
+  return content;
+};
 
 const ConversationRow = ({
   item,
@@ -91,15 +108,22 @@ const ConversationRow = ({
             alignItems: 'center',
           }}
         >
-          <Text
-            style={{
-              color: isUnread ? theme.primary : theme.textSupporting,
-              fontSize: 15,
-              fontWeight: '700',
-            }}
-          >
-            {item.avatarLetter}
-          </Text>
+          {item.avatarUrl ? (
+            <Image
+              source={{ uri: item.avatarUrl }}
+              style={{ width: 40, height: 40, borderRadius: 20 }}
+            />
+          ) : (
+            <Text
+              style={{
+                color: isUnread ? theme.primary : theme.textSupporting,
+                fontSize: 15,
+                fontWeight: '700',
+              }}
+            >
+              {item.avatarLetter}
+            </Text>
+          )}
         </View>
         {/* Active/Online indicator (swapped from green to brand primary orange) */}
         <View
@@ -207,25 +231,12 @@ export default function MessagesScreen() {
         const otherMember = c.members?.find((m: any) => m.userId !== user?.id);
         const name = otherMember?.fullName || 'User';
 
-        let lastMessage = c.lastMessageContent || 'No messages yet';
-        if (c.lastMessageContent) {
-          if (c.lastMessageContent.startsWith('[SHARED_ITEM:SUPPORT:')) {
-            lastMessage = 'Shared a support request';
-          } else if (c.lastMessageContent.startsWith('[SHARED_ITEM:LOCATION:')) {
-            lastMessage = 'Shared a location hub';
-          } else if (c.lastMessageContent.startsWith('[SHARED_ITEM:FUND:')) {
-            lastMessage = 'Shared a community fund';
-          } else if (c.lastMessageContent.startsWith('[SYSTEM:')) {
-            const systemMatch = c.lastMessageContent.match(/^\[SYSTEM:[^\]]*\]\s*(.*)$/);
-            lastMessage = systemMatch ? systemMatch[1] : c.lastMessageContent;
-          }
-        }
-
         return {
           id: c.id || String(Math.random()),
           name,
           avatarLetter: name.charAt(0).toUpperCase(),
-          lastMessage,
+          avatarUrl: otherMember?.avatarUrl,
+          lastMessage: getConversationPreview(c),
           timestamp: formatRelativeTime(c.lastMessageCreatedAt) || formatRelativeTime(c.createdAt) || 'Just now',
           unreadCount: c.unreadCount || 0,
         };

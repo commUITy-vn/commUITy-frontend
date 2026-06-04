@@ -8,6 +8,10 @@ import * as Haptics from 'expo-haptics';
 import { BorderRadius, Spacing } from '@/constants/theme';
 import { useMyReports } from '@/features/reports/hooks/useMyReports';
 import { ReportTargetType, ReportStatus } from '@/features/reports/types/reports.types';
+import { useQueries } from '@tanstack/react-query';
+import { usePosts } from '@/features/community/hooks/usePosts';
+import { getUser } from '@/features/users/api/get-user';
+import { getSupportRequestById } from '@/features/support/api/get-support-request-by-id';
 
 export default function MyReportsScreen() {
   const theme = useTheme();
@@ -15,6 +19,58 @@ export default function MyReportsScreen() {
   const router = useRouter();
 
   const { data: reports, isLoading, isError, refetch } = useMyReports();
+  const { data: postsData } = usePosts();
+  const posts = React.useMemo(
+    () => (Array.isArray(postsData) ? postsData : []),
+    [postsData],
+  );
+  const targetQueries = useQueries({
+    queries: (reports || [])
+      .filter((report: any) => report.targetType !== ReportTargetType.POST)
+      .map((report: any) => ({
+        queryKey: ['reportTarget', report.targetType, report.targetId],
+        queryFn: () => {
+          if (report.targetType === ReportTargetType.USER) {
+            return getUser(report.targetId);
+          }
+          if (report.targetType === ReportTargetType.SUPPORT_REQUEST) {
+            return getSupportRequestById(report.targetId);
+          }
+          return Promise.resolve(null);
+        },
+        enabled: !!report.targetId,
+        retry: false,
+      })),
+  });
+
+  const targetLabelByReportId = React.useMemo(() => {
+    const labels = new Map<string, string>();
+    let queryIndex = 0;
+
+    (reports || []).forEach((report: any) => {
+      if (report.targetType === ReportTargetType.POST) {
+        const post = (posts || []).find((item: any) => item.id === report.targetId);
+        const content = post?.content ? `"${String(post.content).slice(0, 60)}${String(post.content).length > 60 ? '...' : ''}"` : 'Community post';
+        const author = post?.author || post?.authorName || post?.userName;
+        labels.set(report.id, author ? `Post: ${content} by ${author}` : `Post: ${content}`);
+        return;
+      }
+
+      const target = targetQueries[queryIndex]?.data as any;
+      queryIndex += 1;
+      if (report.targetType === ReportTargetType.USER) {
+        labels.set(report.id, `User: ${target?.fullName || target?.email || 'Unknown user'}`);
+        return;
+      }
+      if (report.targetType === ReportTargetType.SUPPORT_REQUEST) {
+        labels.set(report.id, `Support request: ${target?.title || 'Unknown request'}`);
+        return;
+      }
+      labels.set(report.id, `Target: ${String(report.targetId).slice(0, 8)}`);
+    });
+
+    return labels;
+  }, [reports, posts, targetQueries]);
 
   const handleBack = async () => {
     await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
@@ -126,7 +182,7 @@ export default function MyReportsScreen() {
           <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
             <View style={{ flex: 1 }}>
               <Text style={[localStyles.itemDesc, { color: theme.textSupporting }]} numberOfLines={1}>
-                Target ID: {item.targetId}
+                {targetLabelByReportId.get(item.id) || `${getTargetTypeLabel(item.targetType)}: ${String(item.targetId).slice(0, 8)}`}
               </Text>
             </View>
             <MaterialIcons name="chevron-right" size={18} color={theme.textSupporting} />

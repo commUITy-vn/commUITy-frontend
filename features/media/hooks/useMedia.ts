@@ -65,6 +65,11 @@ export const usePostMedia = (postId: string) => {
     queryKey: ['post-media', postId],
     queryFn: () => mediaApi.getPostMedia(postId),
     enabled: !!postId,
+    staleTime: 60 * 1000,
+    gcTime: 10 * 60 * 1000,
+    refetchOnMount: false,
+    refetchOnWindowFocus: false,
+    placeholderData: (previousData) => previousData,
   });
 };
 

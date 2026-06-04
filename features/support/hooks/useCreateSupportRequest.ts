@@ -9,6 +9,7 @@ export const useCreateSupportRequest = () => {
     onSuccess: () => {
       // Invalidate the support requests list queries to refresh the feed
       queryClient.invalidateQueries({ queryKey: ['supportRequests'] });
+      queryClient.invalidateQueries({ queryKey: ['mySupportRequests'] });
     },
   });
 };

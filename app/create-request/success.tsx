@@ -88,7 +88,7 @@ export default function CreateRequestSuccessScreen() {
                         { color: theme.textSupporting },
                     ]}
                 >
-                    {"Your support request has been created successfully. You'll be notified when someone responds."}
+                    {"Your support request has been created successfully. You'll be notified when it is reviewed (approved or rejected), or when someone responds."}
                 </Text>
 
                 {/* Quick stats */}
@@ -113,7 +113,7 @@ export default function CreateRequestSuccessScreen() {
                                 { color: theme.textSupporting },
                             ]}
                         >
-                            Your request is now visible to the community
+                            Your request is pending review before it appears in the community
                         </Text>
                     </View>
                     <View
@@ -134,7 +134,7 @@ export default function CreateRequestSuccessScreen() {
                                 { color: theme.textSupporting },
                             ]}
                         >
-                            {"You'll get notified when someone responds"}
+                            {"You'll get notified when moderators process it or someone responds"}
                         </Text>
                     </View>
                 </View>

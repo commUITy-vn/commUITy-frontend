@@ -1086,7 +1086,7 @@ const styles = StyleSheet.create({
   },
   legend: {
     position: "absolute",
-    top: 190,
+    top: 222,
     left: 16,
     zIndex: 2,
     flexDirection: "row",

@@ -49,7 +49,6 @@ export default function ProfileScreen() {
     const personalDetails = user
     const settingsItems = [
         { key: "profile", title: "Profile", icon: "person" },
-        { key: "wallet", title: "Wallet", icon: "account-balance-wallet" },
         ...(user?.role === 'ADMIN' ? [
             { key: "admin-dashboard", title: "Admin Panel", icon: "security" },
             { key: "collaborator-dashboard", title: "Collaborator Panel", icon: "dashboard" }
@@ -101,9 +100,6 @@ export default function ProfileScreen() {
                 break
             case "profile":
                 router.push("/profile-edit")
-                break
-            case "wallet":
-                router.push("/wallet")
                 break
             default:
                 break

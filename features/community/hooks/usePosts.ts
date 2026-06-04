@@ -8,6 +8,12 @@ export const usePosts = (params?: any) => {
   return useQuery({
     queryKey: ['posts', params],
     queryFn: () => getPosts(params),
+    refetchInterval: 10000,
+    staleTime: 15000,
+    gcTime: 5 * 60 * 1000,
+    refetchOnMount: false,
+    refetchOnWindowFocus: false,
+    placeholderData: (previousData) => previousData,
   });
 };
 
@@ -27,14 +33,30 @@ export const usePostComments = (postId: string) => {
     queryKey: ['post-comments', postId],
     queryFn: () => getPostComments(postId),
     enabled: !!postId,
+    refetchInterval: postId ? 10000 : false,
+    staleTime: 10000,
+    gcTime: 5 * 60 * 1000,
+    refetchOnMount: false,
+    refetchOnWindowFocus: false,
+    placeholderData: (previousData) => previousData,
   });
 };
 
 export const useCreatePostComment = () => {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: ({ postId, content, parentCommentId }: { postId: string; content: string; parentCommentId?: string }) =>
-      createPostComment(postId, { content, parentCommentId }),
+    mutationFn: ({
+      postId,
+      content,
+      parentCommentId,
+      mediaIds,
+    }: {
+      postId: string;
+      content: string;
+      parentCommentId?: string;
+      mediaIds?: string[];
+    }) =>
+      createPostComment(postId, { content, parentCommentId, mediaIds }),
     onSuccess: (data, variables) => {
       queryClient.invalidateQueries({ queryKey: ['post-comments', variables.postId] });
       queryClient.invalidateQueries({ queryKey: ['posts'] });

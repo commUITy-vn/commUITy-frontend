@@ -64,6 +64,14 @@ export default function UserProfileScreen() {
 
   const handleStartChat = async () => {
     if (chatLoading) return;
+    if (!userId || String(userId) === String(currentUser?.id)) {
+      setAlertModal({
+        visible: true,
+        title: 'Direct message unavailable',
+        message: 'You cannot create a direct message with yourself.',
+      });
+      return;
+    }
     setChatLoading(true);
     try {
       await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
@@ -76,8 +84,11 @@ export default function UserProfileScreen() {
       }
     } catch (err) {
       console.error('Failed to create or navigate to private conversation:', err);
-      // Fallback
-      router.push('/(app)/messages' as any);
+      setAlertModal({
+        visible: true,
+        title: 'Could not start chat',
+        message: 'Please try again in a moment.',
+      });
     } finally {
       setChatLoading(false);
     }
@@ -122,7 +133,7 @@ export default function UserProfileScreen() {
           <MaterialIcons name="arrow-back" size={20} color={theme.text} />
         </Pressable>
         <Text style={{ color: theme.text, fontSize: 16, fontWeight: '700', flex: 1 }}>Details</Text>
-        {userId !== currentUser?.id && (
+        {String(userId) !== String(currentUser?.id) && (
           <Pressable
             onPress={async () => {
               await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
@@ -202,39 +213,40 @@ export default function UserProfileScreen() {
           {profileUser?.role === 'ADMIN' ? 'Administrator' : 'Community Member'}
         </Text>
 
-        {/* Primary Message Action Button */}
-        <Pressable
-          onPress={handleStartChat}
-          disabled={chatLoading}
-          style={({ pressed }) => ({
-            flexDirection: 'row',
-            alignItems: 'center',
-            justifyContent: 'center',
-            backgroundColor: pressed ? theme.primaryPressed : theme.primary,
-            borderRadius: 24,
-            paddingVertical: 12,
-            paddingHorizontal: 32,
-            width: '100%',
-            maxWidth: 280,
-            marginBottom: 32,
-            gap: 8,
-            shadowColor: theme.inverse,
-            shadowOffset: { width: 0, height: 2 },
-            shadowOpacity: 0.15,
-            shadowRadius: 4,
-            elevation: 3,
-            opacity: chatLoading ? 0.8 : 1,
-          })}
-        >
-          {chatLoading ? (
-            <ActivityIndicator size="small" color={theme.textLight} />
-          ) : (
-            <>
-              <MaterialIcons name="chat" size={18} color={theme.textLight} />
-              <Text style={{ color: theme.textLight, fontSize: 15, fontWeight: '700' }}>Message</Text>
-            </>
-          )}
-        </Pressable>
+        {String(userId) !== String(currentUser?.id) && (
+          <Pressable
+            onPress={handleStartChat}
+            disabled={chatLoading}
+            style={({ pressed }) => ({
+              flexDirection: 'row',
+              alignItems: 'center',
+              justifyContent: 'center',
+              backgroundColor: pressed ? theme.primaryPressed : theme.primary,
+              borderRadius: 24,
+              paddingVertical: 12,
+              paddingHorizontal: 32,
+              width: '100%',
+              maxWidth: 280,
+              marginBottom: 32,
+              gap: 8,
+              shadowColor: theme.inverse,
+              shadowOffset: { width: 0, height: 2 },
+              shadowOpacity: 0.15,
+              shadowRadius: 4,
+              elevation: 3,
+              opacity: chatLoading ? 0.8 : 1,
+            })}
+          >
+            {chatLoading ? (
+              <ActivityIndicator size="small" color={theme.textLight} />
+            ) : (
+              <>
+                <MaterialIcons name="chat" size={18} color={theme.textLight} />
+                <Text style={{ color: theme.textLight, fontSize: 15, fontWeight: '700' }}>Message</Text>
+              </>
+            )}
+          </Pressable>
+        )}
 
         {/* Profile Info Fields (Matches Expensify's details lists) */}
         <View

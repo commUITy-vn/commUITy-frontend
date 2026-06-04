@@ -907,7 +907,9 @@ export default function FundDetailScreen() {
         <View style={styles.modalOverlay}>
           <View style={[styles.modalBox, { backgroundColor: theme.componentBG, borderColor: theme.border }]}>
             <View style={[styles.modalHeader, { borderBottomColor: theme.border }]}>
-              <Text style={[styles.modalTitle, { color: theme.text }]}>Record Outlay Expense</Text>
+              <Text style={[styles.modalTitle, { color: theme.text }]} numberOfLines={2}>
+                Record Outlay Expense
+              </Text>
               <Pressable onPress={() => setExpenseModalVisible(false)} style={styles.modalCloseButton}>
                 <MaterialIcons name="close" size={24} color={theme.textSupporting} />
               </Pressable>
@@ -1067,13 +1069,16 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     gap: 12,
     marginTop: 8,
+    alignItems: 'stretch',
   },
   actionButton: {
     flex: 1,
+    minWidth: 0,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     paddingVertical: 14,
+    paddingHorizontal: 10,
     borderRadius: 12,
     gap: 8,
     minHeight: 48,
@@ -1081,6 +1086,8 @@ const styles = StyleSheet.create({
   actionButtonText: {
     fontSize: 15,
     fontWeight: '700',
+    flexShrink: 1,
+    textAlign: 'center',
   },
   secondaryFullButton: {
     minHeight: 48,
@@ -1183,6 +1190,7 @@ const styles = StyleSheet.create({
   modalBox: {
     width: '100%',
     maxWidth: 420,
+    maxHeight: '88%',
     borderRadius: 16,
     borderWidth: 1,
     padding: 20,
@@ -1203,12 +1211,15 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
+    gap: 12,
     paddingBottom: 12,
     borderBottomWidth: 1,
   },
   modalTitle: {
+    flex: 1,
     fontSize: 18,
     fontWeight: '700',
+    lineHeight: 24,
   },
   modalCloseButton: {
     padding: 4,

@@ -20,7 +20,7 @@ import TextInput from "@/components/ui/TextInput"
 import { Button } from "@/components/ui"
 import { updateMe } from "@/features/users/api/update-me"
 import { getUserProfile } from "@/features/auth/api/get-user-profile"
-import { api } from "@/lib/api-client"
+import { uploadMedia } from "@/features/media/api/upload-media"
 import { storage } from "@/lib/storage"
 import { useQueryClient } from "@tanstack/react-query"
 
@@ -66,17 +66,14 @@ export default function ProfileEditScreen() {
 
             const asset = result.assets[0]
             const mimeType = asset.mimeType || "image/jpeg"
-            const formData = new FormData()
-            formData.append('file', {
+            const mediaRes = await uploadMedia({
                 uri: asset.uri,
-                name: asset.fileName || `avatar-${Date.now()}.jpg`,
-                type: mimeType,
-            } as any)
-            formData.append('folderName', 'helphub/avatars')
-            formData.append('isPublic', 'true')
-            formData.append('altText', displayName || user?.fullName || 'Avatar')
-
-            const mediaRes = await api.postForm<any>('/api/v1/media/upload', formData)
+                fileName: asset.fileName || `avatar-${Date.now()}.jpg`,
+                mimeType,
+                fileSize: asset.fileSize,
+                folderName: 'helphub/avatars',
+                altText: displayName || user?.fullName || 'Avatar',
+            })
             setAvatarUrl(mediaRes.fileUrl)
         } catch (err: any) {
             console.error("Failed to pick avatar image:", err)
@@ -94,12 +91,14 @@ export default function ProfileEditScreen() {
         setError("");
         try {
             await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-            const formData = new FormData();
-            formData.append('file', file);
-            formData.append('folderName', 'helphub/avatars');
-            formData.append('isPublic', 'true');
-            formData.append('altText', displayName || user?.fullName || file.name);
-            const mediaRes = await api.postForm<any>('/api/v1/media/upload', formData);
+            const mediaRes = await uploadMedia({
+                file,
+                fileName: file.name,
+                mimeType: file.type || 'image/jpeg',
+                fileSize: file.size,
+                folderName: 'helphub/avatars',
+                altText: displayName || user?.fullName || file.name,
+            });
             setAvatarUrl(mediaRes.fileUrl);
         } catch (err: any) {
             console.error("Failed to upload avatar image:", err);
@@ -112,6 +111,10 @@ export default function ProfileEditScreen() {
 
     const handleSave = async () => {
         if (isSaving) return;
+        if (avatarUrl && avatarUrl.length > 1000) {
+            setError("Avatar URL is too long. Please upload the image to Cloudinary or use a shorter public URL.");
+            return;
+        }
         setIsSaving(true);
         setError("");
         try {

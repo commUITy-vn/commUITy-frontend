@@ -54,15 +54,15 @@ export default function NotificationsScreen() {
     if (item.referenceType && item.referenceId) {
       const type = item.referenceType.toUpperCase();
       if (type === 'SUPPORT_REQUEST' || type === 'VOLUNTEER_ASSIGNMENT') {
-        router.push(`/request/${item.referenceId}`);
+        router.push({ pathname: '/request/[id]', params: { id: item.referenceId } } as any);
         return;
       }
       if (type === 'SUPPORT_LOCATION') {
-        router.push(`/location/${item.referenceId}`);
+        router.push({ pathname: '/location/[id]', params: { id: item.referenceId } } as any);
         return;
       }
       if (type === 'CONVERSATION') {
-        router.push(`/messages/${item.referenceId}`);
+        router.push({ pathname: '/messages/[id]', params: { id: item.referenceId } } as any);
         return;
       }
     }
@@ -82,6 +82,21 @@ export default function NotificationsScreen() {
           target = target.replace('/api/v1/', '/');
         }
         
+        const conversationMatch = target.match(/\/messages\/([^/?#]+)/);
+        if (conversationMatch) {
+          router.push({ pathname: '/messages/[id]', params: { id: conversationMatch[1] } } as any);
+          return;
+        }
+        const requestMatch = target.match(/\/request\/([^/?#]+)/);
+        if (requestMatch) {
+          router.push({ pathname: '/request/[id]', params: { id: requestMatch[1] } } as any);
+          return;
+        }
+        const locationMatch = target.match(/\/location\/([^/?#]+)/);
+        if (locationMatch) {
+          router.push({ pathname: '/location/[id]', params: { id: locationMatch[1] } } as any);
+          return;
+        }
         router.push(target as any);
       } catch {
         console.warn('Could not navigate to actionUrl:', item.actionUrl);

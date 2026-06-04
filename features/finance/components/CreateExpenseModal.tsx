@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Modal, View, Text, Pressable, StyleSheet } from 'react-native';
+import { Modal, View, Text, Pressable, StyleSheet, ScrollView, KeyboardAvoidingView, Platform } from 'react-native';
 import { useTheme } from '@/hooks/useTheme';
 import { useThemeStyles } from '@/hooks/useThemeStyles';
 import { useSharedValue, useAnimatedStyle, withTiming, Easing, createAnimatedComponent } from 'react-native-reanimated';
@@ -55,7 +55,10 @@ export const CreateExpenseModal: React.FC<Props> = ({ visible, onClose }) => {
 
   return (
     <Modal visible={visible} animationType="fade" transparent>
-      <View style={localStyles.modalOverlay}>
+      <KeyboardAvoidingView
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        style={localStyles.modalOverlay}
+      >
         <AnimatedView style={[
                 localStyles.modalContent,
                 { backgroundColor: theme.componentBG || theme.appBG, borderColor: theme.border, borderWidth: 1 },
@@ -64,50 +67,58 @@ export const CreateExpenseModal: React.FC<Props> = ({ visible, onClose }) => {
           <AnimatedText style={[
                 localStyles.title,
                 { color: theme.text }
-              ]}>Record Expense</AnimatedText>
-          
-          <TextInput
-            label="Amount"
-            placeholder="0.00"
-            keyboardType="numeric"
-            value={amount}
-            onChangeText={setAmount}
-            containerStyle={{ marginBottom: 12 }}
-          />
-          
-          <View style={{ marginBottom: 12 }}>
-            <Text style={{ fontSize: 13, fontWeight: '600', color: theme.textSupporting, marginBottom: 6, marginLeft: 4 }}>
-              Category
-            </Text>
-            <CustomPicker
-              selectedValue={category}
-              onValueChange={setCategory}
-              items={categories.map(c => ({ label: c, value: c }))}
-            />
-          </View>
+              ]} numberOfLines={2}>
+            Record Expense
+          </AnimatedText>
 
-          <TextInput
-            label="Description"
-            placeholder="What was this expense for?"
-            value={description}
-            onChangeText={setDescription}
-            multiline
-            height={80}
-            containerStyle={{ marginBottom: 16 }}
-            style={{ textAlignVertical: 'top', paddingTop: 8 }}
-          />
-
-          <Pressable
-            onPress={submitExpense}
-            style={[styles.button, { backgroundColor: theme.primary, paddingVertical: 12, marginBottom: 8 }]}
+          <ScrollView
+            keyboardShouldPersistTaps="handled"
+            showsVerticalScrollIndicator={false}
+            contentContainerStyle={localStyles.formContent}
           >
-            <Text style={[styles.buttonText, { color: '#fff' }]}>Submit Expense for Approval</Text>
-          </Pressable>
-          <Pressable onPress={onClose} style={[styles.button, { backgroundColor: theme.danger, paddingVertical: 12 }]}>
-            <Text style={[styles.buttonText, { color: '#fff' }]}>Cancel</Text>
-          </Pressable>
+            <TextInput
+              label="Amount"
+              placeholder="0.00"
+              keyboardType="numeric"
+              value={amount}
+              onChangeText={setAmount}
+              containerStyle={{ marginBottom: 12 }}
+            />
+            
+            <View style={{ marginBottom: 12 }}>
+              <Text style={{ fontSize: 13, fontWeight: '600', color: theme.textSupporting, marginBottom: 6, marginLeft: 4 }}>
+                Category
+              </Text>
+              <CustomPicker
+                selectedValue={category}
+                onValueChange={setCategory}
+                items={categories.map(c => ({ label: c, value: c }))}
+              />
+            </View>
+
+            <TextInput
+              label="Description"
+              placeholder="What was this expense for?"
+              value={description}
+              onChangeText={setDescription}
+              multiline
+              height={96}
+              containerStyle={{ marginBottom: 16 }}
+              style={{ textAlignVertical: 'top', paddingTop: 8 }}
+            />
+
+            <Pressable
+              onPress={submitExpense}
+              style={[styles.button, localStyles.modalButton, { backgroundColor: theme.primary, marginBottom: 8 }]}
+            >
+              <Text style={[styles.buttonText, localStyles.buttonText, { color: '#fff' }]}>Submit Expense for Approval</Text>
+            </Pressable>
+            <Pressable onPress={onClose} style={[styles.button, localStyles.modalButton, { backgroundColor: theme.danger }]}>
+              <Text style={[styles.buttonText, localStyles.buttonText, { color: '#fff' }]}>Cancel</Text>
+            </Pressable>
+          </ScrollView>
         </AnimatedView>
-      </View>
+      </KeyboardAvoidingView>
     </Modal>
   );
 };
@@ -123,6 +134,7 @@ const localStyles = StyleSheet.create({
   modalContent: {
     width: '100%',
     maxWidth: 400,
+    maxHeight: '88%',
     borderRadius: 16,
     padding: 20,
     elevation: 5,
@@ -134,7 +146,20 @@ const localStyles = StyleSheet.create({
   title: {
     fontSize: 20,
     fontWeight: '700',
+    lineHeight: 26,
     marginBottom: 16,
     textAlign: 'center',
+  },
+  formContent: {
+    paddingBottom: 4,
+  },
+  modalButton: {
+    minHeight: 46,
+    paddingVertical: 12,
+    paddingHorizontal: 12,
+  },
+  buttonText: {
+    textAlign: 'center',
+    flexShrink: 1,
   },
 });

@@ -10,6 +10,9 @@ import {
   Platform,
   StyleSheet,
   InteractionManager,
+  KeyboardAvoidingView,
+  Alert,
+  Linking,
 } from 'react-native';
 import { useTheme } from '@/hooks/useTheme';
 import { useLocalSearchParams, useRouter } from 'expo-router';
@@ -18,7 +21,9 @@ import { MaterialIcons } from '@expo/vector-icons';
 import { useChat } from '@/features/communication/hooks/useChat';
 import { useConversations } from '@/features/communication/hooks/useConversations';
 import { useAuthStore } from '@/features/auth/stores/useAuthStore';
-import { api } from '@/lib/api-client';
+import * as DocumentPicker from 'expo-document-picker';
+import { uploadMedia } from '@/features/media/api/upload-media';
+import { storage } from '@/lib/storage';
 
 const EmojiPickerPanel = React.lazy(() => import('@/components/ui/EmojiPickerPanel'));
 
@@ -131,30 +136,32 @@ function SharedItemCard({ content, theme }: { content: string; theme: any }) {
         backgroundColor: theme.highlightBG,
         borderWidth: 1,
         borderColor: theme.border,
-        maxWidth: 320,
+        width: Platform.OS === 'web' ? 320 : '100%',
+        maxWidth: Platform.OS === 'web' ? 320 : 300,
+        minWidth: Platform.OS === 'web' ? 260 : 230,
         gap: 8,
         opacity: pressed ? 0.9 : 1,
       })}
     >
-      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, minWidth: 0 }}>
         <View
           style={{
-            width: 40,
-            height: 40,
-            borderRadius: 20,
+            width: 34,
+            height: 34,
+            borderRadius: 17,
             backgroundColor: theme.border,
             justifyContent: 'center',
             alignItems: 'center',
           }}
         >
-          <MaterialIcons name={iconName as any} size={22} color={theme.primary} />
+          <MaterialIcons name={iconName as any} size={20} color={theme.primary} />
         </View>
-        <View style={{ flex: 1 }}>
-          <Text style={{ fontSize: 11, fontWeight: '700', color: theme.primary, textTransform: 'uppercase', letterSpacing: 0.5 }}>
+        <View style={{ flex: 1, minWidth: 0 }}>
+          <Text style={{ fontSize: 10, fontWeight: '800', color: theme.primary, textTransform: 'uppercase', letterSpacing: 0 }}>
             {displayType}
           </Text>
-          <Text style={{ fontSize: 14, fontWeight: '600', color: theme.text, marginTop: 2 }} numberOfLines={2}>
-            {title}
+          <Text style={{ fontSize: 14, fontWeight: '700', color: theme.text, marginTop: 2, lineHeight: 19 }} numberOfLines={3}>
+            {decodeURIComponent(title)}
           </Text>
         </View>
       </View>
@@ -270,18 +277,19 @@ function ReactionPopup({
         shadowOffset: { width: 0, height: 4 },
         shadowOpacity: 0.15,
         shadowRadius: 8,
-        elevation: 8,
-        zIndex: 100,
+        elevation: 24,
+        zIndex: 300,
       }}
     >
       {quickEmojis.map((emoji) => (
         <Pressable
           key={emoji}
           onPress={() => onSelect(emoji)}
+          hitSlop={8}
           style={({ pressed, hovered }) => ({
-            paddingHorizontal: 4,
-            paddingVertical: 2,
-            borderRadius: 6,
+            paddingHorizontal: 6,
+            paddingVertical: 4,
+            borderRadius: 8,
             backgroundColor: (pressed || hovered) ? theme.highlightBG : 'transparent',
             cursor: Platform.OS === 'web' ? 'pointer' as any : undefined,
           })}
@@ -297,10 +305,15 @@ function ReactionPopup({
 // Media Attachment Preview
 // ─────────────────────────────────────────────────────────────
 function MediaAttachmentView({ media, theme }: { media: any; theme: any }) {
+  const openMedia = () => {
+    if (media.fileUrl) {
+      Linking.openURL(media.fileUrl).catch((error) => console.error('Failed to open media:', error));
+    }
+  };
   if (media.fileType === 'IMAGE') {
     return (
       <Pressable
-        onPress={() => Platform.OS === 'web' && window.open(media.fileUrl, '_blank')}
+        onPress={openMedia}
         style={{ marginTop: 6 }}
       >
         <Image
@@ -313,7 +326,7 @@ function MediaAttachmentView({ media, theme }: { media: any; theme: any }) {
   }
   return (
     <Pressable
-      onPress={() => Platform.OS === 'web' && window.open(media.fileUrl, '_blank')}
+      onPress={openMedia}
       style={({ pressed }) => ({
         flexDirection: 'row',
         alignItems: 'center',
@@ -408,6 +421,18 @@ export default function ChatRoomScreen() {
   const { messages, isLoading, sendMessage } = useChat(id as string, user?.id);
 
   useEffect(() => {
+    const loadReactions = async () => {
+      try {
+        const raw = await storage.getItemAsync(`message_reactions_${id}`);
+        setReactions(raw ? JSON.parse(raw) : {});
+      } catch (error) {
+        console.error('Failed to load message reactions:', error);
+      }
+    };
+    loadReactions();
+  }, [id]);
+
+  useEffect(() => {
     setIsTransitionReady(false);
 
     if (Platform.OS === 'web') {
@@ -484,36 +509,77 @@ export default function ChatRoomScreen() {
     if (Platform.OS !== 'web') return;
     const file = e.target.files?.[0];
     if (!file) return;
+    await uploadChatAttachment({
+      file,
+      fileName: file.name,
+      uri: undefined,
+      mimeType: file.type || 'application/octet-stream',
+      fileSize: file.size,
+    });
+    if (fileInputRef.current) fileInputRef.current.value = '';
+  };
+
+  const uploadChatAttachment = async ({
+    file,
+    uri,
+    fileName,
+    mimeType,
+    fileSize,
+  }: {
+    file?: any;
+    uri?: string;
+    fileName: string;
+    mimeType: string;
+    fileSize: number;
+  }) => {
     setIsUploading(true);
     try {
       await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-      const localUrl = URL.createObjectURL(file);
-      const isImg = file.type.startsWith('image/');
-      const fileType = isImg ? 'IMAGE' : 'DOCUMENT';
-      const createPayload = {
-        fileName: file.name,
-        fileUrl: localUrl,
-        fileType,
-        mimeType: file.type || 'application/octet-stream',
-        fileSize: file.size,
-        altText: file.name,
-        isPublic: true,
-      };
-      const mediaRes = await api.post<any>('/api/v1/media', createPayload);
+      const mediaRes = await uploadMedia({
+        file,
+        uri,
+        fileName,
+        mimeType,
+        fileSize,
+        folderName: 'helphub/chat',
+        altText: fileName,
+      });
+      const media = mediaRes?.data || mediaRes;
+      const mediaId = media?.id;
+      if (!mediaId) throw new Error('Media upload succeeded but server did not return an ID.');
       setSelectedMedia({
-        id: mediaRes.id,
-        fileName: file.name,
-        fileUrl: localUrl,
-        fileType,
-        mimeType: file.type || 'application/octet-stream',
-        fileSize: file.size,
+        id: mediaId,
+        fileName: media.fileName || fileName,
+        fileUrl: media.fileUrl,
+        fileType: media.fileType || (mimeType.startsWith('image/') ? 'IMAGE' : 'DOCUMENT'),
+        mimeType: media.mimeType || mimeType,
+        fileSize: media.fileSize || fileSize,
       });
     } catch (err) {
       console.error('Failed to upload file:', err);
+      Alert.alert('Unable to attach file', (err as any)?.message || 'Please try again.');
     } finally {
       setIsUploading(false);
-      if (fileInputRef.current) fileInputRef.current.value = '';
     }
+  };
+
+  const handlePickMobileFile = async () => {
+    if (Platform.OS === 'web') {
+      fileInputRef.current?.click();
+      return;
+    }
+    const result = await DocumentPicker.getDocumentAsync({
+      copyToCacheDirectory: true,
+      multiple: false,
+    });
+    if (result.canceled || !result.assets?.length) return;
+    const asset = result.assets[0];
+    await uploadChatAttachment({
+      uri: asset.uri,
+      fileName: asset.name || `attachment-${Date.now()}`,
+      mimeType: asset.mimeType || 'application/octet-stream',
+      fileSize: asset.size || 0,
+    });
   };
 
   const handleSend = async () => {
@@ -536,14 +602,24 @@ export default function ChatRoomScreen() {
     const userName = user?.fullName || 'User';
     setReactions((prev) => {
       const msgReactions = prev[messageId] || {};
-      const usersList = msgReactions[emoji] || [];
-      const newUsersList = usersList.includes(userName)
-        ? usersList.filter((u) => u !== userName)
-        : [...usersList, userName];
-      const newMsgReactions = { ...msgReactions };
-      if (newUsersList.length === 0) delete newMsgReactions[emoji];
-      else newMsgReactions[emoji] = newUsersList;
-      return { ...prev, [messageId]: newMsgReactions };
+      const newMsgReactions: Record<string, string[]> = {};
+      let hadSameReaction = false;
+      Object.entries(msgReactions).forEach(([reactionEmoji, users]) => {
+        const list = users as string[];
+        if (reactionEmoji === emoji && list.includes(userName)) {
+          hadSameReaction = true;
+        }
+        const cleanUsers = list.filter((u) => u !== userName);
+        if (cleanUsers.length > 0) newMsgReactions[reactionEmoji] = cleanUsers;
+      });
+      if (!hadSameReaction) {
+        newMsgReactions[emoji] = [...(newMsgReactions[emoji] || []), userName];
+      }
+      const updated = { ...prev, [messageId]: newMsgReactions };
+      storage
+        .setItemAsync(`message_reactions_${id}`, JSON.stringify(updated))
+        .catch((error) => console.error('Failed to save message reactions:', error));
+      return updated;
     });
     setShowReactionPickerId(null);
   };
@@ -564,7 +640,10 @@ export default function ChatRoomScreen() {
   const hasContent = !!(inputText.trim() || selectedMedia);
 
   return (
-    <View
+    <KeyboardAvoidingView
+      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+      enabled={Platform.OS !== 'web'}
+      keyboardVerticalOffset={Platform.OS === 'ios' ? 8 : 0}
       style={{
         flex: 1,
         backgroundColor: theme.appBG,
@@ -695,7 +774,6 @@ export default function ChatRoomScreen() {
           showsVerticalScrollIndicator={false}
           onTouchStart={() => {
             if (showEmojiPicker) setShowEmojiPicker(false);
-            if (showReactionPickerId) setShowReactionPickerId(null);
           }}
         >
           {/* Start of Conversation Onboarding Banner */}
@@ -778,6 +856,7 @@ export default function ChatRoomScreen() {
               const msgReactions = reactions[message.id] || {};
               const showPicker = showReactionPickerId === message.id;
               const isHovered = hoveredMessageId === message.id;
+              const isOwnMessage = String(message.senderId) === String(user?.id);
 
               const isSystemMessage = message.content && message.content.startsWith('[SYSTEM:');
               if (isSystemMessage) {
@@ -830,24 +909,38 @@ export default function ChatRoomScreen() {
                     key={message.id}
                     onHoverIn={() => handleHoverIn(message.id)}
                     onHoverOut={handleHoverOut}
-                    style={{
-                      flexDirection: 'row',
-                      paddingLeft: 64,
-                      paddingVertical: 4,
-                      paddingRight: 16,
+                  style={{
+                    flexDirection: 'row',
+                    justifyContent: isOwnMessage ? 'flex-end' : 'flex-start',
+                    paddingLeft: isOwnMessage ? 16 : 64,
+                    paddingVertical: 4,
+                    paddingRight: 16,
                       position: 'relative',
                       backgroundColor: isHovered ? theme.highlightBG : 'transparent',
                       cursor: Platform.OS === 'web' ? 'default' as any : undefined,
                     }}
                   >
-                    <View style={{ flex: 1 }}>
+                    <View style={{ maxWidth: '78%', alignItems: isOwnMessage ? 'flex-end' : 'flex-start' }}>
                       {message.content ? (
                         message.content.startsWith('[SHARED_ITEM:') ? (
                           <SharedItemCard content={message.content} theme={theme} />
                         ) : (
-                          <Text style={{ color: theme.text, fontSize: 15, lineHeight: 22 }}>
-                            {message.content}
-                          </Text>
+                          <View
+                            style={{
+                              backgroundColor: isOwnMessage ? theme.primary : theme.componentBG,
+                              borderColor: isOwnMessage ? theme.primary : theme.border,
+                              borderWidth: 1,
+                              borderRadius: 16,
+                              borderBottomRightRadius: isOwnMessage ? 4 : 16,
+                              borderBottomLeftRadius: isOwnMessage ? 16 : 4,
+                              paddingHorizontal: 12,
+                              paddingVertical: 8,
+                            }}
+                          >
+                            <Text style={{ color: isOwnMessage ? '#FFFFFF' : theme.text, fontSize: 15, lineHeight: 22 }}>
+                              {message.content}
+                            </Text>
+                          </View>
                         )
                       ) : null}
                       {message.media && message.media.length > 0 && (
@@ -934,6 +1027,27 @@ export default function ChatRoomScreen() {
                         />
                       </Pressable>
                     )}
+
+                    {Platform.OS !== 'web' && (
+                      <View style={{ position: 'absolute', right: 16, top: 2 }}>
+                        <Pressable
+                          onPress={() => setShowReactionPickerId(showPicker ? null : message.id)}
+                          style={({ pressed }) => ({
+                            padding: 4,
+                            borderRadius: 6,
+                            backgroundColor: pressed || showPicker ? theme.highlightBG : 'transparent',
+                          })}
+                        >
+                          <MaterialIcons name="add-reaction" size={16} color={theme.textSupporting} />
+                        </Pressable>
+                        {showPicker && (
+                          <ReactionPopup
+                            onSelect={(emoji) => toggleReaction(message.id, emoji)}
+                            theme={theme}
+                          />
+                        )}
+                      </View>
+                    )}
                   </Pressable>
                 );
               }
@@ -945,7 +1059,7 @@ export default function ChatRoomScreen() {
                   onHoverIn={() => handleHoverIn(message.id)}
                   onHoverOut={handleHoverOut}
                   style={{
-                    flexDirection: 'row',
+                    flexDirection: isOwnMessage ? 'row-reverse' : 'row',
                     alignItems: 'flex-start',
                     paddingVertical: 6,
                     paddingHorizontal: 16,
@@ -954,6 +1068,7 @@ export default function ChatRoomScreen() {
                     cursor: Platform.OS === 'web' ? 'default' as any : undefined,
                   }}
                 >
+                  {!isOwnMessage && (
                   <View
                     style={{
                       width: 36,
@@ -972,11 +1087,12 @@ export default function ChatRoomScreen() {
                       {message.senderName?.[0]?.toUpperCase() ?? 'U'}
                     </Text>
                   </View>
+                  )}
 
-                  <View style={{ flex: 1 }}>
-                    <View style={{ flexDirection: 'row', alignItems: 'baseline', marginBottom: 2 }}>
+                  <View style={{ flex: 1, alignItems: isOwnMessage ? 'flex-end' : 'flex-start' }}>
+                    <View style={{ flexDirection: isOwnMessage ? 'row-reverse' : 'row', alignItems: 'baseline', marginBottom: 2 }}>
                       <Text style={{ color: theme.text, fontSize: 14, fontWeight: '700', marginRight: 8 }}>
-                        {message.senderName ?? 'User'}
+                        {isOwnMessage ? 'You' : message.senderName ?? 'User'}
                       </Text>
                       <Text style={{ color: theme.textSupporting, fontSize: 11 }}>{formattedTime}</Text>
                     </View>
@@ -984,9 +1100,23 @@ export default function ChatRoomScreen() {
                       message.content.startsWith('[SHARED_ITEM:') ? (
                         <SharedItemCard content={message.content} theme={theme} />
                       ) : (
-                        <Text style={{ color: theme.text, fontSize: 15, lineHeight: 22 }}>
-                          {message.content}
-                        </Text>
+                        <View
+                          style={{
+                            maxWidth: '78%',
+                            backgroundColor: isOwnMessage ? theme.primary : theme.componentBG,
+                            borderColor: isOwnMessage ? theme.primary : theme.border,
+                            borderWidth: 1,
+                            borderRadius: 16,
+                            borderTopRightRadius: isOwnMessage ? 4 : 16,
+                            borderTopLeftRadius: isOwnMessage ? 16 : 4,
+                            paddingHorizontal: 12,
+                            paddingVertical: 8,
+                          }}
+                        >
+                          <Text style={{ color: isOwnMessage ? '#FFFFFF' : theme.text, fontSize: 15, lineHeight: 22 }}>
+                            {message.content}
+                          </Text>
+                        </View>
                       )
                     ) : null}
                     {message.media && message.media.length > 0 && (
@@ -1184,7 +1314,7 @@ export default function ChatRoomScreen() {
           <Pressable
             onPress={() => {
               Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-              if (Platform.OS === 'web') fileInputRef.current?.click();
+              handlePickMobileFile();
             }}
             disabled={isUploading}
             style={({ pressed }) => ({
@@ -1347,6 +1477,6 @@ export default function ChatRoomScreen() {
           </React.Suspense>
         </View>
       )}
-    </View>
+    </KeyboardAvoidingView>
   );
 }

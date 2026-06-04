@@ -144,8 +144,8 @@ export class StompClient {
       },
       heartbeatIncoming: 0,
       heartbeatOutgoing: 0,
-      forceBinaryWSFrames: true,
-      appendMissingNULLonIncoming: true,
+      forceBinaryWSFrames: false,
+      appendMissingNULLonIncoming: false,
       reconnectDelay: 1000,
       debug: () => {},
       onConnect: () => {
@@ -172,8 +172,14 @@ export class StompClient {
         });
       },
       onStompError: (frame: any) => {
-        console.error("[STOMP] Protocol error frame:", frame.body);
-        this.emitError(new Error(frame.body || "STOMP protocol error"));
+        const message =
+          frame?.body ||
+          frame?.headers?.message ||
+          "STOMP protocol error";
+        console.error("[STOMP] Protocol error frame:", message);
+        this.connected = false;
+        this.connecting = false;
+        this.emitError(new Error(message));
       },
       onWebSocketError: (event: any) => {
         console.error("[STOMP] WebSocket transport error:", event);

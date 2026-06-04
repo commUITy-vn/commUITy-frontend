@@ -11,6 +11,9 @@ const createEnv = () => {
       .optional(),
     APP_URL: z.string().optional().default('http://localhost:3000'),
     APP_MOCK_API_PORT: z.string().optional().default('8080'),
+    CLOUDINARY_CLOUD_NAME: z.string().optional().default(''),
+    CLOUDINARY_UPLOAD_PRESET: z.string().optional().default(''),
+    CLOUDINARY_FOLDER: z.string().optional().default('helphub'),
   });
 
   const envVars = {
@@ -18,6 +21,9 @@ const createEnv = () => {
     ENABLE_API_MOCKING: process.env.EXPO_PUBLIC_ENABLE_API_MOCKING,
     APP_URL: process.env.EXPO_PUBLIC_URL,
     APP_MOCK_API_PORT: process.env.EXPO_PUBLIC_MOCK_API_PORT,
+    CLOUDINARY_CLOUD_NAME: process.env.EXPO_PUBLIC_CLOUDINARY_CLOUD_NAME,
+    CLOUDINARY_UPLOAD_PRESET: process.env.EXPO_PUBLIC_CLOUDINARY_UPLOAD_PRESET,
+    CLOUDINARY_FOLDER: process.env.EXPO_PUBLIC_CLOUDINARY_FOLDER,
   };
 
   const parsedEnv = EnvSchema.safeParse(envVars);

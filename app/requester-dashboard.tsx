@@ -1,10 +1,11 @@
 import { MaterialIcons } from "@expo/vector-icons";
-import { useQueries } from "@tanstack/react-query";
+import { useMutation, useQueries, useQueryClient } from "@tanstack/react-query";
 import * as Haptics from "expo-haptics";
 import { useRouter } from "expo-router";
 import React, { useMemo } from "react";
 import {
   ActivityIndicator,
+  Alert,
   FlatList,
   Platform,
   Pressable,
@@ -16,6 +17,12 @@ import {
 import { Button } from "@/components/ui";
 import { getSupportNeeds } from "@/features/support/api/get-support-needs";
 import type { SupportRequestSummaryResponse } from "@/features/support/api/get-support-requests";
+import {
+  approveVolunteer,
+  getAssignmentsBySupportRequest,
+  rejectVolunteer,
+  type VolunteerAssignment,
+} from "@/features/support/api/volunteer-assignments";
 import { useMySupportRequests } from "@/features/support/hooks/useSupportRequests";
 import { SupportStatus } from "@/features/support/types/support.types";
 import { useTheme } from "@/hooks/useTheme";
@@ -54,6 +61,7 @@ export default function RequesterDashboardScreen() {
   const theme = useTheme();
   const stylesGlobal = useThemeStyles();
   const router = useRouter();
+  const queryClient = useQueryClient();
   const { data: requests = [], isLoading, isError, refetch } = useMySupportRequests();
 
   const needsQueries = useQueries({
@@ -62,6 +70,40 @@ export default function RequesterDashboardScreen() {
       queryFn: () => getSupportNeeds(request.id),
       enabled: !!request.id,
     })),
+  });
+  const assignmentQueries = useQueries({
+    queries: requests.map((request) => ({
+      queryKey: ["volunteerAssignments", "request", request.id],
+      queryFn: () => getAssignmentsBySupportRequest(request.id),
+      enabled: !!request.id,
+    })),
+  });
+
+  const approveMutation = useMutation({
+    mutationFn: ({ requestId, volunteerId }: { requestId: string; volunteerId: string }) =>
+      approveVolunteer(requestId, volunteerId),
+    onSuccess: async (_data, variables) => {
+      await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      queryClient.invalidateQueries({ queryKey: ["volunteerAssignments", "request", variables.requestId] });
+      queryClient.invalidateQueries({ queryKey: ["volunteerAssignments"] });
+      queryClient.invalidateQueries({ queryKey: ["supportRequests"] });
+    },
+    onError: (error: any) => {
+      Alert.alert("Unable to accept volunteer", error?.message || "Please try again.");
+    },
+  });
+
+  const rejectMutation = useMutation({
+    mutationFn: ({ requestId, volunteerId }: { requestId: string; volunteerId: string }) =>
+      rejectVolunteer(requestId, volunteerId, "Requester cancelled this volunteer application."),
+    onSuccess: async (_data, variables) => {
+      await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
+      queryClient.invalidateQueries({ queryKey: ["volunteerAssignments", "request", variables.requestId] });
+      queryClient.invalidateQueries({ queryKey: ["volunteerAssignments"] });
+    },
+    onError: (error: any) => {
+      Alert.alert("Unable to cancel volunteer application", error?.message || "Please try again.");
+    },
   });
 
   const needSummaryByRequest = useMemo(() => {
@@ -104,6 +146,11 @@ export default function RequesterDashboardScreen() {
     const colors = statusColor(item.status, theme);
     const needSummary = needSummaryByRequest.get(item.id) || { total: 0, fulfilled: 0 };
     const needsLoading = needsQueries[requests.findIndex((r) => r.id === item.id)]?.isLoading;
+    const assignments =
+      (assignmentQueries[requests.findIndex((r) => r.id === item.id)]?.data as
+        | VolunteerAssignment[]
+        | undefined) || [];
+    const assignmentLoading = assignmentQueries[requests.findIndex((r) => r.id === item.id)]?.isLoading;
 
     return (
       <Pressable
@@ -152,6 +199,85 @@ export default function RequesterDashboardScreen() {
             primary={item.status === SupportStatus.PENDING}
             style={{ flex: 1 }}
           />
+        </View>
+
+        <View style={[styles.assignmentBox, { backgroundColor: theme.highlightBG, borderColor: theme.border }]}>
+          <View style={styles.assignmentHeader}>
+            <MaterialIcons name="groups" size={18} color={theme.primary} />
+            <Text style={[styles.assignmentTitle, { color: theme.text }]}>
+              Volunteer Applications
+            </Text>
+          </View>
+          {assignmentLoading ? (
+            <Text style={[styles.meta, { color: theme.textSupporting }]}>Loading volunteers...</Text>
+          ) : assignments.length === 0 ? (
+            <Text style={[styles.meta, { color: theme.textSupporting }]}>No volunteer applications yet.</Text>
+          ) : (
+            <View style={{ gap: 8 }}>
+              {assignments.map((assignment) => {
+                const isPending = assignment.status === "PENDING";
+                const isBusy =
+                  approveMutation.isPending || rejectMutation.isPending;
+                return (
+                  <View key={assignment.volunteerId} style={[styles.assignmentRow, { borderColor: theme.border }]}>
+                    <View style={{ flex: 1 }}>
+                      <Text style={[styles.volunteerName, { color: theme.text }]} numberOfLines={1}>
+                        {assignment.volunteerName || "Volunteer"}
+                      </Text>
+                      <Text style={[styles.meta, { color: theme.textSupporting }]} numberOfLines={1}>
+                        {assignment.volunteerEmail || assignment.status}
+                      </Text>
+                    </View>
+                    <View style={[styles.smallBadge, { backgroundColor: isPending ? "#FFF4E5" : "#E5F6EE" }]}>
+                      <Text style={[styles.smallBadgeText, { color: isPending ? "#B35900" : "#008040" }]}>
+                        {assignment.status}
+                      </Text>
+                    </View>
+                    {isPending && (
+                      <View style={styles.assignmentActions}>
+                        <Pressable
+                          disabled={isBusy}
+                          onPress={() =>
+                            approveMutation.mutate({
+                              requestId: item.id,
+                              volunteerId: assignment.volunteerId,
+                            })
+                          }
+                          style={[styles.iconAction, { backgroundColor: "#E5F6EE" }]}
+                        >
+                          <MaterialIcons name="check" size={18} color="#008040" />
+                        </Pressable>
+                        <Pressable
+                          disabled={isBusy}
+                          onPress={() => {
+                            Alert.alert(
+                              "Cancel volunteer application?",
+                              `This will reject ${assignment.volunteerName || "this volunteer"} for this support request.`,
+                              [
+                                { text: "Keep", style: "cancel" },
+                                {
+                                  text: "Cancel application",
+                                  style: "destructive",
+                                  onPress: () =>
+                                    rejectMutation.mutate({
+                                      requestId: item.id,
+                                      volunteerId: assignment.volunteerId,
+                                    }),
+                                },
+                              ],
+                            );
+                          }}
+                          style={[styles.iconAction, { backgroundColor: "#FFE5E5" }]}
+                        >
+                          <MaterialIcons name="close" size={18} color={theme.danger} />
+                        </Pressable>
+                      </View>
+                    )}
+                  </View>
+                );
+              })}
+            </View>
+          )}
         </View>
       </Pressable>
     );
@@ -291,4 +417,36 @@ const styles = StyleSheet.create({
   },
   progressText: { fontSize: 13, fontWeight: "700" },
   actionsRow: { flexDirection: "row", marginTop: 4 },
+  assignmentBox: {
+    marginTop: 4,
+    borderRadius: 10,
+    borderWidth: 1,
+    padding: 10,
+    gap: 8,
+  },
+  assignmentHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+  },
+  assignmentTitle: { fontSize: 13, fontWeight: "800" },
+  assignmentRow: {
+    borderWidth: 1,
+    borderRadius: 8,
+    padding: 8,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+  },
+  volunteerName: { fontSize: 13, fontWeight: "800" },
+  smallBadge: { borderRadius: 6, paddingHorizontal: 7, paddingVertical: 3 },
+  smallBadgeText: { fontSize: 9, fontWeight: "800" },
+  assignmentActions: { flexDirection: "row", gap: 6 },
+  iconAction: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    alignItems: "center",
+    justifyContent: "center",
+  },
 });

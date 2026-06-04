@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { View, Text, FlatList, Pressable, StyleSheet, TextInput, Platform, ActivityIndicator, Alert } from 'react-native';
+import { View, Text, FlatList, Pressable, StyleSheet, TextInput, Platform, ActivityIndicator, Alert, Image } from 'react-native';
 import { useRouter } from 'expo-router';
 import * as Haptics from 'expo-haptics';
 import { MaterialIcons } from '@expo/vector-icons';
@@ -30,6 +30,22 @@ const formatRelativeTime = (dateStr?: string) => {
   } catch {
     return '';
   }
+};
+
+const getConversationPreview = (conversation: any) => {
+  const content = conversation.lastMessageContent;
+  if (!content && conversation.lastMessageId) return 'Received an attachment';
+  if (!content) return 'No messages yet';
+  if (content.startsWith('[SHARED_ITEM:SUPPORT:') || content.startsWith('[SHARED_ITEM:REQUEST:')) {
+    return 'Shared a support request';
+  }
+  if (content.startsWith('[SHARED_ITEM:LOCATION:')) return 'Shared a support location';
+  if (content.startsWith('[SHARED_ITEM:FUND:')) return 'Shared a community fund';
+  if (content.startsWith('[SYSTEM:')) {
+    const systemMatch = content.match(/^\[SYSTEM:[^\]]*\]\s*(.*)$/);
+    return systemMatch ? systemMatch[1] : content;
+  }
+  return content;
 };
 
 export default function MessageSearchScreen() {
@@ -68,25 +84,12 @@ export default function MessageSearchScreen() {
         const otherMember = c.members?.find((m: any) => m.userId !== user?.id);
         const name = otherMember?.fullName || 'User';
 
-        let lastMessage = c.lastMessageContent || 'No messages yet';
-        if (c.lastMessageContent) {
-          if (c.lastMessageContent.startsWith('[SHARED_ITEM:SUPPORT:')) {
-            lastMessage = 'Shared a support request';
-          } else if (c.lastMessageContent.startsWith('[SHARED_ITEM:LOCATION:')) {
-            lastMessage = 'Shared a location hub';
-          } else if (c.lastMessageContent.startsWith('[SHARED_ITEM:FUND:')) {
-            lastMessage = 'Shared a community fund';
-          } else if (c.lastMessageContent.startsWith('[SYSTEM:')) {
-            const systemMatch = c.lastMessageContent.match(/^\[SYSTEM:[^\]]*\]\s*(.*)$/);
-            lastMessage = systemMatch ? systemMatch[1] : c.lastMessageContent;
-          }
-        }
-
         return {
           id: c.id || String(Math.random()),
           name,
           avatarLetter: name.charAt(0).toUpperCase(),
-          lastMessage,
+          avatarUrl: otherMember?.avatarUrl,
+          lastMessage: getConversationPreview(c),
           timestamp: formatRelativeTime(c.lastMessageCreatedAt) || formatRelativeTime(c.createdAt) || 'Just now',
           unreadCount: c.unreadCount || 0,
         };
@@ -122,6 +125,10 @@ export default function MessageSearchScreen() {
 
   const handleStartChat = async (targetUser: any) => {
     if (!targetUser?.id || creatingChatUserId) return;
+    if (String(targetUser.id) === String(user?.id)) {
+      Alert.alert('Unable to start chat', 'You cannot create a direct message with yourself.');
+      return;
+    }
     setCreatingChatUserId(targetUser.id);
     try {
       await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
@@ -286,11 +293,15 @@ export default function MessageSearchScreen() {
                       justifyContent: 'center',
                       alignItems: 'center',
                     }}
-                  >
-                    <Text style={{ color: theme.textSupporting, fontSize: 15, fontWeight: '700' }}>
-                      {item.avatarLetter}
-                    </Text>
-                  </View>
+                    >
+                      {item.avatarUrl ? (
+                        <Image source={{ uri: item.avatarUrl }} style={{ width: 40, height: 40, borderRadius: 20 }} />
+                      ) : (
+                        <Text style={{ color: theme.textSupporting, fontSize: 15, fontWeight: '700' }}>
+                          {item.avatarLetter}
+                        </Text>
+                      )}
+                    </View>
                 </View>
 
                 {/* Content */}

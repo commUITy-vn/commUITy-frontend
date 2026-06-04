@@ -1,18 +1,19 @@
 import React, { useState, useMemo } from 'react';
-import { View, Text, Pressable, FlatList, StyleSheet, Platform, Modal, ScrollView, ActivityIndicator } from 'react-native';
+import { View, Text, Pressable, FlatList, StyleSheet, Platform, Modal, ScrollView, ActivityIndicator, Image } from 'react-native';
 import { useTheme } from '@/hooks/useTheme';
 import { useRouter } from 'expo-router';
 import { MaterialIcons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
+import * as ImagePicker from 'expo-image-picker';
 import { BorderRadius, Spacing } from '@/constants/theme';
-import TextInput from '@/components/ui/TextInput';
-import { Button } from '@/components/ui';
+import { Button, TextInput } from '@/components/ui';
 import {
   useCategories,
   useCreateCategory,
   useUpdateCategory,
   useUpdateCategoryStatus,
 } from '@/features/support/hooks/useCategories';
+import { uploadMedia } from '@/features/media/api/upload-media';
 
 export default function CategoryManagementScreen() {
   const theme = useTheme();
@@ -35,6 +36,7 @@ export default function CategoryManagementScreen() {
   const [formDescription, setFormDescription] = useState('');
   const [formIconUrl, setFormIconUrl] = useState('');
   const [formError, setFormError] = useState('');
+  const [isIconUploading, setIsIconUploading] = useState(false);
 
   const handleBack = async () => {
     await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
@@ -105,6 +107,46 @@ export default function CategoryManagementScreen() {
     }
   };
 
+  const handlePickIcon = async () => {
+    setFormError('');
+    setIsIconUploading(true);
+    try {
+      await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+      if (Platform.OS !== 'web') {
+        const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
+        if (!permission.granted) {
+          setFormError('Photo access is required to choose a category icon.');
+          return;
+        }
+      }
+
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        allowsEditing: true,
+        aspect: [1, 1],
+        quality: 0.8,
+      });
+      if (result.canceled || !result.assets?.[0]) return;
+
+      const asset = result.assets[0];
+      const media = await uploadMedia({
+        uri: asset.uri,
+        fileName: asset.fileName || `category-icon-${Date.now()}.jpg`,
+        mimeType: asset.mimeType || 'image/jpeg',
+        fileSize: asset.fileSize,
+        folderName: 'helphub/categories',
+        altText: formName || 'Category icon',
+      });
+      if (!media?.fileUrl) throw new Error('Media upload succeeded but server did not return a file URL.');
+      setFormIconUrl(media.fileUrl);
+    } catch (err: any) {
+      console.error('Failed to upload category icon:', err);
+      setFormError(err?.message || 'Failed to upload category icon.');
+    } finally {
+      setIsIconUploading(false);
+    }
+  };
+
   const filteredCategories = useMemo(() => {
     if (!categories) return [];
     if (!searchQuery.trim()) return categories;
@@ -124,7 +166,11 @@ export default function CategoryManagementScreen() {
         <View style={styles.cardHeader}>
           <View style={styles.categoryInfo}>
             <View style={[styles.iconCircle, { backgroundColor: theme.highlightBG, borderColor: theme.border }]}>
-              <MaterialIcons name={item.iconUrl || 'label'} size={22} color={theme.primary} />
+              {item.iconUrl?.startsWith?.('http') ? (
+                <Image source={{ uri: item.iconUrl }} style={styles.iconImage} />
+              ) : (
+                <MaterialIcons name={(item.iconUrl || 'label') as any} size={22} color={theme.primary} />
+              )}
             </View>
             <View style={styles.meta}>
               <Text style={[styles.name, { color: theme.text }]}>{item.name}</Text>
@@ -284,12 +330,28 @@ export default function CategoryManagementScreen() {
             </View>
 
             <View style={styles.inputContainer}>
-              <TextInput
-                label="Icon Name (MaterialIcons)"
-                value={formIconUrl}
-                onChangeText={setFormIconUrl}
-                placeholder="e.g. local-hospital"
-              />
+              <Text style={[styles.fieldLabel, { color: theme.textSupporting }]}>Category Icon</Text>
+              <View style={styles.iconPickerRow}>
+                <View style={[styles.largeIconPreview, { backgroundColor: theme.highlightBG, borderColor: theme.border }]}>
+                  {formIconUrl?.startsWith('http') ? (
+                    <Image source={{ uri: formIconUrl }} style={styles.largeIconImage} />
+                  ) : (
+                    <MaterialIcons name={(formIconUrl || 'label') as any} size={28} color={theme.primary} />
+                  )}
+                </View>
+                <View style={{ flex: 1, gap: 8 }}>
+                  <Button
+                    text={isIconUploading ? 'Uploading...' : 'Choose Image'}
+                    onPress={handlePickIcon}
+                    isLoading={isIconUploading}
+                  />
+                  <TextInput
+                    label="Icon URL or MaterialIcons name"
+                    value={formIconUrl}
+                    onChangeText={setFormIconUrl}
+                  />
+                </View>
+              </View>
             </View>
 
             <View style={styles.inputContainer}>
@@ -297,9 +359,9 @@ export default function CategoryManagementScreen() {
                 label="Description"
                 value={formDescription}
                 onChangeText={setFormDescription}
-                placeholder="Brief description of the category..."
                 multiline
                 numberOfLines={4}
+                height={110}
               />
             </View>
 
@@ -401,6 +463,35 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     marginRight: 12,
+  },
+  iconImage: {
+    width: 42,
+    height: 42,
+    borderRadius: 21,
+  },
+  fieldLabel: {
+    fontSize: 12,
+    fontWeight: '700',
+    textTransform: 'uppercase',
+    marginBottom: 8,
+  },
+  iconPickerRow: {
+    flexDirection: 'row',
+    gap: 12,
+    alignItems: 'center',
+  },
+  largeIconPreview: {
+    width: 72,
+    height: 72,
+    borderRadius: 16,
+    borderWidth: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    overflow: 'hidden',
+  },
+  largeIconImage: {
+    width: 72,
+    height: 72,
   },
   meta: {
     flex: 1,

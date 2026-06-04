@@ -1,9 +1,8 @@
 import { Alert, View, Text, Modal, StyleSheet, Pressable, Platform } from 'react-native';
 import { useTheme } from '@/hooks/useTheme';
 import * as Haptics from 'expo-haptics';
-import { useState } from 'react';
-import { SupportItem } from '@/features/support/types/support.types';
-import { ItemCategory } from '@/features/support/types/support.types';
+import { useEffect, useState } from 'react';
+import { SupportItem, ItemCategory } from '@/features/support/types/support.types';
 import TextInput from '@/components/ui/TextInput';
 import { MaterialIcons } from '@expo/vector-icons';
 
@@ -22,10 +21,10 @@ export const ContributeItemModal = ({
 }: ContributeItemModalProps) => {
   const theme = useTheme();
   const [quantity, setQuantity] = useState(1);
-  const [moneyAmount, setMoneyAmount] = useState('');
+  const [quantityText, setQuantityText] = useState('1');
   const [notes, setNotes] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const isMoney = item?.category === ItemCategory.MONEY;
+  const isMoney = String(item?.category || '') === ItemCategory.MONEY;
 
   const remainingQuantity = item
     ? Math.max(
@@ -35,26 +34,49 @@ export const ContributeItemModal = ({
       )
     : 0;
 
+  useEffect(() => {
+    if (!visible) return;
+    const initial = isMoney ? '' : String(Math.min(Math.max(1, quantity), remainingQuantity || quantity || 1));
+    setQuantity(Number(initial || 1));
+    setQuantityText(initial || '');
+    setNotes('');
+  }, [visible, item?.id, isMoney]);
+
   const handleQuantityChange = async (delta: number) => {
     await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    const maxQuantity = remainingQuantity > 0 ? remainingQuantity : 1;
+    const maxQuantity = remainingQuantity > 0 ? remainingQuantity : Number.MAX_SAFE_INTEGER;
     const newQuantity = Math.min(maxQuantity, Math.max(1, quantity + delta));
     setQuantity(newQuantity);
+    setQuantityText(String(newQuantity));
+  };
+
+  const handleQuantityTextChange = (text: string) => {
+    const sanitized = text.replace(/[^\d]/g, '');
+    setQuantityText(sanitized);
+    const parsed = Number(sanitized || 0);
+    if (parsed > 0) {
+      const maxQuantity = isMoney || remainingQuantity <= 0 ? Number.MAX_SAFE_INTEGER : remainingQuantity;
+      setQuantity(Math.min(maxQuantity, parsed));
+    }
   };
 
   const handleConfirm = async () => {
     if (!item) return;
-    const finalQuantity = isMoney ? Number(moneyAmount) : quantity;
-    if (!finalQuantity || finalQuantity <= 0) {
-      Alert.alert('Unable to contribute', isMoney ? 'Enter a valid VND amount.' : 'Enter a valid quantity.');
+    const parsedQuantity = Number(quantityText || quantity);
+    if (!Number.isFinite(parsedQuantity) || parsedQuantity <= 0) {
+      Alert.alert('Invalid amount', isMoney ? 'Please enter a valid VND amount.' : 'Please enter a valid quantity.');
       return;
     }
+    const finalQuantity = isMoney
+      ? parsedQuantity
+      : Math.min(parsedQuantity, remainingQuantity || parsedQuantity);
+
     setIsSubmitting(true);
     try {
       await onConfirm(item.id, finalQuantity, notes);
       await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       setQuantity(1);
-      setMoneyAmount('');
+      setQuantityText(isMoney ? '' : '1');
       setNotes('');
     } catch (error: any) {
       Alert.alert(
@@ -69,7 +91,7 @@ export const ContributeItemModal = ({
   const handleClose = async () => {
     await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     setQuantity(1);
-    setMoneyAmount('');
+    setQuantityText(isMoney ? '' : '1');
     setNotes('');
     onClose();
   };
@@ -94,11 +116,10 @@ export const ContributeItemModal = ({
               shadowColor: theme.inverse,
             },
           ]}
-          onPress={(e) => e.stopPropagation()} // Stop propagation to prevent auto-close on modal click
+          onPress={(e) => e.stopPropagation()}
         >
-          {/* Header */}
           <View style={[styles.header, { borderBottomColor: theme.border }]}>
-              <Text style={[styles.title, { color: theme.text }]}>
+            <Text style={[styles.title, { color: theme.text }]}>
               {isMoney ? 'Contribute Money' : 'Contribute Item'}
             </Text>
             <Pressable onPress={handleClose} style={styles.closeBtn}>
@@ -115,28 +136,22 @@ export const ContributeItemModal = ({
                     {item.name}
                   </Text>
                   <Text style={{ fontSize: 12, color: theme.textSupporting, marginTop: 2 }}>
-                    {remainingQuantity > 0
-                      ? `${remainingQuantity} ${item.unit || ''} remaining`
-                      : 'This support item is already fulfilled'}
+                    {isMoney
+                      ? `${item.receivedQuantity || 0} / ${item.neededQuantity || 0} VND received`
+                      : remainingQuantity > 0
+                        ? `${remainingQuantity} ${item.unit || ''} remaining`
+                        : 'This support item is already fulfilled'}
                   </Text>
                 </View>
               </View>
             )}
 
-            {/* Quantity Selector Section */}
             <View style={styles.section}>
               <Text style={[styles.label, { color: theme.text }]}>
                 {isMoney ? 'Amount to Contribute' : 'Quantity to Contribute'}
               </Text>
-              {isMoney ? (
-                <TextInput
-                  label="Amount (VND)"
-                  value={moneyAmount}
-                  onChangeText={(text) => setMoneyAmount(text.replace(/[^0-9]/g, ''))}
-                  keyboardType="numeric"
-                />
-              ) : (
-                <View style={[styles.quantityContainer, { borderColor: theme.border, backgroundColor: theme.highlightBG }]}>
+              <View style={[styles.quantityContainer, { borderColor: theme.border, backgroundColor: theme.highlightBG }]}>
+                {!isMoney && (
                   <Pressable
                     style={({ pressed }) => [
                       styles.quantityButton,
@@ -149,18 +164,22 @@ export const ContributeItemModal = ({
                   >
                     <MaterialIcons name="remove" size={18} color={theme.text} />
                   </Pressable>
-                  
-                  <View style={styles.quantityValueContainer}>
-                    <Text style={[styles.quantityValue, { color: theme.text }]}>
-                      {quantity}
-                    </Text>
-                    {item?.unit ? (
-                      <Text style={{ fontSize: 12, color: theme.textSupporting, fontWeight: '600', textTransform: 'uppercase' }}>
-                        {item.unit}
-                      </Text>
-                    ) : null}
-                  </View>
+                )}
 
+                <View style={styles.quantityValueContainer}>
+                  <TextInput
+                    label={isMoney ? 'Amount (VND)' : 'Quantity'}
+                    value={quantityText}
+                    onChangeText={handleQuantityTextChange}
+                    keyboardType="number-pad"
+                    style={styles.quantityInput}
+                  />
+                  <Text style={{ fontSize: 12, color: theme.textSupporting, fontWeight: '600', textTransform: 'uppercase' }}>
+                    {isMoney ? 'VND' : item?.unit || ''}
+                  </Text>
+                </View>
+
+                {!isMoney && (
                   <Pressable
                     style={({ pressed }) => [
                       styles.quantityButton,
@@ -173,11 +192,10 @@ export const ContributeItemModal = ({
                   >
                     <MaterialIcons name="add" size={18} color={theme.text} />
                   </Pressable>
-                </View>
-              )}
+                )}
+              </View>
             </View>
 
-            {/* Notes Section (using custom TextInput with floating label, no placeholder) */}
             <View style={styles.section}>
               <TextInput
                 label="Delivery & Handover Notes"
@@ -189,7 +207,6 @@ export const ContributeItemModal = ({
             </View>
           </View>
 
-          {/* Footer Buttons */}
           <View style={[styles.footer, { borderTopColor: theme.border }]}>
             <Pressable
               style={({ pressed }) => [
@@ -205,20 +222,20 @@ export const ContributeItemModal = ({
                 Cancel
               </Text>
             </Pressable>
-            
+
             <Pressable
               style={({ pressed }) => [
                 styles.confirmButton,
                 {
                   backgroundColor: theme.primary,
-                  opacity: pressed ? 0.9 : 1,
+                  opacity: pressed || isSubmitting ? 0.9 : 1,
                 },
               ]}
-              disabled={isSubmitting || remainingQuantity <= 0}
+              disabled={isSubmitting || (!isMoney && remainingQuantity <= 0)}
               onPress={handleConfirm}
             >
               <Text style={[styles.confirmButtonText, { color: theme.textLight }]}>
-                {isSubmitting ? 'Sending...' : isMoney ? 'Open PayOS' : 'Confirm Help'}
+                {isSubmitting ? 'Sending...' : 'Confirm Help'}
               </Text>
             </Pressable>
           </View>
@@ -298,6 +315,7 @@ const styles = StyleSheet.create({
     padding: 8,
     borderRadius: 10,
     borderWidth: 1,
+    gap: 10,
   },
   quantityButton: {
     width: 36,
@@ -306,26 +324,14 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    ...Platform.select({
-      ios: {
-        shadowColor: '#000',
-        shadowOffset: { width: 0, height: 1 },
-        shadowOpacity: 0.05,
-        shadowRadius: 2,
-      },
-      android: {
-        elevation: 1,
-      },
-      default: {},
-    }),
   },
   quantityValueContainer: {
+    flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  quantityValue: {
-    fontSize: 20,
-    fontWeight: '700',
+  quantityInput: {
+    textAlign: 'center',
   },
   footer: {
     flexDirection: 'row',

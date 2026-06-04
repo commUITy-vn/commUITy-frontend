@@ -2,6 +2,22 @@ import { useEffect, useMemo, useRef } from 'react';
 import { useSegments, useGlobalSearchParams } from 'expo-router';
 import { useQueryClient } from '@tanstack/react-query';
 import { useToastStore } from '@/stores/useToastStore';
+
+const getMessagePreview = (message: any) => {
+  const content = message?.content;
+  if (!content && message?.media?.length > 0) return 'Received an attachment';
+  if (!content) return 'New message';
+  if (content.startsWith('[SHARED_ITEM:SUPPORT:') || content.startsWith('[SHARED_ITEM:REQUEST:')) {
+    return 'Shared a support request';
+  }
+  if (content.startsWith('[SHARED_ITEM:LOCATION:')) return 'Shared a support location';
+  if (content.startsWith('[SHARED_ITEM:FUND:')) return 'Shared a community fund';
+  if (content.startsWith('[SYSTEM:')) {
+    const match = content.match(/^\[SYSTEM:[^\]]*\]\s*(.*)$/);
+    return match ? match[1] : content;
+  }
+  return content;
+};
 import { stompClient } from '../api/websocket-client';
 import { getAccessToken } from '@/lib/api-client';
 import { useConversations } from './useConversations';
@@ -84,7 +100,7 @@ export const useGlobalWebSockets = ({ isAuthenticated, userId }: GlobalWebSocket
                 return {
                   ...conversation,
                   lastMessageId: message.id,
-                  lastMessageContent: message.content,
+                  lastMessageContent: message.content || (message.media?.length ? '' : message.content),
                   lastMessageCreatedAt: message.createdAt,
                   updatedAt: message.createdAt || conversation.updatedAt,
                   unreadCount: nextUnreadCount,
@@ -107,7 +123,7 @@ export const useGlobalWebSockets = ({ isAuthenticated, userId }: GlobalWebSocket
               // Trigger in-app Toast notification alert
               showToast({
                 title: message.senderName || 'New Message',
-                description: message.content || 'Sent an attachment',
+                description: getMessagePreview(message),
                 type: 'message',
                 referenceType: 'CONVERSATION',
                 referenceId: conversationId,

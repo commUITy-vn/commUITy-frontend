@@ -197,8 +197,7 @@ export default function VolunteerDashboardScreen() {
     const volunteerContributionQuantity =
       volunteerContributionByRequest.get(item.supportRequestId) || 0;
     const hasRecordedContribution = volunteerContributionQuantity > 0;
-    const canComplete =
-      item.status === 'ACCEPTED' && !requestIsCompleted && hasRecordedContribution;
+    const canComplete = item.status === 'ACCEPTED' && !requestIsCompleted;
     const canWithdraw =
       (item.status === 'PENDING' || item.status === 'ACCEPTED') &&
       !requestIsCompleted;
@@ -221,12 +220,12 @@ export default function VolunteerDashboardScreen() {
               ? 'This support request is already completed. No further VA action is needed.'
               : item.status === 'ACCEPTED'
               ? hasRecordedContribution
-                ? `Recorded contribution: ${volunteerContributionQuantity}. You can mark complete after delivery.`
-                : 'Contribute support needs first, then mark this assignment complete after delivery.'
+                ? `Recorded contribution: ${volunteerContributionQuantity}. Progress is counted once your assignment is accepted.`
+                : 'You can contribute support needs while this assignment is accepted.'
               : item.status === 'COMPLETED'
-                ? 'You marked this assignment complete. SR status is managed separately.'
+                ? 'Assignment marked complete. Recorded accepted contributions remain counted.'
                 : item.status === 'CANCELLED'
-                  ? 'You withdrew from this assignment.'
+                  ? 'You withdrew from this assignment. Recorded accepted contributions remain counted.'
                   : item.status === 'PENDING'
                     ? 'Waiting for requester/admin/collaborator review.'
                     : item.rejectionReason || 'Assignment is no longer active.'}
@@ -374,8 +373,8 @@ export default function VolunteerDashboardScreen() {
         }
         message={
           pendingAction?.type === 'complete'
-            ? `Only confirm after your contribution has been recorded and delivered for "${pendingAction?.title}". This will set your volunteer assignment to COMPLETED.`
-            : `This will cancel your volunteer assignment for "${pendingAction?.title}". If this is the last accepted volunteer, the support request may return to APPROVED.`
+            ? `Mark this assignment complete for "${pendingAction?.title}". Contributions recorded while accepted already count toward request progress.`
+            : `Withdraw from "${pendingAction?.title}". Contributions recorded while accepted already count toward request progress.`
         }
         confirmText={pendingAction?.type === 'complete' ? 'Mark Complete' : 'Withdraw'}
         cancelText="Cancel"

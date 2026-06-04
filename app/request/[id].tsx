@@ -215,18 +215,11 @@ export default function RequestDetailScreen() {
         label: "Counted as collaborator/direct contribution.",
       };
     }
-    if (assignment.status === "COMPLETED") {
+    if (assignment.status !== "PENDING" && assignment.status !== "REJECTED") {
       return {
         isCounted: true,
         tone: "success" as const,
-        label: "Counted: volunteer assignment completed.",
-      };
-    }
-    if (assignment.status === "CANCELLED") {
-      return {
-        isCounted: false,
-        tone: "danger" as const,
-        label: "Not counted: volunteer assignment cancelled.",
+        label: `Counted: volunteer assignment ${assignment.status}.`,
       };
     }
     if (assignment.status === "REJECTED") {
@@ -239,7 +232,7 @@ export default function RequestDetailScreen() {
     return {
       isCounted: false,
       tone: "pending" as const,
-      label: `Pending count: volunteer assignment ${assignment.status}.`,
+      label: `Not counted yet: volunteer assignment ${assignment.status}.`,
     };
   };
 
@@ -261,7 +254,10 @@ export default function RequestDetailScreen() {
             const assignment = assignments.find(
               (item) => item.volunteerId === contribution.contributorId,
             );
-            if (!assignment || assignment.status === "COMPLETED") {
+            if (
+              !assignment ||
+              (assignment.status !== "PENDING" && assignment.status !== "REJECTED")
+            ) {
               return sum + Number(contribution.quantity || 0);
             }
             return sum;
@@ -338,6 +334,7 @@ export default function RequestDetailScreen() {
       queryClient.invalidateQueries({ queryKey: ["supportRequest"] });
       queryClient.invalidateQueries({ queryKey: ["supportRequest", id] });
       queryClient.invalidateQueries({ queryKey: ["supportRequests"] });
+      queryClient.invalidateQueries({ queryKey: ["mySupportRequests"] });
       Alert.alert("Success", "Request details updated successfully!");
     },
     onError: (error: any) => {
@@ -390,6 +387,7 @@ export default function RequestDetailScreen() {
       queryClient.invalidateQueries({ queryKey: ["volunteerAssignments"] });
       queryClient.invalidateQueries({ queryKey: ["supportRequest", id] });
       queryClient.invalidateQueries({ queryKey: ["supportRequests"] });
+      queryClient.invalidateQueries({ queryKey: ["mySupportRequests"] });
     },
     onError: (error: any) => {
       Alert.alert("Error", error?.message || "Failed to approve volunteer.");
@@ -429,6 +427,7 @@ export default function RequestDetailScreen() {
       setShowLocationPicker(false);
       queryClient.invalidateQueries({ queryKey: ["supportRequest", id] });
       queryClient.invalidateQueries({ queryKey: ["supportRequests"] });
+      queryClient.invalidateQueries({ queryKey: ["mySupportRequests"] });
       Alert.alert("Success", "Support request assigned to support location.");
     },
     onError: (error: any) => {
@@ -1342,6 +1341,7 @@ export default function RequestDetailScreen() {
           }
           await Promise.all([
             queryClient.invalidateQueries({ queryKey: ["supportRequests"] }),
+            queryClient.invalidateQueries({ queryKey: ["mySupportRequests"] }),
             queryClient.invalidateQueries({ queryKey: ["supportRequest", id] }),
             queryClient.invalidateQueries({ queryKey: ["supportNeeds", id] }),
             queryClient.invalidateQueries({

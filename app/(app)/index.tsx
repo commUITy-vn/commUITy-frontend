@@ -162,7 +162,10 @@ export default function HomeScreen() {
                         (item) => item.volunteerId === contribution.contributorId,
                     )
 
-                    if (!assignment || assignment.status === "COMPLETED") {
+                    if (
+                        !assignment ||
+                        (assignment.status !== "PENDING" && assignment.status !== "REJECTED")
+                    ) {
                         return needSum + Number(contribution.quantity || 0)
                     }
 
