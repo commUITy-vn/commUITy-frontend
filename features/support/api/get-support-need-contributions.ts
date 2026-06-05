@@ -25,3 +25,9 @@ export const getSupportNeedContributions = (
     `/api/v1/support-needs/${needId}/contributions`,
   );
 };
+
+export const getMySupportNeedContributions = (): Promise<SupportNeedContributionResponse[]> => {
+  return api.get<SupportNeedContributionResponse[]>(
+    "/api/v1/support-need-contributions/my-contributions",
+  );
+};

@@ -4,6 +4,8 @@ import type { PayOsCheckoutResponse } from '@/features/finance/hooks/useCommunit
 export interface AddContributionRequest {
   quantity: number;
   note?: string;
+  returnUrl?: string;
+  cancelUrl?: string;
 }
 
 export const addContribution = (

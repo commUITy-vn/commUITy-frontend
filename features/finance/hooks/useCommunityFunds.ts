@@ -12,6 +12,7 @@ export interface CommunityFundDetail {
   name: string;
   description: string;
   totalBalance: number;
+  availableTransferAmount?: number;
   isActive: boolean;
   createdBy: string;
   createdByName: string;
@@ -257,6 +258,8 @@ export interface CreateDonationPayload {
   paymentMethod: string;
   note?: string;
   transactionCode?: string;
+  returnUrl?: string;
+  cancelUrl?: string;
 }
 
 export const createDonation = (payload: CreateDonationPayload): Promise<DonationResponse> => {
@@ -264,7 +267,7 @@ export const createDonation = (payload: CreateDonationPayload): Promise<Donation
 };
 
 export const createPayOsDonation = (
-  payload: Pick<CreateDonationPayload, 'fundId' | 'amount' | 'note'>,
+  payload: Pick<CreateDonationPayload, 'fundId' | 'amount' | 'note' | 'returnUrl' | 'cancelUrl'>,
 ): Promise<PayOsCheckoutResponse> => {
   return api.post('/api/v1/donations/payos', payload);
 };
@@ -286,7 +289,7 @@ export const useCreateDonation = () => {
 export const useCreatePayOsDonation = () => {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (payload: Pick<CreateDonationPayload, 'fundId' | 'amount' | 'note'>) =>
+    mutationFn: (payload: Pick<CreateDonationPayload, 'fundId' | 'amount' | 'note' | 'returnUrl' | 'cancelUrl'>) =>
       createPayOsDonation(payload),
     onSuccess: (_, variables) => {
       queryClient.invalidateQueries({ queryKey: ['fundDonations', variables.fundId] });

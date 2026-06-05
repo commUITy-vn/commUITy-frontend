@@ -66,6 +66,11 @@ import { useSupportNeeds } from "@/features/support/hooks/useSupportNeeds";
 import { useSupportRequestById } from "@/features/support/hooks/useSupportRequestById";
 import { ReportModal, ReportTargetType } from "@/features/reports";
 import { useCreateSupportNeedTransferTicket } from "@/features/money-transfer/hooks";
+import {
+  createPayOsMobileRedirectUrls,
+  getPayOsMobileCallbackUrl,
+  getRouteFromPayOsRedirectUrl,
+} from "@/features/finance/lib/payos-mobile";
 
 export default function RequestDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -1327,9 +1332,23 @@ export default function RequestDetailScreen() {
               data: {
                 quantity,
                 note: notes || undefined,
+                ...(Platform.OS === "web" ? {} : createPayOsMobileRedirectUrls()),
               },
             });
-            await WebBrowser.openBrowserAsync(checkout.checkoutUrl);
+
+            if (Platform.OS === "web" && typeof window !== "undefined") {
+              window.location.assign(checkout.checkoutUrl);
+              return;
+            }
+
+            const result = await WebBrowser.openAuthSessionAsync(
+              checkout.checkoutUrl,
+              getPayOsMobileCallbackUrl(),
+            );
+
+            if (result.type === "success" && result.url) {
+              router.replace(getRouteFromPayOsRedirectUrl(result.url) as any);
+            }
           } else {
             await contribute({
               needId,

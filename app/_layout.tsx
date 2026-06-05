@@ -337,6 +337,20 @@ function AppContent({ theme }: { theme: any }) {
                     }}
                 />
                 <Stack.Screen
+                    name="transaction-history"
+                    options={{
+                        headerShown: false,
+                        animation: Platform.select({
+                            ios: "slide_from_right",
+                            android: "slide_from_right",
+                            default: "slide_from_right",
+                        }),
+                        contentStyle: {
+                            backgroundColor: theme.appBG,
+                        },
+                    }}
+                />
+                <Stack.Screen
                     name="collaborator-dashboard"
                     options={{
                         headerShown: false,
@@ -366,6 +380,34 @@ function AppContent({ theme }: { theme: any }) {
                 />
                 <Stack.Screen
                     name="notifications"
+                    options={{
+                        headerShown: false,
+                        animation: Platform.select({
+                            ios: "slide_from_right",
+                            android: "slide_from_right",
+                            default: "slide_from_right",
+                        }),
+                        contentStyle: {
+                            backgroundColor: theme.appBG,
+                        },
+                    }}
+                />
+                <Stack.Screen
+                    name="payment/payos-return"
+                    options={{
+                        headerShown: false,
+                        animation: Platform.select({
+                            ios: "slide_from_right",
+                            android: "slide_from_right",
+                            default: "slide_from_right",
+                        }),
+                        contentStyle: {
+                            backgroundColor: theme.appBG,
+                        },
+                    }}
+                />
+                <Stack.Screen
+                    name="payment/payos-cancel"
                     options={{
                         headerShown: false,
                         animation: Platform.select({

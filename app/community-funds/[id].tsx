@@ -4,7 +4,7 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import { MaterialIcons, Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import * as WebBrowser from 'expo-web-browser';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useTheme } from '@/hooks/useTheme';
 import { useThemeStyles } from '@/hooks/useThemeStyles';
 import { useAuthStore } from '@/features/auth/stores/useAuthStore';
@@ -26,6 +26,11 @@ import {
   useRemoveCommunityFundMember,
   type CommunityFundMemberRole,
 } from '@/features/finance/hooks/useCommunityFunds';
+import {
+  createPayOsMobileRedirectUrls,
+  getPayOsMobileCallbackUrl,
+  getRouteFromPayOsRedirectUrl,
+} from '@/features/finance/lib/payos-mobile';
 import { useCreateCommunityFundTransferTicket } from '@/features/money-transfer/hooks';
 
 const QUICK_AMOUNTS = [
@@ -42,10 +47,23 @@ const PAYMENT_METHODS = [
   { id: 'BANK_TRANSFER', label: 'Bank Transfer' },
 ];
 
+const digitsOnly = (value: string) => value.replace(/\D/g, '');
+
+const formatVndInput = (value: string | number) => {
+  const digits = digitsOnly(String(value));
+  return digits.replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+};
+
+const parseVndInput = (value: string) => {
+  const digits = digitsOnly(value);
+  return digits ? Number(digits) : 0;
+};
+
 export default function FundDetailScreen() {
   const theme = useTheme();
   const stylesGlobal = useThemeStyles();
   const router = useRouter();
+  const queryClient = useQueryClient();
   const { id: idParam } = useLocalSearchParams<{ id: string | string[] }>();
   const fundId = Array.isArray(idParam) ? idParam[0] : idParam;
   const { user } = useAuthStore();
@@ -161,7 +179,7 @@ export default function FundDetailScreen() {
             day: 'numeric',
             year: 'numeric',
           }),
-          createdByName: d.createdByName || 'Anonymous',
+          createdByName: d.donorName || d.createdByName || 'Anonymous',
           timestamp: new Date(d.createdAt).getTime(),
           method: d.paymentMethod,
           status: d.status,
@@ -208,6 +226,7 @@ export default function FundDetailScreen() {
   );
   const canManageFund = user?.role === 'ADMIN' || currentFundMember?.role === 'MANAGER';
   const managerCount = members.filter((member) => member.role === 'MANAGER').length;
+  const availableTransferAmount = fund?.availableTransferAmount ?? fund?.totalBalance ?? 0;
 
   const handleBack = async () => {
     await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
@@ -242,7 +261,7 @@ export default function FundDetailScreen() {
   };
 
   const handleDonateConfirm = async () => {
-    const finalAmount = isCustomAmount ? Number(customAmount) : selectedAmount;
+    const finalAmount = selectedAmount ?? parseVndInput(customAmount);
     if (!finalAmount || finalAmount <= 0) {
       setDonationError('Please select or specify a valid contribution amount');
       return;
@@ -260,8 +279,24 @@ export default function FundDetailScreen() {
           fundId,
           amount: finalAmount,
           note: donationNote.trim() || undefined,
+          ...(Platform.OS === 'web' ? {} : createPayOsMobileRedirectUrls()),
         });
-        await WebBrowser.openBrowserAsync(checkout.checkoutUrl);
+
+        if (Platform.OS === 'web' && typeof window !== 'undefined') {
+          window.location.assign(checkout.checkoutUrl);
+          return;
+        }
+
+        const result = await WebBrowser.openAuthSessionAsync(
+          checkout.checkoutUrl,
+          getPayOsMobileCallbackUrl(),
+        );
+        await refreshFundPaymentState();
+        setDonateModalVisible(false);
+
+        if (result.type === 'success' && result.url) {
+          router.replace(getRouteFromPayOsRedirectUrl(result.url) as any);
+        }
       } else {
         await createDonationMutation.mutateAsync({
           fundId,
@@ -278,10 +313,24 @@ export default function FundDetailScreen() {
     }
   };
 
+  const refreshFundPaymentState = async () => {
+    await Promise.all([
+      queryClient.invalidateQueries({ queryKey: ['communityFunds'] }),
+      queryClient.invalidateQueries({ queryKey: ['myFunds'] }),
+      queryClient.invalidateQueries({ queryKey: ['myDonations'] }),
+      queryClient.invalidateQueries({ queryKey: ['communityFund', fundId] }),
+      queryClient.invalidateQueries({ queryKey: ['fundDonations', fundId] }),
+    ]);
+  };
+
   const handleTransferTicketConfirm = async () => {
-    const parsedAmount = Number(transferAmount);
+    const parsedAmount = parseVndInput(transferAmount);
     if (isNaN(parsedAmount) || parsedAmount <= 0) {
       setTransferError('Please enter a valid transfer amount');
+      return;
+    }
+    if (parsedAmount > availableTransferAmount) {
+      setTransferError(`You can request up to ₫${availableTransferAmount.toLocaleString()} from this fund right now`);
       return;
     }
     if (!transferReason.trim()) {
@@ -304,7 +353,7 @@ export default function FundDetailScreen() {
   };
 
   const handleExpenseConfirm = async () => {
-    const parsedAmount = Number(expenseAmount);
+    const parsedAmount = parseVndInput(expenseAmount);
     if (isNaN(parsedAmount) || parsedAmount <= 0) {
       setExpenseError('Please enter a valid expense amount');
       return;
@@ -503,6 +552,11 @@ export default function FundDetailScreen() {
           <Text style={[styles.balanceAmount, { color: theme.textLight }]}>
             ₫ {fund.totalBalance.toLocaleString()}
           </Text>
+          {isStaff && (
+            <Text style={[styles.availableTransferText, { color: theme.textLight }]}>
+              Available to request: ₫ {availableTransferAmount.toLocaleString()}
+            </Text>
+          )}
           <Text style={[styles.managerText, { color: theme.textLight }]}>
             Managed by {fund.createdByName || 'Community Fund Manager'}
           </Text>
@@ -767,7 +821,7 @@ export default function FundDetailScreen() {
                         await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
                         setSelectedAmount(amt.value);
                         setIsCustomAmount(false);
-                        setCustomAmount('');
+                        setCustomAmount(formatVndInput(amt.value));
                       }}
                     >
                       <Text
@@ -785,10 +839,10 @@ export default function FundDetailScreen() {
 
                 {/* Custom Input */}
                 <TextInput
-                  label="Custom Amount (VND)"
+                  label="Amount"
                   value={customAmount}
                   onChangeText={(txt) => {
-                    setCustomAmount(txt.replace(/[^0-9]/g, ''));
+                    setCustomAmount(formatVndInput(txt));
                     setIsCustomAmount(true);
                     setSelectedAmount(null);
                   }}
@@ -874,9 +928,12 @@ export default function FundDetailScreen() {
               <TextInput
                 label="Amount (VND)"
                 value={transferAmount}
-                onChangeText={(txt) => setTransferAmount(txt.replace(/[^0-9]/g, ''))}
+                onChangeText={(txt) => setTransferAmount(formatVndInput(txt))}
                 keyboardType="numeric"
               />
+              <Text style={{ color: theme.textSupporting, fontSize: 12 }}>
+                Available to request: ₫ {availableTransferAmount.toLocaleString()}
+              </Text>
 
               <TextInput
                 label="Reason"
@@ -925,7 +982,7 @@ export default function FundDetailScreen() {
               <TextInput
                 label="Amount (VND)"
                 value={expenseAmount}
-                onChangeText={(txt) => setExpenseAmount(txt.replace(/[^0-9]/g, ''))}
+                onChangeText={(txt) => setExpenseAmount(formatVndInput(txt))}
                 keyboardType="numeric"
               />
 
@@ -1045,6 +1102,11 @@ const styles = StyleSheet.create({
   balanceAmount: {
     fontSize: 32,
     fontWeight: '800',
+  },
+  availableTransferText: {
+    fontSize: 14,
+    fontWeight: '700',
+    opacity: 0.92,
   },
   managerText: {
     fontSize: 13,

@@ -5,6 +5,7 @@ export interface CommunityFundSummary {
   name: string;
   description?: string;
   totalBalance: number;
+  availableTransferAmount?: number;
   isActive: boolean;
   createdBy: string;
   createdByName: string;

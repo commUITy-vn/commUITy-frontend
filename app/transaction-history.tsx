@@ -8,6 +8,7 @@ import {
   ActivityIndicator,
   Platform,
 } from 'react-native';
+import { useQuery } from '@tanstack/react-query';
 import { useRouter } from 'expo-router';
 import { MaterialIcons, Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
@@ -15,25 +16,83 @@ import { useTheme } from '@/hooks/useTheme';
 import { useThemeStyles } from '@/hooks/useThemeStyles';
 import { Button } from '@/components/ui';
 import { useMyDonations } from '@/features/finance/hooks/useCommunityFunds';
+import { getMySupportNeedContributions } from '@/features/support/api/get-support-need-contributions';
+
+type LedgerItem = {
+  id: string;
+  kind: 'fund' | 'support';
+  title: string;
+  amountLabel: string;
+  amountValue: number;
+  isMoney: boolean;
+  createdAt: string;
+  paymentMethod?: string;
+  transactionCode?: string;
+  note?: string;
+};
 
 export default function TransactionHistoryScreen() {
   const theme = useTheme();
   const stylesGlobal = useThemeStyles();
   const router = useRouter();
 
-  const { data: donations, isLoading, isError } = useMyDonations();
+  const { data: donations, isLoading: isDonationsLoading, isError: isDonationsError } = useMyDonations();
+  const {
+    data: supportContributions,
+    isLoading: isSupportContributionsLoading,
+    isError: isSupportContributionsError,
+  } = useQuery({
+    queryKey: ['mySupportNeedContributions'],
+    queryFn: getMySupportNeedContributions,
+  });
+
+  const isLoading = isDonationsLoading || isSupportContributionsLoading;
+  const isError = isDonationsError || isSupportContributionsError;
+
+  const ledgerItems = useMemo<LedgerItem[]>(() => {
+    const fundItems = (donations || []).map((tx) => ({
+      id: tx.id,
+      kind: 'fund' as const,
+      title: `Donation to ${tx.fundName || 'Community Fund'}`,
+      amountLabel: `+₫${tx.amount.toLocaleString()}`,
+      amountValue: tx.amount || 0,
+      isMoney: true,
+      createdAt: tx.createdAt,
+      paymentMethod: tx.paymentMethod,
+      transactionCode: tx.transactionCode,
+      note: tx.note,
+    }));
+
+    const supportItems = (supportContributions || []).map((tx) => {
+      const isMoney = !!tx.paymentMethod;
+      const quantity = Number(tx.quantity || 0);
+      return {
+        id: tx.id,
+        kind: 'support' as const,
+        title: `Support for ${tx.needName || 'Request Need'}`,
+        amountLabel: isMoney ? `+₫${quantity.toLocaleString()}` : `+${quantity.toLocaleString()}`,
+        amountValue: isMoney ? quantity : 0,
+        isMoney,
+        createdAt: tx.paidAt || tx.createdAt,
+        paymentMethod: tx.paymentMethod,
+        transactionCode: tx.transactionCode,
+        note: tx.note,
+      };
+    });
+
+    return [...fundItems, ...supportItems].sort(
+      (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
+    );
+  }, [donations, supportContributions]);
 
   // Compute total balance and transaction details
   const stats = useMemo(() => {
-    if (!donations || !Array.isArray(donations)) {
-      return { totalAmount: 0, count: 0 };
-    }
-    const totalAmount = donations.reduce((sum, d) => sum + (d.amount || 0), 0);
+    const totalAmount = ledgerItems.reduce((sum, item) => sum + item.amountValue, 0);
     return {
       totalAmount,
-      count: donations.length,
+      count: ledgerItems.length,
     };
-  }, [donations]);
+  }, [ledgerItems]);
 
   const handleBack = async () => {
     await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
@@ -116,9 +175,9 @@ export default function TransactionHistoryScreen() {
 
         <Text style={[styles.sectionTitle, { color: theme.text }]}>Personal Contribution Ledger</Text>
 
-        {donations && donations.length > 0 ? (
+        {ledgerItems.length > 0 ? (
           <View style={styles.ledgerList}>
-            {donations.map((tx) => (
+            {ledgerItems.map((tx) => (
               <View
                 key={tx.id}
                 style={[
@@ -128,11 +187,15 @@ export default function TransactionHistoryScreen() {
               >
                 <View style={styles.txHeader}>
                   <View style={[styles.txIconContainer, { backgroundColor: theme.success + '15' }]}>
-                    <Ionicons name="arrow-down-circle" size={24} color={theme.success} />
+                    <Ionicons
+                      name={tx.kind === 'fund' ? 'arrow-down-circle' : 'heart-circle'}
+                      size={24}
+                      color={theme.success}
+                    />
                   </View>
                   <View style={{ flex: 1, gap: 2 }}>
                     <Text style={[styles.txFundName, { color: theme.text }]} numberOfLines={1}>
-                      Donation to {tx.fundName || 'Community Fund'}
+                      {tx.title}
                     </Text>
                     <Text style={{ fontSize: 12, color: theme.textSupporting }}>
                       {new Date(tx.createdAt).toLocaleDateString('en-US', {
@@ -145,7 +208,7 @@ export default function TransactionHistoryScreen() {
                     </Text>
                   </View>
                   <Text style={[styles.txAmount, { color: theme.success }]}>
-                    +₫{tx.amount.toLocaleString()}
+                    {tx.amountLabel}
                   </Text>
                 </View>
 

@@ -64,6 +64,7 @@ export default function ProfileScreen() {
         ] : []),
         { key: "theme", title: "Appearance: " + (themeMode === 'light' ? 'Light Mode' : themeMode === 'dark' ? 'Dark Mode' : 'System Mode'), icon: themeMode === 'light' ? 'light-mode' : themeMode === 'dark' ? 'dark-mode' : 'brightness-auto' },
         { key: "notifications", title: "Notifications", icon: "notifications" },
+        { key: "transaction-history", title: "Transaction History", icon: "receipt-long" },
         { key: "my-reports", title: "My Reports", icon: "flag" },
         { key: "sign-out", title: "Sign out", icon: "exit-to-app", isDanger: true },
     ]
