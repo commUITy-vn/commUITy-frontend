@@ -10,7 +10,6 @@ import {
 } from "react-native";
 import { MaterialIcons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
-import { useQueries } from "@tanstack/react-query";
 import { useRouter } from "expo-router";
 import Svg, { Circle, G } from "react-native-svg";
 
@@ -24,6 +23,9 @@ import {
 } from "@/features/admin/api/dashboard-statistics";
 import { getCommunityFunds } from "@/features/finance/hooks/useCommunityFunds";
 import { useTheme } from "@/hooks/useTheme";
+import { storage } from "@/lib/storage";
+
+const STATS_CACHE_KEY = "admin_statistics_snapshot_v1";
 
 const toArray = (value: any): any[] => {
   if (Array.isArray(value)) return value;
@@ -146,64 +148,97 @@ export default function AdminStatistics() {
   const theme = useTheme();
   const router = useRouter();
   const [isRefreshing, setIsRefreshing] = React.useState(false);
+  const [snapshot, setSnapshot] = React.useState<any>(null);
+  const snapshotRef = React.useRef<any>(null);
+  const [isLoading, setIsLoading] = React.useState(true);
+  const [hasError, setHasError] = React.useState(false);
 
-  const [
-    usersQuery,
-    requestsQuery,
-    categoriesQuery,
-    reportsQuery,
-    postsQuery,
-    fundsQuery,
-  ] = useQueries({
-    queries: [
-      { queryKey: ["adminDashboard", "users"], queryFn: getUserStatistics, refetchInterval: 30000 },
-      { queryKey: ["adminDashboard", "supportRequests"], queryFn: getSupportRequestStatistics, refetchInterval: 30000 },
-      { queryKey: ["adminDashboard", "categories"], queryFn: getCategoryStatistics, refetchInterval: 30000 },
-      { queryKey: ["adminDashboard", "reports"], queryFn: getReportStatistics, refetchInterval: 30000 },
-      { queryKey: ["adminDashboard", "posts"], queryFn: getPostStatistics, refetchInterval: 30000 },
-      { queryKey: ["adminStats", "communityFunds"], queryFn: () => getCommunityFunds(false), refetchInterval: 30000 },
-    ],
-  });
+  React.useEffect(() => {
+    snapshotRef.current = snapshot;
+  }, [snapshot]);
 
-  const userStats = usersQuery.data;
-  const requestStats = requestsQuery.data;
-  const categoryStats = categoriesQuery.data;
-  const reportStats = reportsQuery.data;
-  const postStats = postsQuery.data;
-  const funds = toArray(fundsQuery.data);
+  const persistSnapshot = React.useCallback(async (nextSnapshot: any) => {
+    try {
+      await storage.setItemAsync(STATS_CACHE_KEY, JSON.stringify({
+        ...nextSnapshot,
+        cachedAt: new Date().toISOString(),
+      }));
+    } catch (error) {
+      console.warn("Failed to cache admin statistics:", error);
+    }
+  }, []);
+
+  const fetchSnapshot = React.useCallback(async (silent = false) => {
+    const currentSnapshot = snapshotRef.current;
+    if (!silent && !currentSnapshot) setIsLoading(true);
+    const results = await Promise.allSettled([
+      getUserStatistics(),
+      getSupportRequestStatistics(),
+      getCategoryStatistics(),
+      getReportStatistics(),
+      getPostStatistics(),
+      getCommunityFunds(false),
+    ]);
+
+    const nextSnapshot = {
+      users: results[0].status === "fulfilled" ? results[0].value : currentSnapshot?.users,
+      requests: results[1].status === "fulfilled" ? results[1].value : currentSnapshot?.requests,
+      categories: results[2].status === "fulfilled" ? results[2].value : currentSnapshot?.categories,
+      reports: results[3].status === "fulfilled" ? results[3].value : currentSnapshot?.reports,
+      posts: results[4].status === "fulfilled" ? results[4].value : currentSnapshot?.posts,
+      funds: results[5].status === "fulfilled" ? results[5].value : currentSnapshot?.funds,
+    };
+
+    snapshotRef.current = nextSnapshot;
+    setSnapshot(nextSnapshot);
+    setHasError(results.some((result) => result.status === "rejected"));
+    setIsLoading(false);
+    await persistSnapshot(nextSnapshot);
+  }, [persistSnapshot]);
+
+  React.useEffect(() => {
+    let mounted = true;
+    const hydrate = async () => {
+      try {
+        const cached = await storage.getItemAsync(STATS_CACHE_KEY);
+        if (cached && mounted) {
+          const parsed = JSON.parse(cached);
+          snapshotRef.current = parsed;
+          setSnapshot(parsed);
+          setIsLoading(false);
+          fetchSnapshot(true);
+          return;
+        }
+      } catch (error) {
+        console.warn("Failed to hydrate admin statistics cache:", error);
+      }
+      if (mounted) fetchSnapshot(false);
+    };
+
+    hydrate();
+    const interval = setInterval(() => fetchSnapshot(true), 30000);
+    return () => {
+      mounted = false;
+      clearInterval(interval);
+    };
+  }, [fetchSnapshot]);
+
+  const userStats = snapshot?.users;
+  const requestStats = snapshot?.requests;
+  const categoryStats = snapshot?.categories;
+  const reportStats = snapshot?.reports;
+  const postStats = snapshot?.posts;
+  const funds = toArray(snapshot?.funds);
   const totalFundBalance = funds.reduce((sum, fund) => sum + Number(fund.totalBalance || 0), 0);
-
-  const isLoading =
-    usersQuery.isLoading ||
-    requestsQuery.isLoading ||
-    categoriesQuery.isLoading ||
-    reportsQuery.isLoading ||
-    postsQuery.isLoading ||
-    fundsQuery.isLoading;
-
-  const hasError =
-    usersQuery.isError ||
-    requestsQuery.isError ||
-    categoriesQuery.isError ||
-    reportsQuery.isError ||
-    postsQuery.isError ||
-    fundsQuery.isError;
 
   const handleRefresh = React.useCallback(async () => {
     setIsRefreshing(true);
     try {
-      await Promise.allSettled([
-        usersQuery.refetch(),
-        requestsQuery.refetch(),
-        categoriesQuery.refetch(),
-        reportsQuery.refetch(),
-        postsQuery.refetch(),
-        fundsQuery.refetch(),
-      ]);
+      await fetchSnapshot(true);
     } finally {
       setIsRefreshing(false);
     }
-  }, [usersQuery, requestsQuery, categoriesQuery, reportsQuery, postsQuery, fundsQuery]);
+  }, [fetchSnapshot]);
 
   const handleBack = async () => {
     await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
@@ -285,7 +320,7 @@ export default function AdminStatistics() {
             </View>
             <View style={styles.list}>
               <DonutChart
-                data={(categoryStats?.categories || []).map((category, index) => ({
+                data={(categoryStats?.categories || []).map((category: any, index: number) => ({
                   label: category.categoryName,
                   value: category.supportRequestCount,
                   color: CHART_COLORS[index % CHART_COLORS.length],

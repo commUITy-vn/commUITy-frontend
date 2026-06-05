@@ -180,47 +180,6 @@ export default function ProfileScreen() {
                     </View>
                 </View>
 
-                {/* Stats Section */}
-                <View style={localStyles.statsSection}>
-                    <View style={localStyles.statsItem}>
-                        <Text
-                            style={[
-                                localStyles.statsValue,
-                                { color: theme.primary },
-                            ]}
-                        >
-                            8
-                        </Text>
-                        <Text
-                            style={[
-                                localStyles.statsLabel,
-                                { color: theme.textSupporting },
-                            ]}
-                        >
-                            Donations
-                        </Text>
-                    </View>
-                    <View style={localStyles.statsDivider} />
-                    <View style={localStyles.statsItem}>
-                        <Text
-                            style={[
-                                localStyles.statsValue,
-                                { color: theme.success },
-                            ]}
-                        >
-                            1.050.000đ
-                        </Text>
-                        <Text
-                            style={[
-                                localStyles.statsLabel,
-                                { color: theme.textSupporting },
-                            ]}
-                        >
-                            Total Given
-                        </Text>
-                    </View>
-                </View>
-
                 {/* Settings Menu */}
                 <View style={[localStyles.settingsSection, { marginTop: 8 }]}>
                     {settingsItems.map((item, index) => (
@@ -263,28 +222,6 @@ export default function ProfileScreen() {
                             </View>
                         </Pressable>
                     ))}
-                </View>
-
-                {/* Donate to Community Fund Link - clean text link format */}
-                <View style={localStyles.donateLinkContainer}>
-                    <Pressable
-                        onPress={async () => {
-                            await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-                            router.push('/community-funds' as any);
-                        }}
-                        style={({ pressed }) => [
-                            pressed && { opacity: 0.7 }
-                        ]}
-                    >
-                        <Text
-                            style={[
-                                localStyles.donateLinkText,
-                                { color: theme.primary }
-                            ]}
-                        >
-                            Donate to Community Fund
-                        </Text>
-                    </Pressable>
                 </View>
 
                 {/* Version Info - Expensify style */}
@@ -502,28 +439,6 @@ const localStyles = StyleSheet.create({
         fontSize: 14,
         marginTop: 4,
     },
-    statsSection: {
-        flexDirection: "row",
-        justifyContent: "space-around",
-        marginVertical: 0,
-        marginTop: 4,
-        marginBottom: 12,
-    },
-    statsItem: {
-        alignItems: "center",
-    },
-    statsValue: {
-        fontSize: 20,
-        fontWeight: "bold",
-    },
-    statsLabel: {
-        fontSize: 14,
-    },
-    statsDivider: {
-        width: 1,
-        height: 40,
-        backgroundColor: "#E2E8F0",
-    },
     settingsSection: {
         marginTop: 16,
     },
@@ -577,15 +492,5 @@ const localStyles = StyleSheet.create({
         paddingHorizontal: 12,
         fontSize: 16,
         paddingVertical: 0,
-    },
-    donateLinkContainer: {
-        marginTop: 24,
-        alignItems: "center",
-        justifyContent: "center",
-    },
-    donateLinkText: {
-        fontSize: 16,
-        fontWeight: "600",
-        textDecorationLine: "underline",
     },
 })

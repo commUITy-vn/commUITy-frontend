@@ -1,4 +1,4 @@
-import { Alert, View, Text, Modal, StyleSheet, Pressable, Platform } from 'react-native';
+import { Alert, View, Text, Modal, StyleSheet, Pressable, Platform, KeyboardAvoidingView, ScrollView } from 'react-native';
 import { useTheme } from '@/hooks/useTheme';
 import * as Haptics from 'expo-haptics';
 import { useEffect, useState } from 'react';
@@ -103,8 +103,12 @@ export const ContributeItemModal = ({
       animationType="fade"
       onRequestClose={handleClose}
     >
-      <Pressable
+      <KeyboardAvoidingView
         style={[styles.overlay, { backgroundColor: theme.overlay }]}
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+      >
+      <Pressable
+        style={styles.dismissLayer}
         onPress={handleClose}
       >
         <Pressable
@@ -127,7 +131,12 @@ export const ContributeItemModal = ({
             </Pressable>
           </View>
 
-          <View style={styles.content}>
+          <ScrollView
+            style={styles.scroll}
+            contentContainerStyle={styles.content}
+            keyboardShouldPersistTaps="handled"
+            showsVerticalScrollIndicator={false}
+          >
             {item && (
               <View style={[styles.itemCard, { backgroundColor: theme.highlightBG, borderColor: theme.border }]}>
                 <MaterialIcons name="card-giftcard" size={24} color={theme.primary} />
@@ -174,7 +183,11 @@ export const ContributeItemModal = ({
                     keyboardType="number-pad"
                     style={styles.quantityInput}
                   />
-                  <Text style={{ fontSize: 12, color: theme.textSupporting, fontWeight: '600', textTransform: 'uppercase' }}>
+                  <Text
+                    style={[styles.unitText, { color: theme.textSupporting }]}
+                    numberOfLines={1}
+                    adjustsFontSizeToFit
+                  >
                     {isMoney ? 'VND' : item?.unit || ''}
                   </Text>
                 </View>
@@ -205,7 +218,7 @@ export const ContributeItemModal = ({
                 height={80}
               />
             </View>
-          </View>
+          </ScrollView>
 
           <View style={[styles.footer, { borderTopColor: theme.border }]}>
             <Pressable
@@ -218,7 +231,7 @@ export const ContributeItemModal = ({
               ]}
               onPress={handleClose}
             >
-              <Text style={[styles.cancelButtonText, { color: theme.text }]}>
+              <Text style={[styles.cancelButtonText, { color: theme.text }]} numberOfLines={1} adjustsFontSizeToFit>
                 Cancel
               </Text>
             </Pressable>
@@ -234,13 +247,14 @@ export const ContributeItemModal = ({
               disabled={isSubmitting || (!isMoney && remainingQuantity <= 0)}
               onPress={handleConfirm}
             >
-              <Text style={[styles.confirmButtonText, { color: theme.textLight }]}>
+              <Text style={[styles.confirmButtonText, { color: theme.textLight }]} numberOfLines={1} adjustsFontSizeToFit>
                 {isSubmitting ? 'Sending...' : 'Confirm Help'}
               </Text>
             </Pressable>
           </View>
         </Pressable>
       </Pressable>
+      </KeyboardAvoidingView>
     </Modal>
   );
 };
@@ -252,9 +266,15 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     padding: 20,
   },
+  dismissLayer: {
+    width: '100%',
+    maxWidth: 440,
+    maxHeight: '92%',
+  },
   modal: {
     width: '100%',
     maxWidth: 440,
+    maxHeight: '100%',
     borderRadius: 16,
     borderWidth: 1,
     overflow: 'hidden',
@@ -285,13 +305,16 @@ const styles = StyleSheet.create({
   closeBtn: {
     padding: 4,
   },
+  scroll: {
+    maxHeight: 420,
+  },
   content: {
     padding: 20,
     gap: 20,
   },
   itemCard: {
     flexDirection: 'row',
-    alignItems: 'center',
+    alignItems: 'flex-start',
     padding: 12,
     borderRadius: 10,
     borderWidth: 1,
@@ -310,7 +333,7 @@ const styles = StyleSheet.create({
   },
   quantityContainer: {
     flexDirection: 'row',
-    alignItems: 'center',
+    alignItems: 'stretch',
     justifyContent: 'space-between',
     padding: 8,
     borderRadius: 10,
@@ -319,7 +342,7 @@ const styles = StyleSheet.create({
   },
   quantityButton: {
     width: 36,
-    height: 36,
+    minHeight: 52,
     borderRadius: 18,
     borderWidth: 1,
     justifyContent: 'center',
@@ -327,11 +350,19 @@ const styles = StyleSheet.create({
   },
   quantityValueContainer: {
     flex: 1,
-    alignItems: 'center',
+    minWidth: 0,
+    alignItems: 'stretch',
     justifyContent: 'center',
   },
   quantityInput: {
     textAlign: 'center',
+  },
+  unitText: {
+    marginTop: 4,
+    fontSize: 12,
+    fontWeight: '700',
+    textAlign: 'center',
+    textTransform: 'uppercase',
   },
   footer: {
     flexDirection: 'row',
@@ -341,6 +372,7 @@ const styles = StyleSheet.create({
   },
   cancelButton: {
     flex: 1,
+    minHeight: 46,
     borderWidth: 1,
     borderRadius: 8,
     paddingVertical: 12,
@@ -353,6 +385,7 @@ const styles = StyleSheet.create({
   },
   confirmButton: {
     flex: 1,
+    minHeight: 46,
     borderRadius: 8,
     paddingVertical: 12,
     alignItems: 'center',

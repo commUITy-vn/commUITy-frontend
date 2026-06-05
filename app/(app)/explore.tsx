@@ -144,6 +144,43 @@ const resolveMediaUrl = (uri?: string) => {
   return `${apiBase}${cleanUri}`;
 };
 
+const COMMENT_IMAGE_MARKER = '[HELHUB_COMMENT_IMAGE:';
+
+const safeEncode = (value?: string) => encodeURIComponent(value || '');
+const safeDecode = (value?: string) => {
+  try {
+    return decodeURIComponent(value || '');
+  } catch {
+    return value || '';
+  }
+};
+
+const createCommentImageMarker = (media?: PendingMedia | null) => {
+  if (!media?.fileUrl) return '';
+  return `${COMMENT_IMAGE_MARKER}${safeEncode(media.fileUrl)}|${safeEncode(media.fileName || 'comment-image.jpg')}|${safeEncode(media.mimeType || 'image/jpeg')}]`;
+};
+
+const parseCommentContent = (content?: string) => {
+  const media: PendingMedia[] = [];
+  const text = String(content || '')
+    .replace(/\n?\[HELHUB_COMMENT_IMAGE:([^\]|]+)(?:\|([^\]|]*))?(?:\|([^\]]*))?\]/g, (_match, encodedUrl, encodedName, encodedMime) => {
+      const fileUrl = safeDecode(encodedUrl);
+      if (fileUrl) {
+        media.push({
+          id: `comment-image-${media.length}-${fileUrl}`,
+          fileName: safeDecode(encodedName) || 'comment-image.jpg',
+          fileUrl,
+          fileType: 'IMAGE',
+          mimeType: safeDecode(encodedMime) || 'image/jpeg',
+        });
+      }
+      return '';
+    })
+    .trim();
+
+  return { text, media };
+};
+
 const isRenderableImageUri = (uri?: string) => Boolean(
   uri &&
   (
@@ -480,22 +517,34 @@ const PostCard = ({ post, onAuthorPress }: { post: Post; onAuthorPress?: (author
 
   const commentsList = useMemo(
     () => [
-      ...localComments.map((c: any) => ({
-        ...c,
-        authorId: c.authorId || user?.id || 'me-id',
-      })),
+      ...localComments.map((c: any) => {
+        const parsed = parseCommentContent(c.content);
+        const localMedia = Array.isArray(c.media) ? c.media : [];
+        const media = [...localMedia, ...parsed.media];
+        return {
+          ...c,
+          authorId: c.authorId || user?.id || 'me-id',
+          content: parsed.text || (media.length > 0 ? 'Attached an image' : c.content),
+          media: media.length > 0 ? media : undefined,
+        };
+      }),
       ...(serverComments && Array.isArray(serverComments)
-        ? serverComments.map((c: any) => ({
-            id: c.id || String(Math.random()),
-            authorId: c.authorId || c.userId || (c.user && c.user.id) || c.creatorId || c.createdBy || 'unknown',
-            authorName: c.author || c.authorName || c.userName || 'User',
-            avatar: c.avatar || c.authorAvatarUrl || c.userAvatarUrl || 'https://i.pravatar.cc/150',
-            content: c.content,
-            timestamp: getRelativeTime(c.createdAt || c.timestamp || 'Just now'),
-            createdAt: c.createdAt || c.timestamp || new Date().toISOString(),
-            media: c.media || undefined,
-            parentCommentId: c.parentCommentId || undefined,
-          }))
+        ? serverComments.map((c: any) => {
+            const parsed = parseCommentContent(c.content);
+            const serverMedia = Array.isArray(c.media) ? c.media : [];
+            const media = [...serverMedia, ...parsed.media];
+            return {
+              id: c.id || String(Math.random()),
+              authorId: c.authorId || c.userId || (c.user && c.user.id) || c.creatorId || c.createdBy || 'unknown',
+              authorName: c.author || c.authorName || c.userName || 'User',
+              avatar: c.avatar || c.authorAvatarUrl || c.userAvatarUrl || 'https://i.pravatar.cc/150',
+              content: parsed.text || (media.length > 0 ? 'Attached an image' : c.content),
+              timestamp: getRelativeTime(c.createdAt || c.timestamp || 'Just now'),
+              createdAt: c.createdAt || c.timestamp || new Date().toISOString(),
+              media: media.length > 0 ? media : undefined,
+              parentCommentId: c.parentCommentId || undefined,
+            };
+          })
         : []),
     ],
     [localComments, serverComments, user?.id],
@@ -745,6 +794,9 @@ const PostCard = ({ post, onAuthorPress }: { post: Post; onAuthorPress?: (author
     await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     const content = commentText.trim();
     const mediaItem = selectedCommentMedia;
+    const imageMarker = createCommentImageMarker(mediaItem);
+    const displayContent = content || (mediaItem ? 'Attached an image' : '');
+    const serverContent = `${displayContent}${imageMarker ? `\n${imageMarker}` : ''}`;
     const parentCommentId = replyingToComment?.id || undefined;
     
     setCommentText('');
@@ -760,7 +812,7 @@ const PostCard = ({ post, onAuthorPress }: { post: Post; onAuthorPress?: (author
             authorId: user?.id || 'me-id',
             authorName: 'Me',
             avatar: 'https://i.pravatar.cc/150?img=8',
-            content,
+            content: displayContent,
             timestamp: 'Just now',
             createdAt: new Date().toISOString(),
             media: mediaItem ? [mediaItem] : undefined,
@@ -772,30 +824,10 @@ const PostCard = ({ post, onAuthorPress }: { post: Post; onAuthorPress?: (author
       } else {
         await addServerComment({
           postId: post.id,
-          content,
+          content: displayContent,
           parentCommentId,
-          mediaIds: mediaItem?.id ? [mediaItem.id] : undefined,
         });
         queryClient.invalidateQueries({ queryKey: ['notifications'] });
-        // Server might not support comments media, so we save locally for display
-        if (mediaItem) {
-          const newComments = [
-            ...localComments,
-            {
-              id: String(Date.now()),
-              authorId: user?.id || 'me-id',
-              authorName: 'Me',
-              avatar: 'https://i.pravatar.cc/150?img=8',
-              content,
-              timestamp: 'Just now',
-              createdAt: new Date().toISOString(),
-              media: [mediaItem],
-              parentCommentId,
-            },
-          ];
-          setLocalComments(newComments);
-          await persistComments(newComments);
-        }
       }
     } catch (error) {
       const newComments = [
@@ -805,7 +837,7 @@ const PostCard = ({ post, onAuthorPress }: { post: Post; onAuthorPress?: (author
           authorId: user?.id || 'me-id',
           authorName: 'Me',
           avatar: 'https://i.pravatar.cc/150?img=8',
-          content,
+          content: serverContent,
           timestamp: 'Just now',
           createdAt: new Date().toISOString(),
           media: mediaItem ? [mediaItem] : undefined,
@@ -1233,7 +1265,7 @@ const PostCard = ({ post, onAuthorPress }: { post: Post; onAuthorPress?: (author
 
                         {/* Media preview inside comment */}
                         {item.media && item.media.map((med: any) => (
-                          <View key={med.id} style={{ marginTop: 6 }}>
+                          <View key={med.id || med.fileUrl} style={{ marginTop: 6 }}>
                             {med.fileType === 'IMAGE' ? (
                               <Image
                                 source={{ uri: resolveMediaUrl(med.fileUrl) }}
@@ -1402,6 +1434,23 @@ const PostCard = ({ post, onAuthorPress }: { post: Post; onAuthorPress?: (author
                                   <Text style={{ fontSize: 10, color: theme.textSupporting }}>{reply.timestamp}</Text>
                                 </View>
                                 <Text style={{ fontSize: 13, color: theme.text, lineHeight: 18 }}>{reply.content}</Text>
+
+                                {reply.media && reply.media.map((med: any) => (
+                                  <View key={med.id || med.fileUrl} style={{ marginTop: 6 }}>
+                                    {med.fileType === 'IMAGE' ? (
+                                      <Image
+                                        source={{ uri: resolveMediaUrl(med.fileUrl) }}
+                                        style={{ width: 180, height: 108, borderRadius: 8, borderWidth: 1, borderColor: theme.border }}
+                                        resizeMode="cover"
+                                      />
+                                    ) : (
+                                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, padding: 8, backgroundColor: theme.highlightBG, borderRadius: 8, borderWidth: 1, borderColor: theme.border }}>
+                                        <MaterialIcons name="insert-drive-file" size={18} color={theme.primary} />
+                                        <Text style={{ fontSize: 12, color: theme.text }} numberOfLines={1}>{med.fileName}</Text>
+                                      </View>
+                                    )}
+                                  </View>
+                                ))}
 
                                 {/* Child actions (React only) */}
                                 <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 4, position: 'relative', zIndex: 10 }}>

@@ -248,55 +248,67 @@ function MessageHoverMenu({
   );
 }
 
-// ─────────────────────────────────────────────────────────────
-// Reaction Emoji Popup (small quick-react popover on messages)
-// ─────────────────────────────────────────────────────────────
-function ReactionPopup({
+function MobileReactionBar({
   onSelect,
+  onClose,
   theme,
 }: {
   onSelect: (emoji: string) => void;
+  onClose: () => void;
   theme: ReturnType<typeof useTheme>;
 }) {
   const quickEmojis = ['👍', '❤️', '😂', '🎉', '😮', '😢'];
   return (
     <View
+      pointerEvents="box-none"
       style={{
-        position: 'absolute',
-        bottom: 28,
-        right: 0,
-        backgroundColor: theme.componentBG,
-        borderWidth: 1,
-        borderColor: theme.border,
-        borderRadius: 20,
-        paddingHorizontal: 8,
-        paddingVertical: 6,
-        flexDirection: 'row',
-        gap: 4,
-        shadowColor: theme.inverse,
-        shadowOffset: { width: 0, height: 4 },
-        shadowOpacity: 0.15,
-        shadowRadius: 8,
-        elevation: 24,
-        zIndex: 300,
+        ...StyleSheet.absoluteFillObject,
+        zIndex: 500,
+        justifyContent: 'flex-end',
+        alignItems: 'center',
+        paddingBottom: 92,
       }}
     >
-      {quickEmojis.map((emoji) => (
-        <Pressable
-          key={emoji}
-          onPress={() => onSelect(emoji)}
-          hitSlop={8}
-          style={({ pressed, hovered }) => ({
-            paddingHorizontal: 6,
-            paddingVertical: 4,
-            borderRadius: 8,
-            backgroundColor: (pressed || hovered) ? theme.highlightBG : 'transparent',
-            cursor: Platform.OS === 'web' ? 'pointer' as any : undefined,
-          })}
-        >
-          <Text style={{ fontSize: 20 }}>{emoji}</Text>
-        </Pressable>
-      ))}
+      <Pressable
+        onPress={onClose}
+        style={{ ...StyleSheet.absoluteFillObject }}
+      />
+      <View
+        style={{
+          flexDirection: 'row',
+          alignItems: 'center',
+          gap: 6,
+          backgroundColor: theme.componentBG,
+          borderWidth: 1,
+          borderColor: theme.border,
+          borderRadius: 28,
+          paddingHorizontal: 10,
+          paddingVertical: 8,
+          shadowColor: theme.inverse,
+          shadowOffset: { width: 0, height: 6 },
+          shadowOpacity: 0.18,
+          shadowRadius: 12,
+          elevation: 30,
+        }}
+      >
+        {quickEmojis.map((emoji) => (
+          <Pressable
+            key={emoji}
+            onPress={() => onSelect(emoji)}
+            hitSlop={10}
+            style={({ pressed }) => ({
+              width: 40,
+              height: 40,
+              borderRadius: 20,
+              alignItems: 'center',
+              justifyContent: 'center',
+              backgroundColor: pressed ? theme.highlightBG : 'transparent',
+            })}
+          >
+            <Text style={{ fontSize: 24 }}>{emoji}</Text>
+          </Pressable>
+        ))}
+      </View>
     </View>
   );
 }
@@ -1040,12 +1052,6 @@ export default function ChatRoomScreen() {
                         >
                           <MaterialIcons name="add-reaction" size={16} color={theme.textSupporting} />
                         </Pressable>
-                        {showPicker && (
-                          <ReactionPopup
-                            onSelect={(emoji) => toggleReaction(message.id, emoji)}
-                            theme={theme}
-                          />
-                        )}
                       </View>
                     )}
                   </Pressable>
@@ -1217,12 +1223,6 @@ export default function ChatRoomScreen() {
                       >
                         <MaterialIcons name="add-reaction" size={16} color={theme.textSupporting} />
                       </Pressable>
-                      {showPicker && (
-                        <ReactionPopup
-                          onSelect={(emoji) => toggleReaction(message.id, emoji)}
-                          theme={theme}
-                        />
-                      )}
                     </View>
                   )}
                 </Pressable>
@@ -1230,6 +1230,14 @@ export default function ChatRoomScreen() {
             })
           )}
         </ScrollView>
+      )}
+
+      {Platform.OS !== 'web' && showReactionPickerId && (
+        <MobileReactionBar
+          theme={theme}
+          onClose={() => setShowReactionPickerId(null)}
+          onSelect={(emoji) => toggleReaction(showReactionPickerId, emoji)}
+        />
       )}
 
       {/* ─── Attachment Preview Strip ─── */}
